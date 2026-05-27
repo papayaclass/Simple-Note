@@ -1,0 +1,112 @@
+:root {
+  --bg: #ffffff;
+  --fg: #1a1a1a;
+  --fg-muted: #888;
+  --fg-faint: #b0b0b0;
+  --accent: #2563eb;
+  --red: #e5484d;
+  --hr: rgba(0, 0, 0, 0.08);
+  --selection: rgba(37, 99, 235, 0.2);
+  --code-bg: rgba(0, 0, 0, 0.05);
+  --quote-border: rgba(0, 0, 0, 0.18);
+  --overlay: rgba(0, 0, 0, 0.5);
+  --panel-bg: #ffffff;
+  --panel-border: rgba(0, 0, 0, 0.08);
+  --input-bg: #f5f5f5;
+  --input-border: rgba(0, 0, 0, 0.1);
+  --math-tag-bg: rgba(0, 0, 0, 0.05);
+  --math-tag-fg: #1a1a1a;
+  --result-fg: #6b7280;
+
+  /* dynamic, controlled by preferences */
+  --page-width: 720px;
+  --line-height: 1.6;
+  --paragraph-spacing: 8px;
+  --top-padding: 96px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1a1a;
+    --fg: #e8e8e8;
+    --fg-muted: #888;
+    --fg-faint: #555;
+    --accent: #60a5fa;
+    --red: #f47174;
+    --hr: rgba(255, 255, 255, 0.08);
+    --selection: rgba(96, 165, 250, 0.3);
+    --code-bg: rgba(255, 255, 255, 0.06);
+    --quote-border: rgba(255, 255, 255, 0.25);
+    --overlay: rgba(0, 0, 0, 0.6);
+    --panel-bg: #262626;
+    --panel-border: rgba(255, 255, 255, 0.1);
+    --input-bg: #1a1a1a;
+    --input-border: rgba(255, 255, 255, 0.12);
+    --math-tag-bg: rgba(255, 255, 255, 0.08);
+    --math-tag-fg: #e8e8e8;
+    --result-fg: #9ca3af;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', 'PingFang TC', 'Heiti TC', sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+::selection {
+  background: var(--selection);
+}
+
+.app {
+  height: 100%;
+  width: 100%;
+  overflow: auto;
+}
+
+.page {
+  max-width: var(--page-width);
+  width: 100%;
+  margin: 0 auto;
+  padding: var(--top-padding) 32px 200px;
+  line-height: var(--line-height);
+}
+
+/* Only the top strip is a drag region; everything else stays interactive. */
+.drag-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 72px;
+  -webkit-app-region: drag;
+  z-index: 9999;
+}
+
+.math-badge {
+  position: fixed;
+  top: 14px;
+  left: 80px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--math-tag-bg);
+  color: var(--math-tag-fg);
+  -webkit-app-region: no-drag;
+  user-select: none;
+  pointer-events: none;
+  z-index: 50;
+}

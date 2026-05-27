@@ -1,0 +1,54 @@
+{
+  "name": "simple-note",
+  "version": "0.1.0",
+  "description": "極簡 Block 式筆記工具",
+  "main": "out/main/index.js",
+  "author": "papayastudio",
+  "private": true,
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "pack": "electron-vite build && electron-builder --dir",
+    "dist": "electron-vite build && electron-builder",
+    "icons": "electron-icon-builder --input=./Simple\\ Note.png --output=build --flatten"
+  },
+  "dependencies": {
+    "@blocknote/core": "^0.40.0",
+    "@blocknote/mantine": "^0.40.0",
+    "@blocknote/react": "^0.40.0",
+    "electron-store": "^8.2.0",
+    "lowlight": "^3.3.0",
+    "opencc-js": "^1.0.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^4.5.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.2",
+    "electron": "^32.1.2",
+    "electron-builder": "^25.0.5",
+    "electron-icon-builder": "^2.0.1",
+    "electron-vite": "^2.3.0",
+    "typescript": "^5.6.2",
+    "vite": "^5.4.8"
+  },
+  "build": {
+    "appId": "com.papayastudio.simplenote",
+    "productName": "Simple Note",
+    "directories": {
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "build/icons/icon.icns"
+    }
+  }
+}

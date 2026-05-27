@@ -1,0 +1,108 @@
+/* BlockNote overrides for minimal aesthetic */
+
+.bn-container {
+  background: transparent !important;
+}
+
+.bn-editor {
+  background: transparent !important;
+  padding: 0 !important;
+  color: var(--fg) !important;
+}
+
+/* hide top-of-doc + add-block helpers we don't need */
+.bn-block-content {
+  font-family: inherit !important;
+}
+
+/* paragraph spacing */
+.bn-block-outer + .bn-block-outer {
+  margin-top: var(--paragraph-spacing) !important;
+}
+
+/* headings */
+.bn-block-content[data-content-type='heading'] {
+  font-weight: 700;
+}
+[data-level='1'].bn-block-content {
+  font-size: 2em;
+  line-height: 1.25;
+}
+[data-level='2'].bn-block-content {
+  font-size: 1.5em;
+  line-height: 1.3;
+}
+[data-level='3'].bn-block-content {
+  font-size: 1.2em;
+  line-height: 1.35;
+}
+
+/* quote — rely on BlockNote's default border-left; just tweak color */
+.bn-block-content[data-content-type='quote'] {
+  color: var(--fg-muted);
+  font-style: italic;
+}
+
+/* inline code */
+code.bn-inline-content,
+.bn-inline-content code {
+  background: var(--code-bg);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: ui-monospace, SF Mono, Menlo, monospace;
+  font-size: 0.92em;
+}
+
+/* code block */
+.bn-block-content[data-content-type='codeBlock'] {
+  background: var(--code-bg);
+  padding: 12px 14px;
+  border-radius: 8px;
+  font-family: ui-monospace, SF Mono, Menlo, monospace;
+  font-size: 0.92em;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+/* checkbox completed */
+.bn-block-content[data-content-type='checkListItem'][data-checked='true'] .bn-inline-content {
+  text-decoration: line-through;
+  color: var(--fg-faint);
+}
+
+/* checkbox spacing — widen gap between checkbox and label text by ~1 CJK char */
+.bn-block-content[data-content-type='checkListItem'] > input[type='checkbox'] {
+  margin-right: 1em !important;
+}
+
+/* red text inline style */
+[data-inline-content-type] [style*='color: red'],
+.bn-inline-content [data-style-red-text='true'] {
+  color: var(--red);
+}
+
+/* math result overlay decoration */
+.math-result {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--math-tag-bg);
+  color: var(--result-fg);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.92em;
+  user-select: none;
+  pointer-events: none;
+}
+.math-result.math-error {
+  color: var(--red);
+  background: transparent;
+}
+
+/* hide BlockNote's default placeholder colors to keep minimal */
+.bn-block-content[data-is-empty-and-focused='true']::before {
+  color: var(--fg-faint) !important;
+  opacity: 0.6;
+}
+
+/* SideMenu — keep drag handle only (custom render in Editor.tsx) */

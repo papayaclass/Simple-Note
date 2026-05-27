@@ -1,0 +1,13 @@
+node_modules/
+out/
+dist/
+dist-tsc/
+build/icons/
+
+.DS_Store
+*.log
+npm-debug.log*
+
+.vscode/
+.idea/
+.claude/
