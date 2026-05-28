@@ -17,6 +17,7 @@ export interface EditorHandle {
   serialize: () => string;
   load: (json: string) => void;
   asMarkdown: () => Promise<string>;
+  focusLastBlock: () => void;
   editor: ReturnType<typeof useCreateBlockNote>;
 }
 
@@ -87,8 +88,20 @@ export function Editor({ onChange, handleRef }: Props): JSX.Element {
         }
       },
       asMarkdown: async () => editor.blocksToMarkdownLossy(editor.document),
+      focusLastBlock: () => {
+        const blocks = editor.document;
+        if (blocks.length === 0) return;
+        const last = blocks[blocks.length - 1];
+        editor.setTextCursorPosition(last.id, 'end');
+        editor.focus();
+      },
     };
   }, [editor, handleRef]);
+
+  // Auto-focus on mount so the caret is visible without an initial click.
+  useEffect(() => {
+    editor.focus();
+  }, [editor]);
 
   // Subscribe to document changes
   useEffect(() => {

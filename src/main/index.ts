@@ -25,22 +25,30 @@ const windowStore = new Store<{ bounds: WindowBounds }>({
 let mainWindow: BrowserWindow | null = null;
 let currentFilePath: string | null = null;
 
+// Accept the saved bounds as long as they overlap any connected display at
+// all. The previous check rejected perfectly valid bounds whenever the user's
+// display setup at restore time differed from save time (e.g. unplugged a
+// second monitor) — which silently reset the window to default.
+function intersectsAnyDisplay(b: WindowBounds): boolean {
+  if (b.x === undefined || b.y === undefined) return false;
+  return screen.getAllDisplays().some((d) => {
+    const wa = d.workArea;
+    const ix = Math.min(b.x! + b.width, wa.x + wa.width) - Math.max(b.x!, wa.x);
+    const iy = Math.min(b.y! + b.height, wa.y + wa.height) - Math.max(b.y!, wa.y);
+    return ix > 0 && iy > 0;
+  });
+}
+
 function getRestoredBounds(): WindowBounds {
   const saved = windowStore.get('bounds', DEFAULT_BOUNDS);
-  // If x/y is set, make sure it still lands on a connected display.
-  if (saved.x !== undefined && saved.y !== undefined) {
-    const onScreen = screen.getAllDisplays().some((d) => {
-      const { x, y, width, height } = d.workArea;
-      return (
-        saved.x! >= x &&
-        saved.y! >= y &&
-        saved.x! + saved.width <= x + width &&
-        saved.y! + saved.height <= y + height
-      );
-    });
-    if (!onScreen) return { width: saved.width, height: saved.height };
-  }
-  return saved;
+  if (intersectsAnyDisplay(saved)) return saved;
+  return { width: saved.width, height: saved.height };
+}
+
+function persistBounds(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized() || mainWindow.isFullScreen()) return;
+  windowStore.set('bounds', mainWindow.getNormalBounds());
 }
 
 function createWindow(): void {
@@ -65,17 +73,14 @@ function createWindow(): void {
   });
 
   let saveTimer: NodeJS.Timeout | null = null;
-  const persistBounds = (): void => {
-    if (!mainWindow || mainWindow.isDestroyed()) return;
-    if (mainWindow.isMinimized() || mainWindow.isFullScreen()) return;
-    windowStore.set('bounds', mainWindow.getNormalBounds());
-  };
   const scheduleSave = (): void => {
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(persistBounds, 300);
   };
   mainWindow.on('resize', scheduleSave);
   mainWindow.on('move', scheduleSave);
+  // Synchronous save BEFORE the async dirty-check listener below runs, so the
+  // bounds are flushed to disk even if the user cancels close from the dialog.
   mainWindow.on('close', persistBounds);
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -110,6 +115,10 @@ function createWindow(): void {
     }
   });
 }
+
+// Safety net for Cmd+Q / app.quit() paths where the window's close handler
+// may race with process exit.
+app.on('before-quit', persistBounds);
 
 app.whenReady().then(() => {
   buildMenu({

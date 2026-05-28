@@ -140,8 +140,19 @@ export function App(): JSX.Element {
     return off;
   }, [doNew, doOpen, doSave, doExportMarkdown, setPrefsOpen, toggleMathMode]);
 
+  // Clicks anywhere outside the editor (the .app gutter, the .page padding,
+  // or the centered margins around .page) should drop the caret into the last
+  // block. We filter by target className so clicks inside .bn-container,
+  // .prefs-overlay, .word-count-popover etc. are left alone.
+  const onShellClick = useCallback((e: React.MouseEvent<HTMLDivElement>): void => {
+    const t = e.target as HTMLElement;
+    if (t.classList.contains('app') || t.classList.contains('page')) {
+      handleRef.current?.focusLastBlock();
+    }
+  }, []);
+
   return (
-    <div className="app">
+    <div className="app" onClick={onShellClick}>
       <div className="drag-bar" />
       {mathMode && <div className="math-badge">數學模式</div>}
       <div className="page">
