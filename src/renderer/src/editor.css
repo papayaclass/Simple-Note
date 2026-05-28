@@ -37,10 +37,10 @@
   line-height: 1.35;
 }
 
-/* quote — rely on BlockNote's default border-left; just tweak color */
-.bn-block-content[data-content-type='quote'] {
-  color: var(--fg-muted);
-  font-style: italic;
+/* quote — rely on BlockNote's default border-left */
+.bn-block-content[data-content-type='quote'] blockquote {
+  color: inherit;
+  font-style: normal;
 }
 
 /* inline code */
