@@ -40,7 +40,7 @@ export function buildMenu(h: MenuHandlers): void {
         { label: '儲存', accelerator: 'CmdOrCtrl+S', click: () => h.onSave() },
         {
           label: '匯出為 Markdown…',
-          accelerator: 'Alt+CmdOrCtrl+E',
+          accelerator: 'CmdOrCtrl+E',
           click: () => h.onExportMarkdown(),
         },
         { type: 'separator' },

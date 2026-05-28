@@ -13,7 +13,10 @@ export interface SimpleNoteAPI {
     clearCache: () => Promise<void>;
   };
   file: {
-    save: (payload: string, suggestedName?: string) => Promise<{ ok: boolean; path?: string }>;
+    save: (
+      payloads: { sn: string; md: string },
+      suggestedName?: string
+    ) => Promise<{ ok: boolean; path?: string }>;
     open: () => Promise<{ ok: boolean; path?: string; content?: string }>;
     exportMarkdown: (
       markdown: string,
@@ -26,6 +29,10 @@ export interface SimpleNoteAPI {
     setTitle: (title: string) => void;
   };
   onMenu: (handler: (command: string) => void) => () => void;
+  onExternalOpen: (
+    handler: (payload: { path: string; content: string }) => void
+  ) => () => void;
+  notifyReady: () => void;
 }
 
 const api: SimpleNoteAPI = {
@@ -39,7 +46,7 @@ const api: SimpleNoteAPI = {
     clearCache: () => ipcRenderer.invoke('rate:clear'),
   },
   file: {
-    save: (payload, suggestedName) => ipcRenderer.invoke('file:save', payload, suggestedName),
+    save: (payloads, suggestedName) => ipcRenderer.invoke('file:save', payloads, suggestedName),
     open: () => ipcRenderer.invoke('file:open'),
     exportMarkdown: (md, suggestedName) =>
       ipcRenderer.invoke('file:exportMarkdown', md, suggestedName),
@@ -71,6 +78,13 @@ const api: SimpleNoteAPI = {
       for (const [c, l] of channels) ipcRenderer.removeListener(c, l);
     };
   },
+  onExternalOpen: (handler) => {
+    const listener = (_e: unknown, payload: { path: string; content: string }) =>
+      handler(payload);
+    ipcRenderer.on('file:externalOpen', listener);
+    return () => ipcRenderer.removeListener('file:externalOpen', listener);
+  },
+  notifyReady: () => ipcRenderer.send('renderer:ready'),
 };
 
 contextBridge.exposeInMainWorld('api', api);

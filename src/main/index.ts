@@ -25,6 +25,49 @@ const windowStore = new Store<{ bounds: WindowBounds }>({
 let mainWindow: BrowserWindow | null = null;
 let currentFilePath: string | null = null;
 
+// Files queued from the macOS 'open-file' event (Finder double-click, drag onto
+// Dock icon, "Open With…") before the renderer is ready to receive them. We
+// flush them as soon as the renderer signals it's mounted.
+const pendingOpenPaths: string[] = [];
+let rendererReady = false;
+
+async function deliverPathToRenderer(path: string): Promise<void> {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  try {
+    const content = await readFile(path, 'utf-8');
+    currentFilePath = path;
+    mainWindow.setRepresentedFilename(path);
+    mainWindow.setTitle(path.split('/').pop() ?? 'Simple Note');
+    mainWindow.setDocumentEdited(false);
+    mainWindow.webContents.send('file:externalOpen', { path, content });
+  } catch (err) {
+    console.error('Failed to read external file:', path, err);
+  }
+}
+
+function enqueueOrDeliver(path: string): void {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    pendingOpenPaths.push(path);
+    if (app.isReady()) createWindow();
+    return;
+  }
+  if (rendererReady) {
+    void deliverPathToRenderer(path);
+  } else {
+    pendingOpenPaths.push(path);
+  }
+}
+
+// macOS delivers paths via 'open-file' (and only this — argv won't carry the
+// file path on macOS GUI launches). Register inside will-finish-launching so we
+// catch the very first event even when launched cold by double-clicking a file.
+app.on('will-finish-launching', () => {
+  app.on('open-file', (event, path) => {
+    event.preventDefault();
+    enqueueOrDeliver(path);
+  });
+});
+
 // Accept the saved bounds as long as they overlap any connected display at
 // all. The previous check rejected perfectly valid bounds whenever the user's
 // display setup at restore time differed from save time (e.g. unplugged a
@@ -72,6 +115,11 @@ function createWindow(): void {
     mainWindow?.show();
   });
 
+  mainWindow.on('closed', () => {
+    rendererReady = false;
+    mainWindow = null;
+  });
+
   let saveTimer: NodeJS.Timeout | null = null;
   const scheduleSave = (): void => {
     if (saveTimer) clearTimeout(saveTimer);
@@ -94,25 +142,43 @@ function createWindow(): void {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
   }
 
-  mainWindow.on('close', async (e) => {
-    if (!mainWindow) return;
-    const dirty = await mainWindow.webContents.executeJavaScript('window.__simpleNote_isDirty?.() ?? false');
-    if (!dirty) return;
+  // preventDefault() must run synchronously — once we `await`, the event loop
+  // resumes and Electron has already proceeded with the close. Always prevent
+  // first, then do the dirty check / dialog asynchronously, and `destroy()`
+  // ourselves when it's safe to close.
+  let forceClose = false;
+  mainWindow.on('close', (e) => {
+    if (forceClose || !mainWindow) return;
     e.preventDefault();
-    const result = await dialog.showMessageBox(mainWindow, {
-      type: 'warning',
-      buttons: ['儲存', '不儲存', '取消'],
-      defaultId: 0,
-      cancelId: 2,
-      message: '是否要將變更儲存？',
-      detail: '若不儲存，所有未儲存的變更會遺失。',
-    });
-    if (result.response === 0) {
-      const saved = await mainWindow.webContents.executeJavaScript('window.__simpleNote_save?.()');
-      if (saved) mainWindow.destroy();
-    } else if (result.response === 1) {
-      mainWindow.destroy();
-    }
+    const win = mainWindow;
+    void (async () => {
+      const dirty = await win.webContents.executeJavaScript(
+        'window.__simpleNote_isDirty?.() ?? false'
+      );
+      if (!dirty) {
+        forceClose = true;
+        win.destroy();
+        return;
+      }
+      const result = await dialog.showMessageBox(win, {
+        type: 'warning',
+        buttons: ['儲存', '不儲存', '取消'],
+        defaultId: 0,
+        cancelId: 2,
+        message: '是否要將變更儲存？',
+        detail: '若不儲存，所有未儲存的變更會遺失。',
+      });
+      if (result.response === 0) {
+        const saved = await win.webContents.executeJavaScript('window.__simpleNote_save?.()');
+        if (saved) {
+          forceClose = true;
+          win.destroy();
+        }
+      } else if (result.response === 1) {
+        forceClose = true;
+        win.destroy();
+      }
+    })();
   });
 }
 
@@ -137,28 +203,43 @@ app.whenReady().then(() => {
   ipcMain.handle('rate:get', async (_e, currency: string) => getRate(currency));
   ipcMain.handle('rate:clear', () => clearRateCache());
 
-  ipcMain.handle('file:save', async (_e, payload: string, suggestedName?: string) => {
-    let path = currentFilePath;
-    if (!path) {
-      const r = await dialog.showSaveDialog(mainWindow!, {
-        defaultPath: suggestedName ?? '未命名筆記.sn',
-        filters: [{ name: 'Simple Note', extensions: ['sn'] }],
-      });
-      if (r.canceled || !r.filePath) return { ok: false };
-      path = r.filePath;
+  ipcMain.handle(
+    'file:save',
+    async (
+      _e,
+      payloads: { sn: string; md: string },
+      suggestedName?: string
+    ) => {
+      let path = currentFilePath;
+      if (!path) {
+        const r = await dialog.showSaveDialog(mainWindow!, {
+          defaultPath: suggestedName ?? '未命名筆記.sn',
+          filters: [
+            { name: 'Simple Note', extensions: ['sn'] },
+            { name: 'Markdown', extensions: ['md'] },
+          ],
+        });
+        if (r.canceled || !r.filePath) return { ok: false };
+        path = r.filePath;
+      }
+      const body = path.toLowerCase().endsWith('.md') ? payloads.md : payloads.sn;
+      await writeFile(path, body, 'utf-8');
+      currentFilePath = path;
+      mainWindow?.setRepresentedFilename(path);
+      mainWindow?.setTitle(path.split('/').pop() ?? 'Simple Note');
+      mainWindow?.setDocumentEdited(false);
+      return { ok: true, path };
     }
-    await writeFile(path, payload, 'utf-8');
-    currentFilePath = path;
-    mainWindow?.setRepresentedFilename(path);
-    mainWindow?.setTitle(path.split('/').pop() ?? 'Simple Note');
-    mainWindow?.setDocumentEdited(false);
-    return { ok: true, path };
-  });
+  );
 
   ipcMain.handle('file:open', async () => {
     const r = await dialog.showOpenDialog(mainWindow!, {
       properties: ['openFile'],
-      filters: [{ name: 'Simple Note', extensions: ['sn'] }],
+      filters: [
+        { name: 'Simple Note / Markdown', extensions: ['sn', 'md'] },
+        { name: 'Simple Note', extensions: ['sn'] },
+        { name: 'Markdown', extensions: ['md'] },
+      ],
     });
     if (r.canceled || !r.filePaths[0]) return { ok: false };
     const text = await readFile(r.filePaths[0], 'utf-8');
@@ -192,6 +273,15 @@ app.whenReady().then(() => {
 
   ipcMain.on('window:setTitle', (_e, title: string) => {
     mainWindow?.setTitle(title);
+  });
+
+  // Renderer signals it has mounted listeners; flush any pending open-file paths.
+  ipcMain.on('renderer:ready', () => {
+    rendererReady = true;
+    while (pendingOpenPaths.length > 0) {
+      const next = pendingOpenPaths.shift();
+      if (next) void deliverPathToRenderer(next);
+    }
   });
 
   createWindow();

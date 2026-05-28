@@ -16,6 +16,7 @@ import { ContextMenu } from '../context-menu/ContextMenu';
 export interface EditorHandle {
   serialize: () => string;
   load: (json: string) => void;
+  loadMarkdown: (md: string) => Promise<void>;
   asMarkdown: () => Promise<string>;
   focusLastBlock: () => void;
   editor: ReturnType<typeof useCreateBlockNote>;
@@ -86,6 +87,10 @@ export function Editor({ onChange, handleRef }: Props): JSX.Element {
         } catch {
           // ignore
         }
+      },
+      loadMarkdown: async (md: string) => {
+        const blocks = await editor.tryParseMarkdownToBlocks(md);
+        (editor.replaceBlocks as (a: unknown, b: unknown) => unknown)(editor.document, blocks);
       },
       asMarkdown: async () => editor.blocksToMarkdownLossy(editor.document),
       focusLastBlock: () => {

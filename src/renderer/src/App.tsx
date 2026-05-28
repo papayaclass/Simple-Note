@@ -43,9 +43,16 @@ export function App(): JSX.Element {
     window.api.window.setTitle(fileName);
   }, [dirty, fileName]);
 
-  // Expose dirty/save for native close confirmation
+  // Expose dirty/save for native close confirmation. Skip the prompt entirely
+  // when the document has no real content — an empty Untitled buffer shouldn't
+  // pester the user on quit.
   useEffect(() => {
-    window.__simpleNote_isDirty = () => useStore.getState().dirty;
+    window.__simpleNote_isDirty = () => {
+      if (!useStore.getState().dirty) return false;
+      const handle = handleRef.current;
+      if (!handle) return false;
+      return docHasContent(handle.editor.document);
+    };
     window.__simpleNote_save = async () => doSave();
     return () => {
       delete window.__simpleNote_isDirty;
@@ -60,18 +67,36 @@ export function App(): JSX.Element {
   const doSave = useCallback(async (): Promise<boolean> => {
     if (!handleRef.current) return false;
     const json = handleRef.current.serialize();
-    const payload = JSON.stringify({
+    const snPayload = JSON.stringify({
       version: 1,
       doc: JSON.parse(json),
       updatedAt: new Date().toISOString(),
     });
-    const r = await window.api.file.save(payload, `${fileName}.sn`);
+    const mdPayload = await handleRef.current.asMarkdown();
+    const isMd = filePath?.toLowerCase().endsWith('.md') ?? false;
+    const suggested = `${fileName}${isMd ? '.md' : '.sn'}`;
+    const r = await window.api.file.save({ sn: snPayload, md: mdPayload }, suggested);
     if (r.ok && r.path) {
       setFile(r.path);
       return true;
     }
     return false;
-  }, [fileName, setFile]);
+  }, [fileName, filePath, setFile]);
+
+  const loadContentByPath = useCallback(async (path: string, content: string) => {
+    if (!handleRef.current) return;
+    if (path.toLowerCase().endsWith('.md')) {
+      await handleRef.current.loadMarkdown(content);
+    } else {
+      try {
+        const obj = JSON.parse(content);
+        handleRef.current.load(JSON.stringify(obj.doc));
+      } catch {
+        // ignore malformed .sn files silently
+      }
+    }
+    setFile(path);
+  }, [setFile]);
 
   const doOpen = useCallback(async () => {
     if (useStore.getState().dirty) {
@@ -79,16 +104,10 @@ export function App(): JSX.Element {
       if (!ok) return;
     }
     const r = await window.api.file.open();
-    if (r.ok && r.content && handleRef.current && r.path) {
-      try {
-        const obj = JSON.parse(r.content);
-        handleRef.current.load(JSON.stringify(obj.doc));
-      } catch {
-        // ignore
-      }
-      setFile(r.path);
+    if (r.ok && r.content && r.path) {
+      await loadContentByPath(r.path, r.content);
     }
-  }, [setFile]);
+  }, [loadContentByPath]);
 
   const doNew = useCallback(async () => {
     if (useStore.getState().dirty) {
@@ -105,6 +124,37 @@ export function App(): JSX.Element {
     const md = await handleRef.current.asMarkdown();
     await window.api.file.exportMarkdown(md, `${fileName}.md`);
   }, [fileName]);
+
+  // TipTap's Code extension binds Mod-e to toggle inline code, which steals the
+  // Cmd+E menu accelerator when the editor has focus. Intercept in the capture
+  // phase so we win before ProseMirror's handleKeyDown sees the event.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent): void {
+      const meta = e.metaKey || e.ctrlKey;
+      if (!meta || e.altKey || e.shiftKey) return;
+      if (e.code !== 'KeyE') return;
+      e.preventDefault();
+      e.stopPropagation();
+      void doExportMarkdown();
+    }
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [doExportMarkdown]);
+
+  // Receive files opened from outside the app (Finder double-click, drag onto
+  // Dock, "Open With…"). Main reads the file and pushes path + content here.
+  useEffect(() => {
+    const off = window.api.onExternalOpen(async ({ path, content }) => {
+      if (useStore.getState().dirty) {
+        const ok = await confirmDiscard();
+        if (!ok) return;
+      }
+      await loadContentByPath(path, content);
+    });
+    // Signal main that we're mounted so any queued open-file paths can flush.
+    window.api.notifyReady();
+    return off;
+  }, [loadContentByPath]);
 
   // Wire menu commands
   useEffect(() => {
@@ -188,4 +238,22 @@ export function App(): JSX.Element {
 
 async function confirmDiscard(): Promise<boolean> {
   return window.confirm('目前有未儲存的變更，要捨棄嗎？');
+}
+
+// BlockNote always carries at least one paragraph block; "empty" means no
+// meaningful inline text across any block.
+function docHasContent(blocks: readonly unknown[]): boolean {
+  for (const b of blocks as Array<{ content?: unknown }>) {
+    const c = b.content;
+    if (typeof c === 'string') {
+      if (c.length > 0) return true;
+      continue;
+    }
+    if (Array.isArray(c)) {
+      for (const span of c as Array<{ text?: string }>) {
+        if (span && typeof span.text === 'string' && span.text.length > 0) return true;
+      }
+    }
+  }
+  return false;
 }
