@@ -61,6 +61,28 @@ export function ContextMenu({ editor }: Props): JSX.Element | null {
     tipTap.chain().focus().unsetAllMarks().run();
   };
 
+  // BlockNote turns "\n" inside a text node into a hardBreak when rendering
+  // (see BlockNoteSchema: text.split(/(\n)/g) → hardBreak). So merging multiple
+  // selected blocks into one block with "\n" between them gives the user a
+  // single paragraph whose former block boundaries are now soft line breaks.
+  const mergeParagraphBreaks = () => {
+    const sel = editor.getSelection?.();
+    const blocks = sel?.blocks ?? [];
+    if (blocks.length < 2) return;
+    const first = blocks[0];
+    const merged: any[] = [];
+    blocks.forEach((b: any, i: number) => {
+      if (i > 0) merged.push({ type: 'text', text: '\n', styles: {} });
+      const c = b.content;
+      if (Array.isArray(c)) merged.push(...c);
+      else if (typeof c === 'string' && c.length > 0)
+        merged.push({ type: 'text', text: c, styles: {} });
+    });
+    (editor.replaceBlocks as (a: unknown, b: unknown) => unknown)(blocks, [
+      { type: first.type, props: first.props, content: merged },
+    ]);
+  };
+
   const insertLoremIpsum = () => {
     const tipTap = editor._tiptapEditor;
     tipTap.chain().focus().insertContent(LOREM_IPSUM).run();
@@ -94,6 +116,14 @@ export function ContextMenu({ editor }: Props): JSX.Element | null {
       disabled: !menu.hasSelection,
       onClick: () => {
         clearFormatting();
+        close();
+      },
+    },
+    {
+      label: '分段符號轉分行符號',
+      disabled: !menu.hasSelection,
+      onClick: () => {
+        mergeParagraphBreaks();
         close();
       },
     },
