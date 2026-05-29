@@ -9,6 +9,7 @@ import {
 } from '@blocknote/react';
 import { TextSelection, AllSelection } from 'prosemirror-state';
 import { schema } from './schema';
+import { createLinkExtension } from './link';
 import { createMathPlugin } from '../math/overlay';
 import { useStore } from '../store';
 import { ContextMenu } from '../context-menu/ContextMenu';
@@ -78,10 +79,15 @@ export function Editor({ onChange, handleRef, autoFocus = true }: Props): JSX.El
     }),
   ]).current;
 
+  // Override BlockNote's default `link` mark to stop bare filenames (MEMORY.md,
+  // App.tsx, …) from being auto-linked while typing. Created once per editor.
+  const tiptapOptions = useRef({ extensions: [createLinkExtension()] }).current;
+
   const editor = useCreateBlockNote({
     schema,
     initialContent: INITIAL_CONTENT,
     extensions: customExtensions,
+    _tiptapOptions: tiptapOptions,
     placeholders: {
       default: '',
       emptyDocument: '',

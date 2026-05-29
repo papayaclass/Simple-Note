@@ -97,6 +97,15 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
     setWordCount({ count: wc.words, chars: wc.chars, charsNoSpace: wc.charsNoSpace, chinese: wc.chinese });
   };
 
+  // Open a web search for the selected text. window.open is intercepted by the
+  // main process's setWindowOpenHandler, which routes it to the system browser
+  // via shell.openExternal (see src/main/index.ts).
+  const searchSelection = (buildUrl: (query: string) => string) => {
+    const text = (window.getSelection()?.toString() ?? '').trim();
+    if (!text) return;
+    window.open(buildUrl(encodeURIComponent(text)), '_blank');
+  };
+
   const items = [
     {
       label: '簡體轉繁體',
@@ -143,6 +152,33 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
       disabled: !menu.hasSelection,
       onClick: () => {
         doWordCount();
+        close();
+      },
+    },
+    { divider: true },
+    {
+      label: '在 Google 搜尋',
+      disabled: !menu.hasSelection,
+      onClick: () => {
+        searchSelection((q) => `https://www.google.com/search?q=${q}`);
+        close();
+      },
+    },
+    {
+      label: '在 YouTube 搜尋',
+      disabled: !menu.hasSelection,
+      onClick: () => {
+        searchSelection((q) => `https://www.youtube.com/results?search_query=${q}`);
+        close();
+      },
+    },
+    {
+      label: '查詢劍橋詞典',
+      disabled: !menu.hasSelection,
+      onClick: () => {
+        searchSelection(
+          (q) => `https://dictionary.cambridge.org/search/english-chinese-traditional/direct/?q=${q}`
+        );
         close();
       },
     },

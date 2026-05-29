@@ -75,6 +75,13 @@ code.bn-inline-content,
   margin-right: 1em !important;
 }
 
+/* links — gray + underline instead of the default blue */
+.bn-editor a[href] {
+  color: var(--fg-muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 /* red text inline style */
 [data-inline-content-type] [style*='color: red'],
 .bn-inline-content [data-style-red-text='true'] {
