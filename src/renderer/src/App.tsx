@@ -12,6 +12,8 @@ export function App(): JSX.Element {
   const fileName = useStore((s) => s.fileName);
   const mathMode = useStore((s) => s.mathMode);
   const toggleMathMode = useStore((s) => s.toggleMathMode);
+  const twoColumn = useStore((s) => s.twoColumn);
+  const setTwoColumn = useStore((s) => s.setTwoColumn);
   const preferences = useStore((s) => s.preferences);
   const setPreferences = useStore((s) => s.setPreferences);
   const setPrefsOpen = useStore((s) => s.setPrefsPanelOpen);
@@ -19,11 +21,13 @@ export function App(): JSX.Element {
   const setWordCountPopover = useStore((s) => s.setWordCountPopover);
 
   const handleRef = useRef<EditorHandle | null>(null);
+  const rightHandleRef = useRef<EditorHandle | null>(null);
 
   // Apply CSS variables from preferences
   useEffect(() => {
     const r = document.documentElement.style;
     r.setProperty('--page-width', `${preferences.pageWidth}px`);
+    r.setProperty('--two-column-page-width', `${preferences.twoColumnPageWidth}px`);
     r.setProperty('--line-height', `${preferences.lineHeight}`);
     r.setProperty('--paragraph-spacing', `${preferences.paragraphSpacing}px`);
     r.setProperty('--top-padding', `${preferences.topPadding}px`);
@@ -51,7 +55,11 @@ export function App(): JSX.Element {
       if (!useStore.getState().dirty) return false;
       const handle = handleRef.current;
       if (!handle) return false;
-      return docHasContent(handle.editor.document);
+      if (docHasContent(handle.editor.document)) return true;
+      if (useStore.getState().twoColumn && rightHandleRef.current) {
+        return docHasContent(rightHandleRef.current.editor.document);
+      }
+      return false;
     };
     window.__simpleNote_save = async () => doSave();
     return () => {
@@ -64,15 +72,30 @@ export function App(): JSX.Element {
     if (!useStore.getState().dirty) setDirty(true);
   }, [setDirty]);
 
+  // Combine both columns into one Markdown string: the right column's text is
+  // appended below the left column's (requirement 4). The right column only
+  // contributes when two-column mode is active and it actually has content.
+  const buildMarkdown = useCallback(async (): Promise<string> => {
+    if (!handleRef.current) return '';
+    const left = await handleRef.current.asMarkdown();
+    if (!useStore.getState().twoColumn || !rightHandleRef.current) return left;
+    if (!docHasContent(rightHandleRef.current.editor.document)) return left;
+    const right = await rightHandleRef.current.asMarkdown();
+    return `${left}\n\n${right}`;
+  }, []);
+
   const doSave = useCallback(async (): Promise<boolean> => {
     if (!handleRef.current) return false;
     const json = handleRef.current.serialize();
+    const rightJson = rightHandleRef.current?.serialize();
     const snPayload = JSON.stringify({
       version: 1,
       doc: JSON.parse(json),
+      rightDoc: rightJson ? JSON.parse(rightJson) : undefined,
+      twoColumn: useStore.getState().twoColumn,
       updatedAt: new Date().toISOString(),
     });
-    const mdPayload = await handleRef.current.asMarkdown();
+    const mdPayload = await buildMarkdown();
     const isMd = filePath?.toLowerCase().endsWith('.md') ?? false;
     const suggested = `${fileName}${isMd ? '.md' : '.sn'}`;
     const r = await window.api.file.save({ sn: snPayload, md: mdPayload }, suggested);
@@ -81,22 +104,28 @@ export function App(): JSX.Element {
       return true;
     }
     return false;
-  }, [fileName, filePath, setFile]);
+  }, [fileName, filePath, setFile, buildMarkdown]);
 
   const loadContentByPath = useCallback(async (path: string, content: string) => {
     if (!handleRef.current) return;
     if (path.toLowerCase().endsWith('.md')) {
       await handleRef.current.loadMarkdown(content);
+      rightHandleRef.current?.load(JSON.stringify(EMPTY_DOC));
+      setTwoColumn(false);
     } else {
       try {
         const obj = JSON.parse(content);
         handleRef.current.load(JSON.stringify(obj.doc));
+        // Restore the right column and layout for files written with two-column
+        // support. Older files have neither field → empty right, single column.
+        rightHandleRef.current?.load(JSON.stringify(obj.rightDoc ?? EMPTY_DOC));
+        setTwoColumn(!!obj.twoColumn);
       } catch {
         // ignore malformed .sn files silently
       }
     }
     setFile(path);
-  }, [setFile]);
+  }, [setFile, setTwoColumn]);
 
   const doOpen = useCallback(async () => {
     if (useStore.getState().dirty) {
@@ -114,16 +143,18 @@ export function App(): JSX.Element {
       const ok = await confirmDiscard();
       if (!ok) return;
     }
-    handleRef.current?.load(JSON.stringify([{ type: 'paragraph', content: '' }]));
+    handleRef.current?.load(JSON.stringify(EMPTY_DOC));
+    rightHandleRef.current?.load(JSON.stringify(EMPTY_DOC));
+    setTwoColumn(false);
     setFile(null);
     await window.api.file.new();
-  }, [setFile]);
+  }, [setFile, setTwoColumn]);
 
   const doExportMarkdown = useCallback(async () => {
     if (!handleRef.current) return;
-    const md = await handleRef.current.asMarkdown();
+    const md = await buildMarkdown();
     await window.api.file.exportMarkdown(md, `${fileName}.md`);
-  }, [fileName]);
+  }, [fileName, buildMarkdown]);
 
   // TipTap's Code extension binds Mod-e to toggle inline code, which steals the
   // Cmd+E menu accelerator when the editor has focus. Intercept in the capture
@@ -178,6 +209,14 @@ export function App(): JSX.Element {
         case 'toggle-math':
           toggleMathMode();
           break;
+        case 'two-column':
+          setTwoColumn(true);
+          setDirty(true);
+          break;
+        case 'single-column':
+          setTwoColumn(false);
+          setDirty(true);
+          break;
         case 's2t':
         case 'half2full':
         case 'clear-format':
@@ -188,7 +227,7 @@ export function App(): JSX.Element {
       }
     });
     return off;
-  }, [doNew, doOpen, doSave, doExportMarkdown, setPrefsOpen, toggleMathMode]);
+  }, [doNew, doOpen, doSave, doExportMarkdown, setPrefsOpen, toggleMathMode, setTwoColumn, setDirty]);
 
   // Clicks anywhere outside the editor (the .app gutter, the .page padding,
   // or the centered margins around .page) should drop the caret into the last
@@ -205,8 +244,14 @@ export function App(): JSX.Element {
     <div className="app" onClick={onShellClick}>
       <div className="drag-bar" />
       {mathMode && <div className="math-badge">數學模式</div>}
-      <div className="page">
-        <Editor onChange={onEditorChange} handleRef={handleRef} />
+      <div className={`page${twoColumn ? ' two-column' : ''}`}>
+        <div className="column column-left">
+          <Editor onChange={onEditorChange} handleRef={handleRef} />
+        </div>
+        <div className="column-divider" />
+        <div className="column column-right">
+          <Editor onChange={onEditorChange} handleRef={rightHandleRef} autoFocus={false} />
+        </div>
       </div>
       <PreferencesPanel />
       {wordCountPopover && (
@@ -235,6 +280,9 @@ export function App(): JSX.Element {
     </div>
   );
 }
+
+// A fresh, empty BlockNote document (single empty paragraph).
+const EMPTY_DOC = [{ type: 'paragraph', content: '' }];
 
 async function confirmDiscard(): Promise<boolean> {
   return window.confirm('目前有未儲存的變更，要捨棄嗎？');

@@ -63,6 +63,15 @@ export function PreferencesPanel(): JSX.Element | null {
           onChange={(v) => update({ pageWidth: v })}
         />
         <Slider
+          label="雙欄頁寬"
+          value={draft.twoColumnPageWidth}
+          min={600}
+          max={1600}
+          step={20}
+          unit="px"
+          onChange={(v) => update({ twoColumnPageWidth: v })}
+        />
+        <Slider
           label="段落間距"
           value={draft.paragraphSpacing}
           min={0}

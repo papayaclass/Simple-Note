@@ -17,9 +17,11 @@
   --math-tag-bg: rgba(0, 0, 0, 0.05);
   --math-tag-fg: #1a1a1a;
   --result-fg: #6b7280;
+  --column-divider: rgba(0, 0, 0, 0.12);
 
   /* dynamic, controlled by preferences */
   --page-width: 720px;
+  --two-column-page-width: 1080px;
   --line-height: 1.6;
   --paragraph-spacing: 8px;
   --top-padding: 96px;
@@ -45,6 +47,7 @@
     --math-tag-bg: rgba(255, 255, 255, 0.08);
     --math-tag-fg: #e8e8e8;
     --result-fg: #9ca3af;
+    --column-divider: rgba(255, 255, 255, 0.12);
   }
 }
 
@@ -75,12 +78,72 @@ body,
   overflow: auto;
 }
 
+/* Columns are laid out with flexbox so the single ⇄ two-column switch can be
+   animated. The right column and divider always stay in the DOM (display:none
+   can't transition); single-column mode just collapses them to zero width with
+   flex-grow/flex-basis + opacity, and the page max-width + gap animate
+   alongside, so toggling smoothly expands/collapses the second column. */
 .page {
   max-width: var(--page-width);
   width: 100%;
   margin: 0 auto;
   padding: var(--top-padding) 32px 200px;
   line-height: var(--line-height);
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  transition: max-width 280ms ease, gap 280ms ease;
+}
+
+.column {
+  min-width: 0;
+}
+
+/* Left column always fills the available width. */
+.column-left {
+  flex: 1 1 0;
+}
+
+/* Single-column (default): divider + right column collapsed and faded out. */
+.column-divider {
+  flex: 0 0 0;
+  align-self: stretch;
+  background: var(--column-divider);
+  opacity: 0;
+  overflow: hidden;
+  transition: flex-basis 280ms ease, opacity 280ms ease;
+}
+
+.column-right {
+  flex: 0 1 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: flex-grow 280ms ease, opacity 280ms ease;
+}
+
+/* Two-column: widen the page, open the gap, grow the right column to match the
+   left, and reveal the divider. */
+.page.two-column {
+  max-width: var(--two-column-page-width);
+  gap: 32px;
+}
+
+.page.two-column .column-divider {
+  flex-basis: 1px;
+  opacity: 1;
+}
+
+.page.two-column .column-right {
+  flex-grow: 1;
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page,
+  .column-divider,
+  .column-right {
+    transition: none;
+  }
 }
 
 /* Only the top strip is a drag region; everything else stays interactive. */

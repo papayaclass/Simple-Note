@@ -2,6 +2,7 @@ import { create } from 'zustand';
 
 export interface Preferences {
   pageWidth: number;
+  twoColumnPageWidth: number;
   lineHeight: number;
   paragraphSpacing: number;
   topPadding: number;
@@ -10,6 +11,7 @@ export interface Preferences {
 
 export const DEFAULT_PREFS: Preferences = {
   pageWidth: 720,
+  twoColumnPageWidth: 1080,
   lineHeight: 1.6,
   paragraphSpacing: 8,
   topPadding: 96,
@@ -21,6 +23,7 @@ interface AppState {
   filePath: string | null;
   fileName: string;
   mathMode: boolean;
+  twoColumn: boolean;
   preferences: Preferences;
   prefsPanelOpen: boolean;
   contextMenuOpen: boolean;
@@ -29,6 +32,8 @@ interface AppState {
   setFile: (path: string | null) => void;
   toggleMathMode: () => void;
   setMathMode: (on: boolean) => void;
+  setTwoColumn: (on: boolean) => void;
+  toggleTwoColumn: () => void;
   setPreferences: (p: Partial<Preferences>) => void;
   setPrefsPanelOpen: (open: boolean) => void;
   setWordCountPopover: (v: AppState['wordCountPopover']) => void;
@@ -39,6 +44,7 @@ export const useStore = create<AppState>((set) => ({
   filePath: null,
   fileName: '未命名筆記',
   mathMode: false,
+  twoColumn: false,
   preferences: DEFAULT_PREFS,
   prefsPanelOpen: false,
   contextMenuOpen: false,
@@ -52,6 +58,8 @@ export const useStore = create<AppState>((set) => ({
     }),
   toggleMathMode: () => set((s) => ({ mathMode: !s.mathMode })),
   setMathMode: (on) => set({ mathMode: on }),
+  setTwoColumn: (on) => set({ twoColumn: on }),
+  toggleTwoColumn: () => set((s) => ({ twoColumn: !s.twoColumn })),
   setPreferences: (p) => set((s) => ({ preferences: { ...s.preferences, ...p } })),
   setPrefsPanelOpen: (open) => set({ prefsPanelOpen: open }),
   setWordCountPopover: (v) => set({ wordCountPopover: v }),

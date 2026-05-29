@@ -27,10 +27,12 @@ const INITIAL_CONTENT: PartialBlock<any, any, any>[] = [{ type: 'paragraph', con
 interface Props {
   onChange: () => void;
   handleRef: React.MutableRefObject<EditorHandle | null>;
+  autoFocus?: boolean;
 }
 
-export function Editor({ onChange, handleRef }: Props): JSX.Element {
+export function Editor({ onChange, handleRef, autoFocus = true }: Props): JSX.Element {
   const mathMode = useStore((s) => s.mathMode);
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   // Custom ProseMirror extensions (math overlay + two-stage Cmd-A) registered via BlockNote's extension API
   const customExtensions = useRef([
@@ -56,6 +58,20 @@ export function Editor({ onChange, handleRef }: Props): JSX.Element {
           } else {
             tipTap.view.dispatch(state.tr.setSelection(new AllSelection(state.doc)));
           }
+          return true;
+        },
+        // Escape selects the whole text of the block the cursor is in (same as
+        // Cmd+A's first stage). Overrides BlockNote's default Escape (blur).
+        Escape: ({ editor }) => {
+          const tipTap = (editor as unknown as { _tiptapEditor: { state: any; view: any } })
+            ._tiptapEditor;
+          const state = tipTap.state;
+          const { $from } = state.selection;
+          const blockStart = $from.start($from.depth);
+          const blockEnd = $from.end($from.depth);
+          tipTap.view.dispatch(
+            state.tr.setSelection(TextSelection.create(state.doc, blockStart, blockEnd))
+          );
           return true;
         },
       },
@@ -104,9 +120,11 @@ export function Editor({ onChange, handleRef }: Props): JSX.Element {
   }, [editor, handleRef]);
 
   // Auto-focus on mount so the caret is visible without an initial click.
+  // Skipped for the secondary (right) column so switching to two-column mode
+  // doesn't steal focus away from the left column.
   useEffect(() => {
-    editor.focus();
-  }, [editor]);
+    if (autoFocus) editor.focus();
+  }, [editor, autoFocus]);
 
   // Subscribe to document changes
   useEffect(() => {
@@ -159,6 +177,12 @@ export function Editor({ onChange, handleRef }: Props): JSX.Element {
     function handler(e: KeyboardEvent) {
       const meta = e.metaKey || e.ctrlKey;
       if (!meta) return;
+      // In two-column mode both editors register this window-level listener.
+      // Only the focused editor should respond, otherwise a shortcut would be
+      // applied to both columns at once.
+      const view = (editor as unknown as { _tiptapEditor: { view: { hasFocus: () => boolean } } })
+        ._tiptapEditor.view;
+      if (!view.hasFocus()) return;
       const code = e.code;
 
       // Cmd+1 (no shift, no alt) → paragraph
@@ -222,7 +246,7 @@ export function Editor({ onChange, handleRef }: Props): JSX.Element {
   }, [editor]);
 
   return (
-    <>
+    <div ref={containerRef} className="editor-host">
       <BlockNoteView
         editor={editor}
         slashMenu={false}
@@ -239,8 +263,8 @@ export function Editor({ onChange, handleRef }: Props): JSX.Element {
           )}
         />
       </BlockNoteView>
-      <ContextMenu editor={editor} />
-    </>
+      <ContextMenu editor={editor} containerRef={containerRef} />
+    </div>
   );
 }
 

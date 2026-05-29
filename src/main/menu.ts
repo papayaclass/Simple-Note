@@ -84,6 +84,17 @@ export function buildMenu(h: MenuHandlers): void {
       label: '檢視',
       submenu: [
         {
+          label: '單欄',
+          accelerator: 'Shift+CmdOrCtrl+1',
+          click: () => h.onCommand('single-column'),
+        },
+        {
+          label: '雙欄',
+          accelerator: 'Shift+CmdOrCtrl+2',
+          click: () => h.onCommand('two-column'),
+        },
+        { type: 'separator' },
+        {
           label: '切換數學模式',
           accelerator: 'Shift+CmdOrCtrl+M',
           click: () => h.onCommand('toggle-math'),

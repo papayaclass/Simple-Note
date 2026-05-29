@@ -9,6 +9,7 @@ import { useStore } from '../store';
 
 interface Props {
   editor: any;
+  containerRef?: React.RefObject<HTMLElement | null>;
 }
 
 interface MenuState {
@@ -17,13 +18,15 @@ interface MenuState {
   hasSelection: boolean;
 }
 
-export function ContextMenu({ editor }: Props): JSX.Element | null {
+export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null {
   const [menu, setMenu] = useState<MenuState | null>(null);
   const setWordCount = useStore((s) => s.setWordCountPopover);
 
   useEffect(() => {
     function onContext(e: MouseEvent) {
-      const root = document.querySelector('.bn-container');
+      // Scope to this editor's own container so that in two-column mode the
+      // right-click menu only fires for the column the click landed in.
+      const root = containerRef?.current ?? document.querySelector('.bn-container');
       if (!root || !root.contains(e.target as Node)) return;
       e.preventDefault();
       const sel = window.getSelection();

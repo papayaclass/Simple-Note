@@ -2,6 +2,7 @@ import Store from 'electron-store';
 
 export interface Preferences {
   pageWidth: number;
+  twoColumnPageWidth: number;
   lineHeight: number;
   paragraphSpacing: number;
   topPadding: number;
@@ -10,6 +11,7 @@ export interface Preferences {
 
 const DEFAULTS: Preferences = {
   pageWidth: 720,
+  twoColumnPageWidth: 1080,
   lineHeight: 1.6,
   paragraphSpacing: 8,
   topPadding: 96,
@@ -21,6 +23,7 @@ const store = new Store<Preferences>({ name: 'preferences', defaults: DEFAULTS }
 export function getPreferences(): Preferences {
   return {
     pageWidth: store.get('pageWidth', DEFAULTS.pageWidth),
+    twoColumnPageWidth: store.get('twoColumnPageWidth', DEFAULTS.twoColumnPageWidth),
     lineHeight: store.get('lineHeight', DEFAULTS.lineHeight),
     paragraphSpacing: store.get('paragraphSpacing', DEFAULTS.paragraphSpacing),
     topPadding: store.get('topPadding', DEFAULTS.topPadding),
