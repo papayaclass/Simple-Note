@@ -20,6 +20,12 @@
   margin-top: var(--paragraph-spacing) !important;
 }
 
+/* keep the same spacing for the first block of a nested group,
+   so indenting/outdenting (Tab) doesn't shift blocks up or down */
+.bn-block-group .bn-block-group > .bn-block-outer:first-child {
+  margin-top: var(--paragraph-spacing) !important;
+}
+
 /* headings */
 .bn-block-content[data-content-type='heading'] {
   font-weight: 700;
@@ -35,6 +41,11 @@
 [data-level='3'].bn-block-content {
   font-size: 1.2em;
   line-height: 1.35;
+}
+
+/* remove the gray indent guide line on nested blocks (levels 2, 3, 4…) */
+.bn-block-group .bn-block:not(:has(.bn-toggle-wrapper)) .bn-block-group .bn-block-outer:not([data-prev-depth-changed])::before {
+  border-left: none !important;
 }
 
 /* quote — rely on BlockNote's default border-left */
