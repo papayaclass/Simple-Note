@@ -107,6 +107,10 @@ export function App(): JSX.Element {
     r.setProperty('--line-height', `${preferences.lineHeight}`);
     r.setProperty('--paragraph-spacing', `${preferences.paragraphSpacing}px`);
     r.setProperty('--top-padding', `${preferences.topPadding}px`);
+    document.documentElement.setAttribute(
+      'data-code-wrap',
+      preferences.codeWrap ? 'true' : 'false'
+    );
   }, [preferences]);
 
   // Load preferences once on mount

@@ -7,6 +7,7 @@ export interface Preferences {
   paragraphSpacing: number;
   topPadding: number;
   exchangeRateApiKey: string;
+  codeWrap: boolean;
 }
 
 export const DEFAULT_PREFS: Preferences = {
@@ -16,6 +17,7 @@ export const DEFAULT_PREFS: Preferences = {
   paragraphSpacing: 8,
   topPadding: 96,
   exchangeRateApiKey: '',
+  codeWrap: false,
 };
 
 interface AppState {

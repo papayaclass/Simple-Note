@@ -11,6 +11,7 @@ import { TextSelection, AllSelection } from 'prosemirror-state';
 import { schema } from './schema';
 import { createLinkExtension } from './link';
 import { createMathPlugin } from '../math/overlay';
+import { createCodeWrapPlugin } from './codeWrap';
 import { useStore } from '../store';
 import { ContextMenu } from '../context-menu/ContextMenu';
 import {
@@ -41,6 +42,7 @@ interface Props {
 
 export function Editor({ onChange, handleRef, autoFocus = true }: Props): JSX.Element {
   const mathMode = useStore((s) => s.mathMode);
+  const codeWrap = useStore((s) => s.preferences.codeWrap);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   // Custom ProseMirror extensions (math overlay + two-stage Cmd-A) registered via BlockNote's extension API
@@ -48,6 +50,19 @@ export function Editor({ onChange, handleRef, autoFocus = true }: Props): JSX.El
     createBlockNoteExtension({
       key: 'simple-note-math',
       plugins: [createMathPlugin(() => useStore.getState().mathMode)],
+    }),
+    createBlockNoteExtension({
+      key: 'simple-note-code-wrap',
+      plugins: [
+        createCodeWrapPlugin(
+          () => useStore.getState().preferences.codeWrap,
+          () => {
+            const next = !useStore.getState().preferences.codeWrap;
+            useStore.getState().setPreferences({ codeWrap: next });
+            void window.api.prefs.set('codeWrap', next);
+          }
+        ),
+      ],
     }),
     createBlockNoteExtension({
       key: 'simple-note-timer',
@@ -192,6 +207,14 @@ export function Editor({ onChange, handleRef, autoFocus = true }: Props): JSX.El
       ._tiptapEditor.view;
     view.dispatch(view.state.tr.setMeta('math-overlay', { redraw: true }));
   }, [mathMode, editor]);
+
+  // Refresh the code-wrap toggles when the global wrap state changes so the
+  // button's active styling stays in sync (the wrapping itself is CSS-driven).
+  useEffect(() => {
+    const view = (editor as unknown as { _tiptapEditor: { view: { dispatch: (tr: any) => void; state: any } } })
+      ._tiptapEditor.view;
+    view.dispatch(view.state.tr.setMeta('code-wrap', { redraw: true }));
+  }, [codeWrap, editor]);
 
   // BlockNote's default `[ ]\s$` input rule inserts the new checklist item BEFORE
   // the current paragraph rather than transforming it, which leaves the cursor in

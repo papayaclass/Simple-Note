@@ -7,6 +7,7 @@ export interface Preferences {
   paragraphSpacing: number;
   topPadding: number;
   exchangeRateApiKey: string;
+  codeWrap: boolean;
 }
 
 const DEFAULTS: Preferences = {
@@ -16,6 +17,7 @@ const DEFAULTS: Preferences = {
   paragraphSpacing: 8,
   topPadding: 96,
   exchangeRateApiKey: '',
+  codeWrap: false,
 };
 
 const store = new Store<Preferences>({ name: 'preferences', defaults: DEFAULTS });
@@ -28,6 +30,7 @@ export function getPreferences(): Preferences {
     paragraphSpacing: store.get('paragraphSpacing', DEFAULTS.paragraphSpacing),
     topPadding: store.get('topPadding', DEFAULTS.topPadding),
     exchangeRateApiKey: store.get('exchangeRateApiKey', DEFAULTS.exchangeRateApiKey),
+    codeWrap: store.get('codeWrap', DEFAULTS.codeWrap),
   };
 }
 

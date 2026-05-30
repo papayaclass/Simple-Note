@@ -54,8 +54,9 @@
   font-style: normal;
 }
 
-/* inline code */
-code.bn-inline-content,
+/* inline code — exclude the code block's <code> contentDOM, which also carries
+   the bn-inline-content class and would otherwise pick up this pill background */
+:not(pre) > code.bn-inline-content,
 .bn-inline-content code {
   background: var(--code-bg);
   padding: 1px 5px;
@@ -66,13 +67,67 @@ code.bn-inline-content,
 
 /* code block */
 .bn-block-content[data-content-type='codeBlock'] {
+  position: relative;
   background: var(--code-bg);
+  color: var(--fg);
   padding: 12px 14px;
   border-radius: 8px;
   font-family: ui-monospace, SF Mono, Menlo, monospace;
   font-size: 0.92em;
   white-space: pre;
   overflow-x: auto;
+}
+
+/* the <code> contentDOM inherits the block's text color and adds no background */
+.bn-block-content[data-content-type='codeBlock'] > pre > code {
+  background: transparent;
+  color: inherit;
+}
+
+/* word-wrap toggle: when on, code blocks soft-wrap instead of scrolling */
+:root[data-code-wrap='true'] .bn-block-content[data-content-type='codeBlock'],
+:root[data-code-wrap='true'] .bn-block-content[data-content-type='codeBlock'] > pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: visible;
+}
+
+/* wrap toggle button, pinned to the code block's top-right corner */
+.code-wrap-toggle {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s ease, background 0.15s ease;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.bn-block-content[data-content-type='codeBlock']:hover .code-wrap-toggle {
+  opacity: 0.5;
+}
+.code-wrap-toggle:hover {
+  opacity: 1;
+  background: var(--code-bg);
+}
+.code-wrap-toggle.active {
+  opacity: 0.9;
+  background: var(--code-bg);
+}
+.code-wrap-toggle svg {
+  width: 16px;
+  height: 16px;
 }
 
 /* checkbox completed */
