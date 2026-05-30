@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Editor, EditorHandle } from './editor/Editor';
+import { attachMarquee } from './editor/marquee';
 import { useStore } from './store';
 import { PreferencesPanel } from './preferences/Panel';
 import { formatRemaining, formatAlarmLabel } from './timer/parse';
+import { playAlarm, stopAlarm } from './timer/sound';
 import './preferences/panel.css';
 
 export function App(): JSX.Element {
@@ -27,6 +29,12 @@ export function App(): JSX.Element {
 
   const handleRef = useRef<EditorHandle | null>(null);
   const rightHandleRef = useRef<EditorHandle | null>(null);
+  const appRef = useRef<HTMLDivElement | null>(null);
+
+  // True while the alarm sound is ringing; shows a dismiss chip in the status
+  // bar. Set when a timer/alarm fires, cleared on dismiss or after the sound
+  // auto-stops (10 loops).
+  const [ringing, setRinging] = useState(false);
 
   // A 1-second tick that drives the countdown display and fires timer/alarm
   // notifications. Only runs while a timer or alarm is active.
@@ -42,17 +50,54 @@ export function App(): JSX.Element {
 
   useEffect(() => {
     const t = Date.now();
+    let fired = false;
     if (timer && t >= timer.endsAt) {
       window.api.notify.show('計時器', '時間到');
       setTimer(null);
+      fired = true;
     }
     for (const a of alarms) {
       if (t >= a.at) {
         window.api.notify.show('鬧鐘', formatAlarmLabel(a.at));
         removeAlarm(a.id);
+        fired = true;
       }
     }
+    if (fired) {
+      // Loop the alarm sound up to 10 times, auto-stopping if not dismissed.
+      playAlarm(10, () => setRinging(false));
+      setRinging(true);
+    }
   }, [now, timer, alarms, setTimer, removeAlarm]);
+
+  const stopRinging = useCallback(() => {
+    stopAlarm();
+    setRinging(false);
+  }, []);
+
+  // Rubber-band (marquee) block selection. Attached once at the app root in the
+  // capture phase so it covers the whole page (gutters + padding) and sees the
+  // mousedown before ProseMirror. `resolve` routes the drag to the column under
+  // the pointer so two-column mode selects within the right editor.
+  useEffect(() => {
+    const root = appRef.current;
+    if (!root) return;
+    const resolve = (e: MouseEvent): any => {
+      const left = handleRef.current?.editor ?? null;
+      if (!useStore.getState().twoColumn || !rightHandleRef.current) return left;
+      const right = rightHandleRef.current.editor;
+      const col = (e.target as HTMLElement).closest('.column-right, .column-left');
+      if (col?.classList.contains('column-right')) return right;
+      if (col?.classList.contains('column-left')) return left;
+      const page = root.querySelector('.page');
+      if (page) {
+        const r = page.getBoundingClientRect();
+        if (e.clientX > r.left + r.width / 2) return right;
+      }
+      return left;
+    };
+    return attachMarquee(root, resolve);
+  }, []);
 
   // Apply CSS variables from preferences
   useEffect(() => {
@@ -275,7 +320,7 @@ export function App(): JSX.Element {
   }, []);
 
   return (
-    <div className="app" onClick={onShellClick}>
+    <div className="app" ref={appRef} onClick={onShellClick}>
       <div className="drag-bar" />
       <div className="status-bar">
         {mathMode && <div className="math-badge">數學模式</div>}
@@ -296,6 +341,11 @@ export function App(): JSX.Element {
             {formatAlarmLabel(a.at)}
           </button>
         ))}
+        {ringing && (
+          <button className="status-chip ringing-chip" title="點擊停止鈴聲" onClick={stopRinging}>
+            響鈴中・點擊停止
+          </button>
+        )}
       </div>
       <div className={`page${twoColumn ? ' two-column' : ''}`}>
         <div className="column column-left">

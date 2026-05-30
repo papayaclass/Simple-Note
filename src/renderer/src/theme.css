@@ -157,6 +157,16 @@ body,
   z-index: 9999;
 }
 
+/* rubber-band (marquee) selection rectangle dragged over blocks */
+.marquee-box {
+  position: fixed;
+  z-index: 9998;
+  background: var(--selection);
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
 .status-bar {
   position: fixed;
   top: 14px;
@@ -198,4 +208,31 @@ body,
 .alarm-chip:hover {
   background: var(--red);
   color: #fff;
+}
+
+/* The ringing-dismiss chip stands out (it's an active alarm) and pulses. */
+.ringing-chip {
+  border: none;
+  font-family: inherit;
+  pointer-events: auto;
+  cursor: pointer;
+  background: var(--red);
+  color: #fff;
+  animation: ringing-pulse 1s ease-in-out infinite;
+}
+
+@keyframes ringing-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ringing-chip {
+    animation: none;
+  }
 }

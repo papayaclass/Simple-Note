@@ -282,7 +282,9 @@ app.whenReady().then(() => {
 
   ipcMain.on('notify:show', (_e, options: { title: string; body: string }) => {
     if (!Notification.isSupported()) return;
-    new Notification({ title: options.title, body: options.body }).show();
+    // Silent: the app plays its own looping alarm sound (Alarm.wav), so the
+    // short macOS notification "ding" would otherwise play on top of it.
+    new Notification({ title: options.title, body: options.body, silent: true }).show();
   });
 
   // Renderer signals it has mounted listeners; flush any pending open-file paths.
