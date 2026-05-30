@@ -157,10 +157,21 @@ body,
   z-index: 9999;
 }
 
-.math-badge {
+.status-bar {
   position: fixed;
   top: 14px;
   left: 80px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  -webkit-app-region: no-drag;
+  /* Above .drag-bar (z-index 9999) so the clickable alarm chip isn't covered
+     by the title-bar drag overlay. */
+  z-index: 10000;
+}
+
+.math-badge,
+.status-chip {
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -168,8 +179,23 @@ body,
   border-radius: 999px;
   background: var(--math-tag-bg);
   color: var(--math-tag-fg);
-  -webkit-app-region: no-drag;
   user-select: none;
+}
+
+.math-badge,
+.timer-chip {
   pointer-events: none;
-  z-index: 50;
+}
+
+/* Reset button defaults so the alarm chip matches the badge visuals. */
+.alarm-chip {
+  border: none;
+  font-family: inherit;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.alarm-chip:hover {
+  background: var(--red);
+  color: #fff;
 }

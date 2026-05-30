@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Editor, EditorHandle } from './editor/Editor';
 import { useStore } from './store';
 import { PreferencesPanel } from './preferences/Panel';
+import { formatRemaining, formatAlarmLabel } from './timer/parse';
 import './preferences/panel.css';
 
 export function App(): JSX.Element {
@@ -19,9 +20,39 @@ export function App(): JSX.Element {
   const setPrefsOpen = useStore((s) => s.setPrefsPanelOpen);
   const wordCountPopover = useStore((s) => s.wordCountPopover);
   const setWordCountPopover = useStore((s) => s.setWordCountPopover);
+  const timer = useStore((s) => s.timer);
+  const setTimer = useStore((s) => s.setTimer);
+  const alarms = useStore((s) => s.alarms);
+  const removeAlarm = useStore((s) => s.removeAlarm);
 
   const handleRef = useRef<EditorHandle | null>(null);
   const rightHandleRef = useRef<EditorHandle | null>(null);
+
+  // A 1-second tick that drives the countdown display and fires timer/alarm
+  // notifications. Only runs while a timer or alarm is active.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!timer && alarms.length === 0) return;
+    // Sync immediately so the countdown chip shows the correct value the moment
+    // a timer starts, instead of displaying a stale `now` until the first tick.
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [timer, alarms.length]);
+
+  useEffect(() => {
+    const t = Date.now();
+    if (timer && t >= timer.endsAt) {
+      window.api.notify.show('計時器', '時間到');
+      setTimer(null);
+    }
+    for (const a of alarms) {
+      if (t >= a.at) {
+        window.api.notify.show('鬧鐘', formatAlarmLabel(a.at));
+        removeAlarm(a.id);
+      }
+    }
+  }, [now, timer, alarms, setTimer, removeAlarm]);
 
   // Apply CSS variables from preferences
   useEffect(() => {
@@ -98,7 +129,10 @@ export function App(): JSX.Element {
     const mdPayload = await buildMarkdown();
     const isMd = filePath?.toLowerCase().endsWith('.md') ?? false;
     const suggested = `${fileName}${isMd ? '.md' : '.sn'}`;
-    const r = await window.api.file.save({ sn: snPayload, md: mdPayload }, suggested);
+    const r = await window.api.file.save(
+      { sn: snPayload, md: mdPayload },
+      { path: filePath, suggestedName: suggested }
+    );
     if (r.ok && r.path) {
       setFile(r.path);
       return true;
@@ -243,7 +277,26 @@ export function App(): JSX.Element {
   return (
     <div className="app" onClick={onShellClick}>
       <div className="drag-bar" />
-      {mathMode && <div className="math-badge">數學模式</div>}
+      <div className="status-bar">
+        {mathMode && <div className="math-badge">數學模式</div>}
+        {timer && (
+          <div className="status-chip timer-chip">
+            {/* Read the clock at render time so the value is correct on the very
+                first frame; `now` (updated each second) is what re-triggers it. */}
+            {formatRemaining((timer.endsAt - Math.max(now, Date.now())) / 1000)}
+          </div>
+        )}
+        {alarms.map((a) => (
+          <button
+            key={a.id}
+            className="status-chip alarm-chip"
+            title="點擊刪除鬧鐘"
+            onClick={() => removeAlarm(a.id)}
+          >
+            {formatAlarmLabel(a.at)}
+          </button>
+        ))}
+      </div>
       <div className={`page${twoColumn ? ' two-column' : ''}`}>
         <div className="column column-left">
           <Editor onChange={onEditorChange} handleRef={handleRef} />

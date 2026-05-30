@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, screen } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, screen, Notification } from 'electron';
 import { join } from 'node:path';
 import { readFile, writeFile } from 'node:fs/promises';
 import Store from 'electron-store';
@@ -208,12 +208,17 @@ app.whenReady().then(() => {
     async (
       _e,
       payloads: { sn: string; md: string },
-      suggestedName?: string
+      options: { path: string | null; suggestedName?: string }
     ) => {
-      let path = currentFilePath;
+      // The renderer is the source of truth for the current file path. Relying on
+      // main's own currentFilePath could save to a stale path without prompting —
+      // e.g. after the window was closed and reopened from the Dock (the macOS
+      // process keeps currentFilePath), or after a new blank document was created.
+      // Use the path the renderer reports instead.
+      let path = options?.path ?? null;
       if (!path) {
         const r = await dialog.showSaveDialog(mainWindow!, {
-          defaultPath: suggestedName ?? '未命名筆記.sn',
+          defaultPath: options?.suggestedName ?? '未命名筆記.sn',
           filters: [
             { name: 'Simple Note', extensions: ['sn'] },
             { name: 'Markdown', extensions: ['md'] },
@@ -273,6 +278,11 @@ app.whenReady().then(() => {
 
   ipcMain.on('window:setTitle', (_e, title: string) => {
     mainWindow?.setTitle(title);
+  });
+
+  ipcMain.on('notify:show', (_e, options: { title: string; body: string }) => {
+    if (!Notification.isSupported()) return;
+    new Notification({ title: options.title, body: options.body }).show();
   });
 
   // Renderer signals it has mounted listeners; flush any pending open-file paths.

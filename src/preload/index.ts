@@ -15,7 +15,7 @@ export interface SimpleNoteAPI {
   file: {
     save: (
       payloads: { sn: string; md: string },
-      suggestedName?: string
+      options: { path: string | null; suggestedName?: string }
     ) => Promise<{ ok: boolean; path?: string }>;
     open: () => Promise<{ ok: boolean; path?: string; content?: string }>;
     exportMarkdown: (
@@ -27,6 +27,9 @@ export interface SimpleNoteAPI {
   window: {
     setDirty: (dirty: boolean) => void;
     setTitle: (title: string) => void;
+  };
+  notify: {
+    show: (title: string, body: string) => void;
   };
   onMenu: (handler: (command: string) => void) => () => void;
   onExternalOpen: (
@@ -46,7 +49,7 @@ const api: SimpleNoteAPI = {
     clearCache: () => ipcRenderer.invoke('rate:clear'),
   },
   file: {
-    save: (payloads, suggestedName) => ipcRenderer.invoke('file:save', payloads, suggestedName),
+    save: (payloads, options) => ipcRenderer.invoke('file:save', payloads, options),
     open: () => ipcRenderer.invoke('file:open'),
     exportMarkdown: (md, suggestedName) =>
       ipcRenderer.invoke('file:exportMarkdown', md, suggestedName),
@@ -55,6 +58,9 @@ const api: SimpleNoteAPI = {
   window: {
     setDirty: (dirty) => ipcRenderer.send('window:setDirty', dirty),
     setTitle: (title) => ipcRenderer.send('window:setTitle', title),
+  },
+  notify: {
+    show: (title, body) => ipcRenderer.send('notify:show', { title, body }),
   },
   onMenu: (handler) => {
     type Listener = Parameters<typeof ipcRenderer.on>[1];

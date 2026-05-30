@@ -165,6 +165,14 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
       },
     },
     {
+      label: '在 Google Maps 搜尋',
+      disabled: !menu.hasSelection,
+      onClick: () => {
+        searchSelection((q) => `https://www.google.com/maps/search/?api=1&query=${q}`);
+        close();
+      },
+    },
+    {
       label: '在 YouTube 搜尋',
       disabled: !menu.hasSelection,
       onClick: () => {

@@ -13,6 +13,14 @@ import { createLinkExtension } from './link';
 import { createMathPlugin } from '../math/overlay';
 import { useStore } from '../store';
 import { ContextMenu } from '../context-menu/ContextMenu';
+import {
+  TIMER_RE,
+  ALARM_RE,
+  parseTimer,
+  parseAlarm,
+  nextAlarmTimestamp,
+  normalizeCommandText,
+} from '../timer/parse';
 
 export interface EditorHandle {
   serialize: () => string;
@@ -42,6 +50,39 @@ export function Editor({ onChange, handleRef, autoFocus = true }: Props): JSX.El
       plugins: [createMathPlugin(() => useStore.getState().mathMode)],
     }),
     createBlockNoteExtension({
+      key: 'simple-note-timer',
+      keyboardShortcuts: {
+        // Pressing Enter on a line like "timer 10m" / "alarm 13:30" starts the
+        // timer/alarm and clears the line. Otherwise let Enter act normally.
+        Enter: ({ editor }) => {
+          const block = editor.getTextCursorPosition().block;
+          const text = normalizeCommandText(blockPlainText(block));
+
+          const timerMatch = TIMER_RE.exec(text);
+          if (timerMatch) {
+            const secs = parseTimer(timerMatch[1]!);
+            if (secs != null && secs > 0) {
+              useStore.getState().setTimer({ endsAt: Date.now() + secs * 1000 });
+              (editor.updateBlock as (b: unknown, u: unknown) => unknown)(block, { content: [] });
+              return true;
+            }
+          }
+
+          const alarmMatch = ALARM_RE.exec(text);
+          if (alarmMatch) {
+            const parsed = parseAlarm(alarmMatch[1]!);
+            if (parsed) {
+              useStore.getState().addAlarm(nextAlarmTimestamp(parsed.hours, parsed.minutes));
+              (editor.updateBlock as (b: unknown, u: unknown) => unknown)(block, { content: [] });
+              return true;
+            }
+          }
+
+          return false;
+        },
+      },
+    }),
+    createBlockNoteExtension({
       key: 'simple-note-select-all',
       keyboardShortcuts: {
         'Mod-a': ({ editor }) => {
@@ -61,9 +102,14 @@ export function Editor({ onChange, handleRef, autoFocus = true }: Props): JSX.El
           }
           return true;
         },
-        // Escape selects the whole text of the block the cursor is in (same as
-        // Cmd+A's first stage). Overrides BlockNote's default Escape (blur).
+        // Escape stops a running timer first (if any). Otherwise it selects the
+        // whole text of the block the cursor is in (same as Cmd+A's first
+        // stage). Overrides BlockNote's default Escape (blur).
         Escape: ({ editor }) => {
+          if (useStore.getState().timer) {
+            useStore.getState().setTimer(null);
+            return true;
+          }
           const tipTap = (editor as unknown as { _tiptapEditor: { state: any; view: any } })
             ._tiptapEditor;
           const state = tipTap.state;
@@ -260,6 +306,7 @@ export function Editor({ onChange, handleRef, autoFocus = true }: Props): JSX.El
         sideMenu={false}
         filePanel={false}
         tableHandles={false}
+        emojiPicker={false}
       >
         <SideMenuController
           sideMenu={(props) => (
@@ -281,4 +328,16 @@ function transformCurrentBlock(
 ): void {
   const block = editor.getTextCursorPosition().block;
   editor.updateBlock(block, { type, props } as never);
+}
+
+// Extract the plain text of a BlockNote block's inline content.
+function blockPlainText(block: { content?: unknown }): string {
+  const c = block.content;
+  if (typeof c === 'string') return c;
+  if (Array.isArray(c)) {
+    return (c as Array<{ type?: string; text?: string }>)
+      .map((span) => (typeof span.text === 'string' ? span.text : ''))
+      .join('');
+  }
+  return '';
 }
