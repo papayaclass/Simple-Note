@@ -91,7 +91,7 @@ export function buildMenu(h: MenuHandlers): void {
         { type: 'separator' },
         {
           label: '切換數學模式',
-          accelerator: 'Shift+CmdOrCtrl+3',
+          accelerator: 'Shift+CmdOrCtrl+1',
           click: () => h.onCommand('toggle-math'),
         },
         { type: 'separator' },
