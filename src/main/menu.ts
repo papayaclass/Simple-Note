@@ -84,14 +84,9 @@ export function buildMenu(h: MenuHandlers): void {
       label: '檢視',
       submenu: [
         {
-          label: '單欄',
-          accelerator: 'Shift+CmdOrCtrl+1',
-          click: () => h.onCommand('single-column'),
-        },
-        {
-          label: '雙欄',
+          label: '切換雙欄',
           accelerator: 'Shift+CmdOrCtrl+2',
-          click: () => h.onCommand('two-column'),
+          click: () => h.onCommand('toggle-column'),
         },
         { type: 'separator' },
         {

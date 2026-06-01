@@ -292,12 +292,8 @@ export function App(): JSX.Element {
         case 'toggle-math':
           toggleMathMode();
           break;
-        case 'two-column':
-          setTwoColumn(true);
-          setDirty(true);
-          break;
-        case 'single-column':
-          setTwoColumn(false);
+        case 'toggle-column':
+          setTwoColumn(!useStore.getState().twoColumn);
           setDirty(true);
           break;
         case 's2t':
