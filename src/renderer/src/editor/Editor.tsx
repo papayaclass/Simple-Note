@@ -12,6 +12,8 @@ import { schema } from './schema';
 import { createLinkExtension } from './link';
 import { createMathPlugin } from '../math/overlay';
 import { createCodeWrapPlugin } from './codeWrap';
+import { createCodeBlockSelectPlugin } from './codeBlockSelect';
+import { deleteSelectedBlocks } from './blockDelete';
 import { useStore } from '../store';
 import { ContextMenu } from '../context-menu/ContextMenu';
 import {
@@ -52,6 +54,10 @@ export function Editor({ onChange, handleRef, autoFocus = true }: Props): JSX.El
       plugins: [createMathPlugin(() => useStore.getState().mathMode)],
     }),
     createBlockNoteExtension({
+      key: 'simple-note-codeblock-select',
+      plugins: [createCodeBlockSelectPlugin()],
+    }),
+    createBlockNoteExtension({
       key: 'simple-note-code-wrap',
       plugins: [
         createCodeWrapPlugin(
@@ -63,6 +69,17 @@ export function Editor({ onChange, handleRef, autoFocus = true }: Props): JSX.El
           }
         ),
       ],
+    }),
+    createBlockNoteExtension({
+      key: 'simple-note-block-delete',
+      keyboardShortcuts: {
+        // When the selection cleanly covers whole blocks (e.g. a marquee
+        // selection), Backspace/Delete removes the whole blocks rather than just
+        // clearing their text. Returns false otherwise so normal editing keys
+        // behave as usual.
+        Backspace: ({ editor }) => deleteSelectedBlocks(editor as never),
+        Delete: ({ editor }) => deleteSelectedBlocks(editor as never),
+      },
     }),
     createBlockNoteExtension({
       key: 'simple-note-timer',

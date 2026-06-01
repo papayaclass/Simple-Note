@@ -84,6 +84,15 @@
   color: inherit;
 }
 
+/* marquee fully selected a code block → highlight the whole block and hide the
+   ragged per-character text selection inside it */
+.bn-block-content[data-content-type='codeBlock'].sn-block-selected {
+  background: linear-gradient(var(--selection), var(--selection)), var(--code-bg);
+}
+.bn-block-content[data-content-type='codeBlock'].sn-block-selected ::selection {
+  background: transparent;
+}
+
 /* word-wrap toggle: when on, code blocks soft-wrap instead of scrolling */
 :root[data-code-wrap='true'] .bn-block-content[data-content-type='codeBlock'],
 :root[data-code-wrap='true'] .bn-block-content[data-content-type='codeBlock'] > pre {
