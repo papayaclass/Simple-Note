@@ -93,6 +93,16 @@
   background: transparent;
 }
 
+/* marquee fully selected a toggle → highlight the toggle's own line as a whole
+   block and hide the ragged inner text selection */
+.bn-block-content[data-content-type='toggle'].sn-block-selected {
+  background: var(--selection);
+  border-radius: 4px;
+}
+.bn-block-content[data-content-type='toggle'].sn-block-selected ::selection {
+  background: transparent;
+}
+
 /* word-wrap toggle: when on, code blocks soft-wrap instead of scrolling */
 :root[data-code-wrap='true'] .bn-block-content[data-content-type='codeBlock'],
 :root[data-code-wrap='true'] .bn-block-content[data-content-type='codeBlock'] > pre {

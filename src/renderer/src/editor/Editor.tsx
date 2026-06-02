@@ -14,6 +14,7 @@ import { createMathPlugin } from '../math/overlay';
 import { createCodeWrapPlugin } from './codeWrap';
 import { createCodeBlockSelectPlugin } from './codeBlockSelect';
 import { deleteSelectedBlocks } from './blockDelete';
+import { createToggleKeyboardExtension } from './toggle';
 import { useStore } from '../store';
 import { ContextMenu } from '../context-menu/ContextMenu';
 import {
@@ -49,6 +50,7 @@ export function Editor({ onChange, handleRef, autoFocus = true }: Props): JSX.El
 
   // Custom ProseMirror extensions (math overlay + two-stage Cmd-A) registered via BlockNote's extension API
   const customExtensions = useRef([
+    createToggleKeyboardExtension(),
     createBlockNoteExtension({
       key: 'simple-note-math',
       plugins: [createMathPlugin(() => useStore.getState().mathMode)],
@@ -281,6 +283,14 @@ export function Editor({ onChange, handleRef, autoFocus = true }: Props): JSX.El
       if (!e.altKey && !e.shiftKey && code === 'Digit1') {
         e.preventDefault();
         transformCurrentBlock(editor, 'paragraph');
+        return;
+      }
+      // Cmd+2 → toggle list (collapsible). Uses our custom `toggle` block (see
+      // editor/toggle.ts); BlockNote's built-in `toggleListItem` renders without
+      // a chevron in this setup.
+      if (!e.altKey && !e.shiftKey && code === 'Digit2') {
+        e.preventDefault();
+        transformCurrentBlock(editor, 'toggle');
         return;
       }
       // Cmd+3 → bulleted list

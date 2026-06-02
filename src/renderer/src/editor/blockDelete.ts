@@ -58,7 +58,11 @@ export function deleteSelectedBlocks(editor: AnyEditor): boolean {
   });
 
   if (partial || coveredIds.length === 0) return false;
-  if (coveredIds.length === 1 && coveredType !== 'codeBlock') return false;
+  // A single fully-covered block only deletes wholesale for code blocks and
+  // toggles; other single blocks keep the default (clear text, keep the block).
+  if (coveredIds.length === 1 && coveredType !== 'codeBlock' && coveredType !== 'toggle') {
+    return false;
+  }
 
   if (coveredIds.length >= group.childCount) {
     // Removing every block would leave an invalid empty document; reset to one
