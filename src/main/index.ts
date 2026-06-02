@@ -24,6 +24,12 @@ const windowStore = new Store<{ bounds: WindowBounds }>({
 
 let mainWindow: BrowserWindow | null = null;
 let currentFilePath: string | null = null;
+// True while a Cmd+Q / app.quit() is in progress. The window's close handler
+// always preventDefault()s to run an async dirty-check, which cancels the quit
+// sequence. We use this flag to re-issue app.quit() once it's safe to close, so
+// the process actually exits instead of lingering as a windowless background
+// app (which keeps showing in the Dock / App Switcher).
+let isQuitting = false;
 
 // Files queued from the macOS 'open-file' event (Finder double-click, drag onto
 // Dock icon, "Open With…") before the renderer is ready to receive them. We
@@ -147,6 +153,17 @@ function createWindow(): void {
   // first, then do the dirty check / dialog asynchronously, and `destroy()`
   // ourselves when it's safe to close.
   let forceClose = false;
+  // Close the window for real. During a quit, re-issue app.quit() (our earlier
+  // preventDefault cancelled it) so the process exits; otherwise just destroy
+  // the window and leave the app running (standard macOS behaviour).
+  const proceedClose = (win: BrowserWindow): void => {
+    forceClose = true;
+    if (isQuitting) {
+      app.quit();
+    } else {
+      win.destroy();
+    }
+  };
   mainWindow.on('close', (e) => {
     if (forceClose || !mainWindow) return;
     e.preventDefault();
@@ -156,8 +173,7 @@ function createWindow(): void {
         'window.__simpleNote_isDirty?.() ?? false'
       );
       if (!dirty) {
-        forceClose = true;
-        win.destroy();
+        proceedClose(win);
         return;
       }
       const result = await dialog.showMessageBox(win, {
@@ -171,20 +187,26 @@ function createWindow(): void {
       if (result.response === 0) {
         const saved = await win.webContents.executeJavaScript('window.__simpleNote_save?.()');
         if (saved) {
-          forceClose = true;
-          win.destroy();
+          proceedClose(win);
+        } else {
+          isQuitting = false; // save cancelled / failed — abort any pending quit
         }
       } else if (result.response === 1) {
-        forceClose = true;
-        win.destroy();
+        proceedClose(win);
+      } else {
+        isQuitting = false; // user cancelled — abort any pending quit
       }
     })();
   });
 }
 
 // Safety net for Cmd+Q / app.quit() paths where the window's close handler
-// may race with process exit.
-app.on('before-quit', persistBounds);
+// may race with process exit. Also flags that a quit is underway so the close
+// handler re-issues app.quit() after its async dirty-check (see proceedClose).
+app.on('before-quit', () => {
+  isQuitting = true;
+  persistBounds();
+});
 
 app.whenReady().then(() => {
   buildMenu({
