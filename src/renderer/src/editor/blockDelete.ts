@@ -15,6 +15,41 @@ type AnyEditor = {
   replaceBlocks: (remove: string[], insert: Array<{ type: string }>) => void;
 };
 
+type ForwardDeleteEditor = {
+  _tiptapEditor: { state: any };
+  getTextCursorPosition: () => { block: any; nextBlock?: any };
+  removeBlocks: (blocks: any[]) => void;
+  setTextCursorPosition: (block: any, placement?: 'start' | 'end') => void;
+};
+
+// Pulls the following block up when Delete is pressed on an empty line.
+//
+// BlockNote 0.40 refuses to merge forward when the *current* block is empty: its
+// merge guard (`canMergeBlocks`) requires the first of the two blocks to have
+// content, so the forward-merge command no-ops yet still swallows the key. The
+// net effect is that pressing Delete on a blank line does nothing — the text
+// below never moves up. (Backspace is unaffected because then the non-empty
+// block above is the first of the pair.) ProseMirror's `joinForward` is no help
+// here either: in BlockNote's nested blockContainer/blockGroup schema it joins at
+// the wrong level and drops the next block's content.
+//
+// So we do the simple, lossless thing: when the cursor sits in an empty leaf
+// block that has a following block, remove the empty block and move the cursor to
+// the start of that next block — which is exactly "delete the blank line and
+// bring the text below up". Returns true if handled, false to fall through to
+// BlockNote's default Delete (mid-text deletion, or an empty *last* block where
+// there's nothing to pull up).
+export function deleteForwardEmptyBlock(editor: ForwardDeleteEditor): boolean {
+  if (!editor._tiptapEditor.state.selection.empty) return false;
+  const { block, nextBlock } = editor.getTextCursorPosition();
+  const empty = !block.content || (Array.isArray(block.content) && block.content.length === 0);
+  const hasChildren = Array.isArray(block.children) && block.children.length > 0;
+  if (!empty || hasChildren || !nextBlock) return false;
+  editor.removeBlocks([block]);
+  editor.setTextCursorPosition(nextBlock, 'start');
+  return true;
+}
+
 export function deleteSelectedBlocks(editor: AnyEditor): boolean {
   const state = editor._tiptapEditor.state;
   const sel = state.selection;

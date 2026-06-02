@@ -13,7 +13,7 @@ import { createLinkExtension } from './link';
 import { createMathPlugin } from '../math/overlay';
 import { createCodeWrapPlugin } from './codeWrap';
 import { createCodeBlockSelectPlugin } from './codeBlockSelect';
-import { deleteSelectedBlocks } from './blockDelete';
+import { deleteSelectedBlocks, deleteForwardEmptyBlock } from './blockDelete';
 import { createToggleKeyboardExtension } from './toggle';
 import { useStore } from '../store';
 import { ContextMenu } from '../context-menu/ContextMenu';
@@ -80,7 +80,8 @@ export function Editor({ onChange, handleRef, autoFocus = true }: Props): JSX.El
         // clearing their text. Returns false otherwise so normal editing keys
         // behave as usual.
         Backspace: ({ editor }) => deleteSelectedBlocks(editor as never),
-        Delete: ({ editor }) => deleteSelectedBlocks(editor as never),
+        Delete: ({ editor }) =>
+          deleteSelectedBlocks(editor as never) || deleteForwardEmptyBlock(editor as never),
       },
     }),
     createBlockNoteExtension({
