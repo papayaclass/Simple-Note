@@ -2,11 +2,14 @@ import { useEffect, useState } from 'react';
 import {
   halfToFullPunctuation,
   simplifiedToTraditional,
+  toPinyin,
   LOREM_IPSUM,
   wordCount,
 } from './transforms';
 import { useStore } from '../store';
 import { AIResultModal, AIState } from './AIResultModal';
+import { PinyinModal } from './PinyinModal';
+import { MENU_COMMANDS, reconcileMenuCommands } from './commands';
 
 interface Props {
   editor: any;
@@ -19,11 +22,18 @@ interface MenuState {
   hasSelection: boolean;
 }
 
+interface PinyinState {
+  original: string;
+  pinyin: string;
+}
+
 export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null {
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [aiState, setAiState] = useState<AIState | null>(null);
+  const [pinyinState, setPinyinState] = useState<PinyinState | null>(null);
   const setWordCount = useStore((s) => s.setWordCountPopover);
   const skills = useStore((s) => s.preferences.aiSkills);
+  const menuCommands = useStore((s) => s.preferences.menuCommands);
 
   useEffect(() => {
     function onContext(e: MouseEvent) {
@@ -115,6 +125,13 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
     setWordCount({ count: wc.words, chars: wc.chars, charsNoSpace: wc.charsNoSpace, chinese: wc.chinese });
   };
 
+  const doPinyin = () => {
+    const text = (window.getSelection()?.toString() ?? '').trim();
+    if (!text) return;
+    setPinyinState({ original: text, pinyin: toPinyin(text) });
+    close();
+  };
+
   // Open a web search for the selected text. window.open is intercepted by the
   // main process's setWindowOpenHandler, which routes it to the system browser
   // via shell.openExternal (see src/main/index.ts).
@@ -124,95 +141,76 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
     window.open(buildUrl(encodeURIComponent(text)), '_blank');
   };
 
+  // Per-command click handlers, keyed to match the registry in commands.ts.
+  const handlers: Record<string, () => void> = {
+    s2t: () => {
+      transformSelection(simplifiedToTraditional);
+      close();
+    },
+    half2full: () => {
+      transformSelection(halfToFullPunctuation);
+      close();
+    },
+    clearFormat: () => {
+      clearFormatting();
+      close();
+    },
+    mergeBreaks: () => {
+      mergeParagraphBreaks();
+      close();
+    },
+    lorem: () => {
+      insertLoremIpsum();
+      close();
+    },
+    wordCount: () => {
+      doWordCount();
+      close();
+    },
+    pinyin: doPinyin,
+    googleSearch: () => {
+      searchSelection((q) => `https://www.google.com/search?q=${q}`);
+      close();
+    },
+    googleMaps: () => {
+      searchSelection((q) => `https://www.google.com/maps/search/?api=1&query=${q}`);
+      close();
+    },
+    youtube: () => {
+      searchSelection((q) => `https://www.youtube.com/results?search_query=${q}`);
+      close();
+    },
+    cambridge: () => {
+      searchSelection(
+        (q) => `https://dictionary.cambridge.org/search/english-chinese-traditional/direct/?q=${q}`
+      );
+      close();
+    },
+  };
+
+  const labelByKey = new Map(MENU_COMMANDS.map((c) => [c.key, c]));
+
+  // Built-in commands rendered in the user-defined order, hidden ones filtered
+  // out. AI Skills are appended after a divider (managed in the AI prefs tab).
+  const builtInItems = reconcileMenuCommands(menuCommands)
+    .filter((c) => c.visible !== false)
+    .map((c) => {
+      const def = labelByKey.get(c.key)!;
+      return {
+        label: def.label,
+        disabled: def.requiresSelection && !menu?.hasSelection,
+        onClick: handlers[c.key],
+      };
+    });
+
   const items = [
-    {
-      label: '簡體轉繁體',
-      disabled: !menu?.hasSelection,
-      onClick: () => {
-        transformSelection(simplifiedToTraditional);
-        close();
-      },
-    },
-    {
-      label: '半形標點轉全形',
-      disabled: !menu?.hasSelection,
-      onClick: () => {
-        transformSelection(halfToFullPunctuation);
-        close();
-      },
-    },
-    {
-      label: '清除所有格式',
-      disabled: !menu?.hasSelection,
-      onClick: () => {
-        clearFormatting();
-        close();
-      },
-    },
-    {
-      label: '分段符號轉分行符號',
-      disabled: !menu?.hasSelection,
-      onClick: () => {
-        mergeParagraphBreaks();
-        close();
-      },
-    },
-    { divider: true },
-    {
-      label: '插入 Lorem Ipsum',
-      onClick: () => {
-        insertLoremIpsum();
-        close();
-      },
-    },
-    {
-      label: '字數統計',
-      disabled: !menu?.hasSelection,
-      onClick: () => {
-        doWordCount();
-        close();
-      },
-    },
-    { divider: true },
-    {
-      label: '在 Google 搜尋',
-      disabled: !menu?.hasSelection,
-      onClick: () => {
-        searchSelection((q) => `https://www.google.com/search?q=${q}`);
-        close();
-      },
-    },
-    {
-      label: '在 Google Maps 搜尋',
-      disabled: !menu?.hasSelection,
-      onClick: () => {
-        searchSelection((q) => `https://www.google.com/maps/search/?api=1&query=${q}`);
-        close();
-      },
-    },
-    {
-      label: '在 YouTube 搜尋',
-      disabled: !menu?.hasSelection,
-      onClick: () => {
-        searchSelection((q) => `https://www.youtube.com/results?search_query=${q}`);
-        close();
-      },
-    },
-    {
-      label: '查詢劍橋詞典',
-      disabled: !menu?.hasSelection,
-      onClick: () => {
-        searchSelection(
-          (q) => `https://dictionary.cambridge.org/search/english-chinese-traditional/direct/?q=${q}`
-        );
-        close();
-      },
-    },
+    ...builtInItems,
     ...(skills.length > 0
       ? [
-          { divider: true },
+          { divider: true } as const,
           ...skills.map((skill) => ({
             label: skill.name.trim() || '未命名 Skill',
+            disabled: false,
             onClick: () => {
               void runSkill(skill);
             },
@@ -247,6 +245,13 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
       )}
       {aiState && (
         <AIResultModal editor={editor} state={aiState} onClose={() => setAiState(null)} />
+      )}
+      {pinyinState && (
+        <PinyinModal
+          original={pinyinState.original}
+          pinyin={pinyinState.pinyin}
+          onClose={() => setPinyinState(null)}
+        />
       )}
     </>
   );

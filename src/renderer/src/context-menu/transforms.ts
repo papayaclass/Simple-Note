@@ -1,9 +1,22 @@
 import * as OpenCC from 'opencc-js';
+import { pinyin } from 'pinyin-pro';
 
 const s2tConverter = OpenCC.Converter({ from: 'cn', to: 'twp' });
 
 export function simplifiedToTraditional(text: string): string {
   return s2tConverter(text);
+}
+
+// Convert Chinese characters to Hanyu Pinyin without tone marks. Syllables are
+// space-separated; non-Chinese characters are kept as-is (nonZh: 'consecutive'
+// groups runs of non-Chinese text into single segments rather than per-char).
+export function toPinyin(text: string): string {
+  const segments = pinyin(text, {
+    toneType: 'none',
+    type: 'array',
+    nonZh: 'consecutive',
+  });
+  return segments.join(' ').replace(/\s+/g, ' ').trim();
 }
 
 const HALF_TO_FULL: Record<string, string> = {

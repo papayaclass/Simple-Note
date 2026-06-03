@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { DEFAULT_MENU_COMMANDS, MenuCommandPref } from './context-menu/commands';
 
 export interface AISkill {
   id: string;
@@ -18,6 +19,7 @@ export interface Preferences {
   openRouterModel: string;
   aiGlobalInstruction: string;
   aiSkills: AISkill[];
+  menuCommands: MenuCommandPref[];
 }
 
 export const DEFAULT_PREFS: Preferences = {
@@ -32,6 +34,7 @@ export const DEFAULT_PREFS: Preferences = {
   openRouterModel: '',
   aiGlobalInstruction: '',
   aiSkills: [],
+  menuCommands: DEFAULT_MENU_COMMANDS,
 };
 
 interface AppState {

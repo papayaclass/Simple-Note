@@ -6,6 +6,11 @@ export interface AISkill {
   prompt: string;
 }
 
+export interface MenuCommandPref {
+  key: string;
+  visible: boolean;
+}
+
 export interface Preferences {
   pageWidth: number;
   twoColumnPageWidth: number;
@@ -18,7 +23,25 @@ export interface Preferences {
   openRouterModel: string;
   aiGlobalInstruction: string;
   aiSkills: AISkill[];
+  menuCommands: MenuCommandPref[];
 }
+
+// Default order + visibility for the right-click menu commands. Kept in sync
+// with src/renderer/src/context-menu/commands.ts (main and renderer use
+// separate tsconfigs, so the canonical registry can't be imported here).
+const DEFAULT_MENU_COMMANDS: MenuCommandPref[] = [
+  's2t',
+  'half2full',
+  'clearFormat',
+  'mergeBreaks',
+  'lorem',
+  'wordCount',
+  'pinyin',
+  'googleSearch',
+  'googleMaps',
+  'youtube',
+  'cambridge',
+].map((key) => ({ key, visible: true }));
 
 const DEFAULTS: Preferences = {
   pageWidth: 720,
@@ -32,6 +55,7 @@ const DEFAULTS: Preferences = {
   openRouterModel: '',
   aiGlobalInstruction: '',
   aiSkills: [],
+  menuCommands: DEFAULT_MENU_COMMANDS,
 };
 
 const store = new Store<Preferences>({ name: 'preferences', defaults: DEFAULTS });
@@ -49,6 +73,7 @@ export function getPreferences(): Preferences {
     openRouterModel: store.get('openRouterModel', DEFAULTS.openRouterModel),
     aiGlobalInstruction: store.get('aiGlobalInstruction', DEFAULTS.aiGlobalInstruction),
     aiSkills: store.get('aiSkills', DEFAULTS.aiSkills),
+    menuCommands: store.get('menuCommands', DEFAULTS.menuCommands),
   };
 }
 
