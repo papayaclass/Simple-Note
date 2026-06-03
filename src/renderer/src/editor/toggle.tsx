@@ -7,7 +7,7 @@ import { createReactBlockSpec } from '@blocknote/react';
 // BlockNoteView (it shows up as a plain paragraph), so we define our own `toggle`
 // block. Unlike BlockNote's `ToggleWrapper` — which keeps the open/closed state in
 // localStorage — we store it in an `open` prop on the block itself, so the state
-// is saved with the document (.sn file) and can be driven from keyboard shortcuts.
+// lives in the document model and can be driven from keyboard shortcuts.
 //
 // The chevron / collapse visuals reuse BlockNote's own CSS: a `.bn-toggle-wrapper`
 // with `data-show-children` hides the child `.bn-block-group` when closed, and

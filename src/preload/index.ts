@@ -19,14 +19,10 @@ export interface SimpleNoteAPI {
   };
   file: {
     save: (
-      payloads: { sn: string; md: string },
+      markdown: string,
       options: { path: string | null; suggestedName?: string }
     ) => Promise<{ ok: boolean; path?: string }>;
     open: () => Promise<{ ok: boolean; path?: string; content?: string }>;
-    exportMarkdown: (
-      markdown: string,
-      suggestedName?: string
-    ) => Promise<{ ok: boolean; path?: string }>;
     new: () => Promise<void>;
   };
   window: {
@@ -57,10 +53,8 @@ const api: SimpleNoteAPI = {
     run: (userContent) => ipcRenderer.invoke('ai:run', userContent),
   },
   file: {
-    save: (payloads, options) => ipcRenderer.invoke('file:save', payloads, options),
+    save: (markdown, options) => ipcRenderer.invoke('file:save', markdown, options),
     open: () => ipcRenderer.invoke('file:open'),
-    exportMarkdown: (md, suggestedName) =>
-      ipcRenderer.invoke('file:exportMarkdown', md, suggestedName),
     new: () => ipcRenderer.invoke('file:new'),
   },
   window: {
@@ -81,7 +75,6 @@ const api: SimpleNoteAPI = {
     wrap('new');
     wrap('open');
     wrap('save');
-    wrap('export-md');
     wrap('preferences');
 
     const cmdListener: Listener = (_e, cmd) => handler(String(cmd));

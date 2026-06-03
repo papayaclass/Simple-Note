@@ -79,7 +79,7 @@ export const useStore = create<AppState>((set) => ({
   setFile: (path) =>
     set({
       filePath: path,
-      fileName: path ? path.split('/').pop()!.replace(/\.sn$/, '') : '未命名筆記',
+      fileName: path ? path.split('/').pop()!.replace(/\.md$/, '') : '未命名筆記',
       dirty: false,
     }),
   toggleMathMode: () => set((s) => ({ mathMode: !s.mathMode })),

@@ -166,22 +166,11 @@ export function App(): JSX.Element {
 
   const doSave = useCallback(async (): Promise<boolean> => {
     if (!handleRef.current) return false;
-    const json = handleRef.current.serialize();
-    const rightJson = rightHandleRef.current?.serialize();
-    const snPayload = JSON.stringify({
-      version: 1,
-      doc: JSON.parse(json),
-      rightDoc: rightJson ? JSON.parse(rightJson) : undefined,
-      twoColumn: useStore.getState().twoColumn,
-      updatedAt: new Date().toISOString(),
+    const markdown = await buildMarkdown();
+    const r = await window.api.file.save(markdown, {
+      path: filePath,
+      suggestedName: `${fileName}.md`,
     });
-    const mdPayload = await buildMarkdown();
-    const isMd = filePath?.toLowerCase().endsWith('.md') ?? false;
-    const suggested = `${fileName}${isMd ? '.md' : '.sn'}`;
-    const r = await window.api.file.save(
-      { sn: snPayload, md: mdPayload },
-      { path: filePath, suggestedName: suggested }
-    );
     if (r.ok && r.path) {
       setFile(r.path);
       return true;
@@ -191,22 +180,11 @@ export function App(): JSX.Element {
 
   const loadContentByPath = useCallback(async (path: string, content: string) => {
     if (!handleRef.current) return;
-    if (path.toLowerCase().endsWith('.md')) {
-      await handleRef.current.loadMarkdown(content);
-      rightHandleRef.current?.load(JSON.stringify(EMPTY_DOC));
-      setTwoColumn(false);
-    } else {
-      try {
-        const obj = JSON.parse(content);
-        handleRef.current.load(JSON.stringify(obj.doc));
-        // Restore the right column and layout for files written with two-column
-        // support. Older files have neither field → empty right, single column.
-        rightHandleRef.current?.load(JSON.stringify(obj.rightDoc ?? EMPTY_DOC));
-        setTwoColumn(!!obj.twoColumn);
-      } catch {
-        // ignore malformed .sn files silently
-      }
-    }
+    // Files are plain Markdown: parse into the left column, clear the right, and
+    // drop back to single-column (Markdown can't carry the two-column layout).
+    await handleRef.current.loadMarkdown(content);
+    rightHandleRef.current?.load(JSON.stringify(EMPTY_DOC));
+    setTwoColumn(false);
     setFile(path);
   }, [setFile, setTwoColumn]);
 
@@ -232,28 +210,6 @@ export function App(): JSX.Element {
     setFile(null);
     await window.api.file.new();
   }, [setFile, setTwoColumn]);
-
-  const doExportMarkdown = useCallback(async () => {
-    if (!handleRef.current) return;
-    const md = await buildMarkdown();
-    await window.api.file.exportMarkdown(md, `${fileName}.md`);
-  }, [fileName, buildMarkdown]);
-
-  // TipTap's Code extension binds Mod-e to toggle inline code, which steals the
-  // Cmd+E menu accelerator when the editor has focus. Intercept in the capture
-  // phase so we win before ProseMirror's handleKeyDown sees the event.
-  useEffect(() => {
-    function onKey(e: KeyboardEvent): void {
-      const meta = e.metaKey || e.ctrlKey;
-      if (!meta || e.altKey || e.shiftKey) return;
-      if (e.code !== 'KeyE') return;
-      e.preventDefault();
-      e.stopPropagation();
-      void doExportMarkdown();
-    }
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [doExportMarkdown]);
 
   // Receive files opened from outside the app (Finder double-click, drag onto
   // Dock, "Open With…"). Main reads the file and pushes path + content here.
@@ -283,9 +239,6 @@ export function App(): JSX.Element {
         case 'save':
           doSave();
           break;
-        case 'export-md':
-          doExportMarkdown();
-          break;
         case 'preferences':
           setPrefsOpen(true);
           break;
@@ -306,7 +259,7 @@ export function App(): JSX.Element {
       }
     });
     return off;
-  }, [doNew, doOpen, doSave, doExportMarkdown, setPrefsOpen, toggleMathMode, setTwoColumn, setDirty]);
+  }, [doNew, doOpen, doSave, setPrefsOpen, toggleMathMode, setTwoColumn, setDirty]);
 
   // Clicks anywhere outside the editor (the .app gutter, the .page padding,
   // or the centered margins around .page) should drop the caret into the last

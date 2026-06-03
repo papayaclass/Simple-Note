@@ -214,7 +214,6 @@ app.whenReady().then(() => {
     onNew: () => mainWindow?.webContents.send('menu:new'),
     onOpen: () => mainWindow?.webContents.send('menu:open'),
     onSave: () => mainWindow?.webContents.send('menu:save'),
-    onExportMarkdown: () => mainWindow?.webContents.send('menu:export-md'),
     onPreferences: () => mainWindow?.webContents.send('menu:preferences'),
     onCommand: (cmd) => mainWindow?.webContents.send('menu:command', cmd),
   });
@@ -230,11 +229,7 @@ app.whenReady().then(() => {
 
   ipcMain.handle(
     'file:save',
-    async (
-      _e,
-      payloads: { sn: string; md: string },
-      options: { path: string | null; suggestedName?: string }
-    ) => {
+    async (_e, markdown: string, options: { path: string | null; suggestedName?: string }) => {
       // The renderer is the source of truth for the current file path. Relying on
       // main's own currentFilePath could save to a stale path without prompting —
       // e.g. after the window was closed and reopened from the Dock (the macOS
@@ -243,17 +238,13 @@ app.whenReady().then(() => {
       let path = options?.path ?? null;
       if (!path) {
         const r = await dialog.showSaveDialog(mainWindow!, {
-          defaultPath: options?.suggestedName ?? '未命名筆記.sn',
-          filters: [
-            { name: 'Simple Note', extensions: ['sn'] },
-            { name: 'Markdown', extensions: ['md'] },
-          ],
+          defaultPath: options?.suggestedName ?? '未命名筆記.md',
+          filters: [{ name: 'Markdown', extensions: ['md'] }],
         });
         if (r.canceled || !r.filePath) return { ok: false };
         path = r.filePath;
       }
-      const body = path.toLowerCase().endsWith('.md') ? payloads.md : payloads.sn;
-      await writeFile(path, body, 'utf-8');
+      await writeFile(path, markdown, 'utf-8');
       currentFilePath = path;
       mainWindow?.setRepresentedFilename(path);
       mainWindow?.setTitle(path.split('/').pop() ?? 'Simple Note');
@@ -265,11 +256,7 @@ app.whenReady().then(() => {
   ipcMain.handle('file:open', async () => {
     const r = await dialog.showOpenDialog(mainWindow!, {
       properties: ['openFile'],
-      filters: [
-        { name: 'Simple Note / Markdown', extensions: ['sn', 'md'] },
-        { name: 'Simple Note', extensions: ['sn'] },
-        { name: 'Markdown', extensions: ['md'] },
-      ],
+      filters: [{ name: 'Markdown', extensions: ['md'] }],
     });
     if (r.canceled || !r.filePaths[0]) return { ok: false };
     const text = await readFile(r.filePaths[0], 'utf-8');
@@ -278,16 +265,6 @@ app.whenReady().then(() => {
     mainWindow?.setTitle(currentFilePath.split('/').pop() ?? 'Simple Note');
     mainWindow?.setDocumentEdited(false);
     return { ok: true, path: currentFilePath, content: text };
-  });
-
-  ipcMain.handle('file:exportMarkdown', async (_e, markdown: string, suggestedName?: string) => {
-    const r = await dialog.showSaveDialog(mainWindow!, {
-      defaultPath: suggestedName ?? '未命名筆記.md',
-      filters: [{ name: 'Markdown', extensions: ['md'] }],
-    });
-    if (r.canceled || !r.filePath) return { ok: false };
-    await writeFile(r.filePath, markdown, 'utf-8');
-    return { ok: true, path: r.filePath };
   });
 
   ipcMain.handle('file:new', () => {

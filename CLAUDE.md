@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **專案概述**
 
-Simple Note 是一款 macOS 為主的極簡 Block 式筆記桌面應用，採用 Electron + Vite + React + TypeScript 建置，編輯器核心使用 BlockNote (TipTap / ProseMirror)。筆記以自訂的 `.sn` 副檔名（JSON 包裝）儲存，並可匯出為 Markdown。介面語言為繁體中文。
+Simple Note 是一款 macOS 為主的極簡 Block 式筆記桌面應用，採用 Electron + Vite + React + TypeScript 建置，編輯器核心使用 BlockNote (TipTap / ProseMirror)。筆記直接以 Markdown（`.md`）格式儲存，Markdown 不支援的標記（如紅字、雙欄版面）在存檔時會被捨棄。介面語言為繁體中文。
 
 **常用指令**
 
@@ -33,7 +33,7 @@ main 端在 `app.whenReady` 內註冊 handler，命名採 `namespace:action`（�
 
 **檔案儲存格式**
 
-`.sn` 檔內容為 `{ version: 1, doc: <BlockNote blocks>, updatedAt: ISO string }`，doc 是 BlockNote `editor.document` 的 JSON。`file:save` 會記住 `currentFilePath`，後續按 Cmd+S 不再跳對話框；`file:new` 與 `file:open` 會更新標題列與 `representedFilename`。Renderer 端透過 `window.__simpleNote_isDirty()` / `window.__simpleNote_save()` 兩個全域函式，讓 main 在視窗關閉前可同步詢問是否儲存。
+存檔內容是純 Markdown：`file:save` 收下 renderer 用 `editor.blocksToMarkdownLossy` 產生的字串直接寫入 `.md`。雙欄模式啟用時，右欄文字會接到左欄下方（Markdown 無法表達多欄）。`file:save` 會記住 `currentFilePath`，後續按 Cmd+S 不再跳對話框；`file:new` 與 `file:open` 會更新標題列與 `representedFilename`。開啟檔案時一律用 `loadMarkdown` 解析進左欄、清空右欄並退回單欄。Renderer 端透過 `window.__simpleNote_isDirty()` / `window.__simpleNote_save()` 兩個全域函式，讓 main 在視窗關閉前可同步詢問是否儲存。
 
 **編輯器核心 (`src/renderer/src/editor/`)**
 
@@ -42,7 +42,7 @@ main 端在 `app.whenReady` 內註冊 handler，命名採 `namespace:action`（�
   - `simple-note-math`：數學模式 overlay (見下節)。
   - `simple-note-select-all`：兩段式 Cmd+A，第一次選整個 block，第二次才全選整份文件。
 - 鍵盤快捷鍵：Cmd+1 段落、Cmd+2 折疊清單 (toggle)、Cmd+3 項目符號、Cmd+4 程式碼區塊、Shift+Cmd+L 引言、Shift+Cmd+S 刪除線、Shift+Cmd+X inline code、Opt+Cmd+1/2/3 H1/H2/H3、Opt+Cmd+4 checkbox、Opt+Cmd+V 紅字。
-- 折疊清單是自訂 block `toggle`（`editor/toggle.tsx`）。**注意：不要改用 BlockNote 內建的 `toggleListItem`——在 0.40 版透過 BlockNoteView 渲染時它沒有箭頭、不能折疊（core 的 render 只對 isToggleable 的 heading 加 toggle UI，`toggleListItem` 沒有該 prop），會退化成普通段落。** 我們自繪 `.bn-toggle-wrapper` + `.bn-toggle-button`（沿用 BlockNote CSS：`data-show-children=false` 時隱藏子 `.bn-block-group`），展開/關閉狀態存在 block 的 `open` prop（會隨 `.sn` 存檔，不像 BlockNote 內建的 `ToggleWrapper` 存在 localStorage）。
+- 折疊清單是自訂 block `toggle`（`editor/toggle.tsx`）。**注意：不要改用 BlockNote 內建的 `toggleListItem`——在 0.40 版透過 BlockNoteView 渲染時它沒有箭頭、不能折疊（core 的 render 只對 isToggleable 的 heading 加 toggle UI，`toggleListItem` 沒有該 prop），會退化成普通段落。** 我們自繪 `.bn-toggle-wrapper` + `.bn-toggle-button`（沿用 BlockNote CSS：`data-show-children=false` 時隱藏子 `.bn-block-group`），展開/關閉狀態存在 block 的 `open` prop（活在文件模型中，不像 BlockNote 內建的 `ToggleWrapper` 存在 localStorage；但因為存檔是 Markdown，此狀態不會被持久化）。
 - toggle 的 Notion 式互動由 `createToggleKeyboardExtension()`（在 `Editor.tsx` 的 extensions 內）提供：游標在 toggle 標題列按 Enter，展開時在內側新增子 block 並把游標移入、關閉時在下方新增 sibling toggle（像 list item）；Cmd/Ctrl+Enter 切換展開/關閉。**新增 sibling toggle 後必須用 `requestAnimationFrame` 才能把游標移入新 block——它是 React node view，內容 DOM 要等 React 繪製後才存在，同步設游標會失效。** Cmd+2 在 `Editor.tsx` 把目前 block 轉成 `toggle`。
 - 框選整塊與整塊刪除：`codeBlockSelect.ts` 的 `WHOLE_BLOCK_TYPES` 同時涵蓋 `codeBlock` 與 `toggle`（被選取覆蓋時加 `.sn-block-selected` 整塊反白），`blockDelete.ts` 也把單一 `toggle` 視為整塊刪除（連同子 block）。**重要：所有 shortcut 都用 `e.code`（物理按鍵）判斷，不要用 `e.key`，因為 macOS 上 Option 會把 `key` 改寫（Opt+V 變 √、Opt+4 變 ¢）導致比對失敗。**
 - BlockNote 的 `[ ]\s` input rule 在轉成 checkbox 後會多留一個空 paragraph，`Editor.tsx` 內有一段 `onChange` 監聽會偵測此 pattern 並 `removeBlocks` + `setTextCursorPosition` 修正。修改 onChange 邏輯時要小心不要重新引入這個 bug。
@@ -61,7 +61,7 @@ main 端在 `app.whenReady` 內註冊 handler，命名採 `namespace:action`（�
 
 **狀態管理 (`src/renderer/src/store.ts`)**
 
-使用 Zustand。`dirty` 旗標由 BlockNote 的 `onChange` 觸發；`fileName` 從 `filePath` 衍生（去掉 `.sn`）。`Preferences` 同時定義於 `src/renderer/src/store.ts` 與 `src/main/preferences.ts`，**新增偏好欄位時兩邊都要改**，並且要更新 `App.tsx` 內把 preference 套用到 CSS variable 的 `useEffect`。
+使用 Zustand。`dirty` 旗標由 BlockNote 的 `onChange` 觸發；`fileName` 從 `filePath` 衍生（去掉 `.md`）。`Preferences` 同時定義於 `src/renderer/src/store.ts` 與 `src/main/preferences.ts`，**新增偏好欄位時兩邊都要改**，並且要更新 `App.tsx` 內把 preference 套用到 CSS variable 的 `useEffect`。
 
 **右鍵選單與文字轉換 (`src/renderer/src/context-menu/`)**
 
