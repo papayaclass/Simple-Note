@@ -1,5 +1,11 @@
 import { create } from 'zustand';
 
+export interface AISkill {
+  id: string;
+  name: string;
+  prompt: string;
+}
+
 export interface Preferences {
   pageWidth: number;
   twoColumnPageWidth: number;
@@ -8,6 +14,10 @@ export interface Preferences {
   topPadding: number;
   exchangeRateApiKey: string;
   codeWrap: boolean;
+  openRouterApiKey: string;
+  openRouterModel: string;
+  aiGlobalInstruction: string;
+  aiSkills: AISkill[];
 }
 
 export const DEFAULT_PREFS: Preferences = {
@@ -18,6 +28,10 @@ export const DEFAULT_PREFS: Preferences = {
   topPadding: 96,
   exchangeRateApiKey: '',
   codeWrap: false,
+  openRouterApiKey: '',
+  openRouterModel: '',
+  aiGlobalInstruction: '',
+  aiSkills: [],
 };
 
 interface AppState {

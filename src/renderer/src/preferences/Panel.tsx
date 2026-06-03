@@ -26,8 +26,10 @@ export function PreferencesPanel(): JSX.Element | null {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (!open) return;
+      // Only Escape cancels. Enter is intentionally NOT bound so multi-line
+      // fields (e.g. Custom Instruction) can use Enter / Shift+Enter to add
+      // line breaks without closing the dialog. Closing is via the 確定 button.
       if (e.key === 'Escape') cancel();
-      else if (e.key === 'Enter') confirm();
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -98,6 +100,100 @@ export function PreferencesPanel(): JSX.Element | null {
             value={draft.exchangeRateApiKey}
             onChange={(e) => update({ exchangeRateApiKey: e.target.value })}
           />
+        </div>
+
+        <div className="prefs-field">
+          <label>OpenRouter API Key</label>
+          <input
+            type="password"
+            placeholder="輸入你的 OpenRouter API Key"
+            value={draft.openRouterApiKey}
+            onChange={(e) => update({ openRouterApiKey: e.target.value })}
+          />
+        </div>
+
+        <div className="prefs-field">
+          <label>Model Name</label>
+          <input
+            type="text"
+            placeholder="anthropic/claude-3.5-sonnet"
+            value={draft.openRouterModel}
+            onChange={(e) => update({ openRouterModel: e.target.value })}
+          />
+        </div>
+
+        <div className="prefs-field">
+          <label>Global Custom Instruction</label>
+          <textarea
+            rows={3}
+            placeholder="套用到每個 Skill 的全域指令（選填）"
+            value={draft.aiGlobalInstruction}
+            onChange={(e) => update({ aiGlobalInstruction: e.target.value })}
+          />
+        </div>
+
+        <div className="prefs-skills">
+          <div className="prefs-skills-header">
+            <strong>AI Skills</strong>
+            <button
+              className="prefs-skill-add"
+              onClick={() =>
+                update({
+                  aiSkills: [
+                    ...draft.aiSkills,
+                    { id: crypto.randomUUID(), name: '', prompt: '' },
+                  ],
+                })
+              }
+            >
+              ＋ 新增 Skill
+            </button>
+          </div>
+
+          {draft.aiSkills.length === 0 && (
+            <p className="prefs-skills-empty">尚未建立任何 Skill。</p>
+          )}
+
+          {draft.aiSkills.map((skill) => (
+            <div className="prefs-skill-card" key={skill.id}>
+              <div className="prefs-skill-card-top">
+                <input
+                  type="text"
+                  className="prefs-skill-name"
+                  placeholder="Skill 名稱"
+                  value={skill.name}
+                  onChange={(e) =>
+                    update({
+                      aiSkills: draft.aiSkills.map((s) =>
+                        s.id === skill.id ? { ...s, name: e.target.value } : s
+                      ),
+                    })
+                  }
+                />
+                <button
+                  className="prefs-skill-delete"
+                  onClick={() =>
+                    update({ aiSkills: draft.aiSkills.filter((s) => s.id !== skill.id) })
+                  }
+                >
+                  刪除
+                </button>
+              </div>
+              <textarea
+                rows={3}
+                className="prefs-skill-prompt"
+                placeholder="提示詞（反白文字會自動附加在末端）"
+                value={skill.prompt}
+                onChange={(e) =>
+                  update({
+                    aiSkills: draft.aiSkills.map((s) =>
+                      s.id === skill.id ? { ...s, prompt: e.target.value } : s
+                    ),
+                  })
+                }
+              />
+            </div>
+          ))}
         </div>
 
         <div className="prefs-actions">

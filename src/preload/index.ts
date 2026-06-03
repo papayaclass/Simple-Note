@@ -12,6 +12,11 @@ export interface SimpleNoteAPI {
     ) => Promise<{ ok: true; rate: number; fetchedAt: number } | { ok: false; reason: string }>;
     clearCache: () => Promise<void>;
   };
+  ai: {
+    run: (
+      userContent: string
+    ) => Promise<{ ok: true; content: string } | { ok: false; reason: string }>;
+  };
   file: {
     save: (
       payloads: { sn: string; md: string },
@@ -47,6 +52,9 @@ const api: SimpleNoteAPI = {
   rate: {
     get: (currency) => ipcRenderer.invoke('rate:get', currency),
     clearCache: () => ipcRenderer.invoke('rate:clear'),
+  },
+  ai: {
+    run: (userContent) => ipcRenderer.invoke('ai:run', userContent),
   },
   file: {
     save: (payloads, options) => ipcRenderer.invoke('file:save', payloads, options),

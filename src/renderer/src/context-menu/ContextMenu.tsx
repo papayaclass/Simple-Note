@@ -6,6 +6,7 @@ import {
   wordCount,
 } from './transforms';
 import { useStore } from '../store';
+import { AIResultModal, AIState } from './AIResultModal';
 
 interface Props {
   editor: any;
@@ -20,7 +21,9 @@ interface MenuState {
 
 export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null {
   const [menu, setMenu] = useState<MenuState | null>(null);
+  const [aiState, setAiState] = useState<AIState | null>(null);
   const setWordCount = useStore((s) => s.setWordCountPopover);
+  const skills = useStore((s) => s.preferences.aiSkills);
 
   useEffect(() => {
     function onContext(e: MouseEvent) {
@@ -44,9 +47,24 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
     };
   }, []);
 
-  if (!menu) return null;
-
   const close = () => setMenu(null);
+
+  const runSkill = async (skill: { name: string; prompt: string }) => {
+    const { from, to } = editor._tiptapEditor.state.selection;
+    const selText = editor.getSelectedText?.() ?? window.getSelection()?.toString() ?? '';
+    const userContent = skill.prompt + (selText ? '\n\n' + selText : '');
+    const skillName = skill.name.trim() || '未命名 Skill';
+    close();
+    setAiState({ status: 'loading', skillName, range: { from, to } });
+    const res = await window.api.ai.run(userContent);
+    setAiState({
+      status: res.ok ? 'done' : 'error',
+      skillName,
+      range: { from, to },
+      result: res.ok ? res.content : undefined,
+      reason: res.ok ? undefined : res.reason,
+    });
+  };
 
   const transformSelection = (fn: (text: string) => string) => {
     const sel = editor.getSelectedText?.();
@@ -109,7 +127,7 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
   const items = [
     {
       label: '簡體轉繁體',
-      disabled: !menu.hasSelection,
+      disabled: !menu?.hasSelection,
       onClick: () => {
         transformSelection(simplifiedToTraditional);
         close();
@@ -117,7 +135,7 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
     },
     {
       label: '半形標點轉全形',
-      disabled: !menu.hasSelection,
+      disabled: !menu?.hasSelection,
       onClick: () => {
         transformSelection(halfToFullPunctuation);
         close();
@@ -125,7 +143,7 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
     },
     {
       label: '清除所有格式',
-      disabled: !menu.hasSelection,
+      disabled: !menu?.hasSelection,
       onClick: () => {
         clearFormatting();
         close();
@@ -133,7 +151,7 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
     },
     {
       label: '分段符號轉分行符號',
-      disabled: !menu.hasSelection,
+      disabled: !menu?.hasSelection,
       onClick: () => {
         mergeParagraphBreaks();
         close();
@@ -149,7 +167,7 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
     },
     {
       label: '字數統計',
-      disabled: !menu.hasSelection,
+      disabled: !menu?.hasSelection,
       onClick: () => {
         doWordCount();
         close();
@@ -158,7 +176,7 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
     { divider: true },
     {
       label: '在 Google 搜尋',
-      disabled: !menu.hasSelection,
+      disabled: !menu?.hasSelection,
       onClick: () => {
         searchSelection((q) => `https://www.google.com/search?q=${q}`);
         close();
@@ -166,7 +184,7 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
     },
     {
       label: '在 Google Maps 搜尋',
-      disabled: !menu.hasSelection,
+      disabled: !menu?.hasSelection,
       onClick: () => {
         searchSelection((q) => `https://www.google.com/maps/search/?api=1&query=${q}`);
         close();
@@ -174,7 +192,7 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
     },
     {
       label: '在 YouTube 搜尋',
-      disabled: !menu.hasSelection,
+      disabled: !menu?.hasSelection,
       onClick: () => {
         searchSelection((q) => `https://www.youtube.com/results?search_query=${q}`);
         close();
@@ -182,7 +200,7 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
     },
     {
       label: '查詢劍橋詞典',
-      disabled: !menu.hasSelection,
+      disabled: !menu?.hasSelection,
       onClick: () => {
         searchSelection(
           (q) => `https://dictionary.cambridge.org/search/english-chinese-traditional/direct/?q=${q}`
@@ -190,28 +208,46 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
         close();
       },
     },
+    ...(skills.length > 0
+      ? [
+          { divider: true },
+          ...skills.map((skill) => ({
+            label: skill.name.trim() || '未命名 Skill',
+            onClick: () => {
+              void runSkill(skill);
+            },
+          })),
+        ]
+      : []),
   ];
 
   return (
-    <div
-      className="context-menu"
-      style={{ position: 'fixed', top: menu.y, left: menu.x }}
-      onMouseDown={(e) => e.stopPropagation()}
-    >
-      {items.map((item, i) =>
-        'divider' in item ? (
-          <div key={i} className="context-menu-divider" />
-        ) : (
-          <button
-            key={i}
-            className="context-menu-item"
-            disabled={item.disabled}
-            onClick={item.onClick}
-          >
-            {item.label}
-          </button>
-        )
+    <>
+      {menu && (
+        <div
+          className="context-menu"
+          style={{ position: 'fixed', top: menu.y, left: menu.x }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          {items.map((item, i) =>
+            'divider' in item ? (
+              <div key={i} className="context-menu-divider" />
+            ) : (
+              <button
+                key={i}
+                className="context-menu-item"
+                disabled={item.disabled}
+                onClick={item.onClick}
+              >
+                {item.label}
+              </button>
+            )
+          )}
+        </div>
       )}
-    </div>
+      {aiState && (
+        <AIResultModal editor={editor} state={aiState} onClose={() => setAiState(null)} />
+      )}
+    </>
   );
 }

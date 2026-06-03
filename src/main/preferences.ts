@@ -1,5 +1,11 @@
 import Store from 'electron-store';
 
+export interface AISkill {
+  id: string;
+  name: string;
+  prompt: string;
+}
+
 export interface Preferences {
   pageWidth: number;
   twoColumnPageWidth: number;
@@ -8,6 +14,10 @@ export interface Preferences {
   topPadding: number;
   exchangeRateApiKey: string;
   codeWrap: boolean;
+  openRouterApiKey: string;
+  openRouterModel: string;
+  aiGlobalInstruction: string;
+  aiSkills: AISkill[];
 }
 
 const DEFAULTS: Preferences = {
@@ -18,6 +28,10 @@ const DEFAULTS: Preferences = {
   topPadding: 96,
   exchangeRateApiKey: '',
   codeWrap: false,
+  openRouterApiKey: '',
+  openRouterModel: '',
+  aiGlobalInstruction: '',
+  aiSkills: [],
 };
 
 const store = new Store<Preferences>({ name: 'preferences', defaults: DEFAULTS });
@@ -31,6 +45,10 @@ export function getPreferences(): Preferences {
     topPadding: store.get('topPadding', DEFAULTS.topPadding),
     exchangeRateApiKey: store.get('exchangeRateApiKey', DEFAULTS.exchangeRateApiKey),
     codeWrap: store.get('codeWrap', DEFAULTS.codeWrap),
+    openRouterApiKey: store.get('openRouterApiKey', DEFAULTS.openRouterApiKey),
+    openRouterModel: store.get('openRouterModel', DEFAULTS.openRouterModel),
+    aiGlobalInstruction: store.get('aiGlobalInstruction', DEFAULTS.aiGlobalInstruction),
+    aiSkills: store.get('aiSkills', DEFAULTS.aiSkills),
   };
 }
 
