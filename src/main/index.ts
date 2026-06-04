@@ -23,55 +23,50 @@ const windowStore = new Store<{ bounds: WindowBounds }>({
   defaults: { bounds: DEFAULT_BOUNDS },
 });
 
-let mainWindow: BrowserWindow | null = null;
-let currentFilePath: string | null = null;
-// True while a Cmd+Q / app.quit() is in progress. The window's close handler
+// True while a Cmd+Q / app.quit() is in progress. Each window's close handler
 // always preventDefault()s to run an async dirty-check, which cancels the quit
 // sequence. We use this flag to re-issue app.quit() once it's safe to close, so
 // the process actually exits instead of lingering as a windowless background
 // app (which keeps showing in the Dock / App Switcher).
 let isQuitting = false;
 
-// Files queued from the macOS 'open-file' event (Finder double-click, drag onto
-// Dock icon, "Open With…") before the renderer is ready to receive them. We
-// flush them as soon as the renderer signals it's mounted.
-const pendingOpenPaths: string[] = [];
-let rendererReady = false;
+// Files double-clicked in Finder before the app finished launching. macOS
+// delivers them via 'open-file' (argv won't carry the path on GUI launches),
+// possibly before app.whenReady — we buffer them and open one window each once
+// the app is ready.
+const coldStartPaths: string[] = [];
 
-async function deliverPathToRenderer(path: string): Promise<void> {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
+// A file path waiting to be loaded into a specific window, keyed by that
+// window's webContents id. We can't push the content until the renderer has
+// mounted its listeners; it flushes when the renderer sends 'renderer:ready'.
+const pendingOpenByWebContents = new Map<number, string>();
+
+async function deliverPathToWindow(win: BrowserWindow | null, path: string): Promise<void> {
+  if (!win || win.isDestroyed()) return;
   try {
     const content = await readFile(path, 'utf-8');
-    currentFilePath = path;
-    mainWindow.setRepresentedFilename(path);
-    mainWindow.setTitle(path.split('/').pop() ?? 'Simple Note');
-    mainWindow.setDocumentEdited(false);
-    mainWindow.webContents.send('file:externalOpen', { path, content });
+    win.setRepresentedFilename(path);
+    win.setTitle(path.split('/').pop() ?? 'Simple Note');
+    win.setDocumentEdited(false);
+    win.webContents.send('file:externalOpen', { path, content });
   } catch (err) {
     console.error('Failed to read external file:', path, err);
-  }
-}
-
-function enqueueOrDeliver(path: string): void {
-  if (!mainWindow || mainWindow.isDestroyed()) {
-    pendingOpenPaths.push(path);
-    if (app.isReady()) createWindow();
-    return;
-  }
-  if (rendererReady) {
-    void deliverPathToRenderer(path);
-  } else {
-    pendingOpenPaths.push(path);
   }
 }
 
 // macOS delivers paths via 'open-file' (and only this — argv won't carry the
 // file path on macOS GUI launches). Register inside will-finish-launching so we
 // catch the very first event even when launched cold by double-clicking a file.
+// Each opened file becomes its own window so it never replaces what's already
+// being edited.
 app.on('will-finish-launching', () => {
   app.on('open-file', (event, path) => {
     event.preventDefault();
-    enqueueOrDeliver(path);
+    if (app.isReady()) {
+      createWindow(path);
+    } else {
+      coldStartPaths.push(path);
+    }
   });
 });
 
@@ -95,17 +90,33 @@ function getRestoredBounds(): WindowBounds {
   return { width: saved.width, height: saved.height };
 }
 
-function persistBounds(): void {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  if (mainWindow.isMinimized() || mainWindow.isFullScreen()) return;
-  windowStore.set('bounds', mainWindow.getNormalBounds());
+// Place the first window at its saved bounds; cascade every subsequent window
+// down-right from the current one so multiple windows don't stack exactly on
+// top of each other.
+function getNewWindowBounds(): WindowBounds {
+  const ref = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows().at(-1) ?? null;
+  if (ref && !ref.isDestroyed()) {
+    const b = ref.getNormalBounds();
+    const cascaded: WindowBounds = {
+      x: (b.x ?? 0) + 30,
+      y: (b.y ?? 0) + 30,
+      width: b.width,
+      height: b.height,
+    };
+    if (intersectsAnyDisplay(cascaded)) return cascaded;
+  }
+  return getRestoredBounds();
 }
 
-function createWindow(): void {
-  const bounds = getRestoredBounds();
+function persistWindowBounds(win: BrowserWindow): void {
+  if (!win || win.isDestroyed()) return;
+  if (win.isMinimized() || win.isFullScreen()) return;
+  windowStore.set('bounds', win.getNormalBounds());
+}
 
-  mainWindow = new BrowserWindow({
-    ...bounds,
+function createWindow(openPath?: string): BrowserWindow {
+  const win = new BrowserWindow({
+    ...getNewWindowBounds(),
     titleBarStyle: 'hiddenInset',
     backgroundColor: '#ffffff',
     show: false,
@@ -118,35 +129,37 @@ function createWindow(): void {
     },
   });
 
-  mainWindow.on('ready-to-show', () => {
-    mainWindow?.show();
+  const wcId = win.webContents.id;
+  if (openPath) pendingOpenByWebContents.set(wcId, openPath);
+
+  win.on('ready-to-show', () => {
+    win.show();
   });
 
-  mainWindow.on('closed', () => {
-    rendererReady = false;
-    mainWindow = null;
+  win.on('closed', () => {
+    pendingOpenByWebContents.delete(wcId);
   });
 
   let saveTimer: NodeJS.Timeout | null = null;
   const scheduleSave = (): void => {
     if (saveTimer) clearTimeout(saveTimer);
-    saveTimer = setTimeout(persistBounds, 300);
+    saveTimer = setTimeout(() => persistWindowBounds(win), 300);
   };
-  mainWindow.on('resize', scheduleSave);
-  mainWindow.on('move', scheduleSave);
+  win.on('resize', scheduleSave);
+  win.on('move', scheduleSave);
   // Synchronous save BEFORE the async dirty-check listener below runs, so the
   // bounds are flushed to disk even if the user cancels close from the dialog.
-  mainWindow.on('close', persistBounds);
+  win.on('close', () => persistWindowBounds(win));
 
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+  win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
   });
 
   if (process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL']);
+    win.loadURL(process.env['ELECTRON_RENDERER_URL']);
   } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
+    win.loadFile(join(__dirname, '../renderer/index.html'));
   }
 
   // preventDefault() must run synchronously — once we `await`, the event loop
@@ -157,7 +170,7 @@ function createWindow(): void {
   // Close the window for real. During a quit, re-issue app.quit() (our earlier
   // preventDefault cancelled it) so the process exits; otherwise just destroy
   // the window and leave the app running (standard macOS behaviour).
-  const proceedClose = (win: BrowserWindow): void => {
+  const proceedClose = (): void => {
     forceClose = true;
     if (isQuitting) {
       app.quit();
@@ -165,16 +178,15 @@ function createWindow(): void {
       win.destroy();
     }
   };
-  mainWindow.on('close', (e) => {
-    if (forceClose || !mainWindow) return;
+  win.on('close', (e) => {
+    if (forceClose) return;
     e.preventDefault();
-    const win = mainWindow;
     void (async () => {
       const dirty = await win.webContents.executeJavaScript(
         'window.__simpleNote_isDirty?.() ?? false'
       );
       if (!dirty) {
-        proceedClose(win);
+        proceedClose();
         return;
       }
       const result = await dialog.showMessageBox(win, {
@@ -188,34 +200,56 @@ function createWindow(): void {
       if (result.response === 0) {
         const saved = await win.webContents.executeJavaScript('window.__simpleNote_save?.()');
         if (saved) {
-          proceedClose(win);
+          proceedClose();
         } else {
           isQuitting = false; // save cancelled / failed — abort any pending quit
         }
       } else if (result.response === 1) {
-        proceedClose(win);
+        proceedClose();
       } else {
         isQuitting = false; // user cancelled — abort any pending quit
       }
     })();
   });
+
+  return win;
 }
 
-// Safety net for Cmd+Q / app.quit() paths where the window's close handler
-// may race with process exit. Also flags that a quit is underway so the close
-// handler re-issues app.quit() after its async dirty-check (see proceedClose).
+function sendToFocused(channel: string): void {
+  BrowserWindow.getFocusedWindow()?.webContents.send(channel);
+}
+
+// File → Open…: pick a file (dialog parented to the focused window) and load it
+// into a brand-new window, leaving the current one untouched.
+async function openViaDialog(): Promise<void> {
+  const focused = BrowserWindow.getFocusedWindow();
+  const options = {
+    properties: ['openFile' as const],
+    filters: [{ name: 'Markdown', extensions: ['md'] }],
+  };
+  const r = focused
+    ? await dialog.showOpenDialog(focused, options)
+    : await dialog.showOpenDialog(options);
+  if (r.canceled || !r.filePaths[0]) return;
+  createWindow(r.filePaths[0]);
+}
+
+// Safety net for Cmd+Q / app.quit() paths where a window's close handler may
+// race with process exit. Also flags that a quit is underway so close handlers
+// re-issue app.quit() after their async dirty-check (see proceedClose).
 app.on('before-quit', () => {
   isQuitting = true;
-  persistBounds();
+  const ref = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows().at(-1) ?? null;
+  if (ref) persistWindowBounds(ref);
 });
 
 app.whenReady().then(() => {
   buildMenu({
-    onNew: () => mainWindow?.webContents.send('menu:new'),
-    onOpen: () => mainWindow?.webContents.send('menu:open'),
-    onSave: () => mainWindow?.webContents.send('menu:save'),
-    onPreferences: () => mainWindow?.webContents.send('menu:preferences'),
-    onCommand: (cmd) => mainWindow?.webContents.send('menu:command', cmd),
+    onNew: () => createWindow(),
+    onOpen: () => void openViaDialog(),
+    onSave: () => sendToFocused('menu:save'),
+    onPreferences: () => sendToFocused('menu:preferences'),
+    onCommand: (cmd) => BrowserWindow.getFocusedWindow()?.webContents.send('menu:command', cmd),
   });
 
   ipcMain.handle('prefs:get', () => getPreferences());
@@ -229,57 +263,37 @@ app.whenReady().then(() => {
 
   ipcMain.handle(
     'file:save',
-    async (_e, markdown: string, options: { path: string | null; suggestedName?: string }) => {
-      // The renderer is the source of truth for the current file path. Relying on
-      // main's own currentFilePath could save to a stale path without prompting —
-      // e.g. after the window was closed and reopened from the Dock (the macOS
-      // process keeps currentFilePath), or after a new blank document was created.
-      // Use the path the renderer reports instead.
+    async (e, markdown: string, options: { path: string | null; suggestedName?: string }) => {
+      // The renderer is the source of truth for the current file path; main no
+      // longer tracks it (with multiple windows there'd be many). Operate on the
+      // window that sent the request.
+      const win = BrowserWindow.fromWebContents(e.sender);
       let path = options?.path ?? null;
       if (!path) {
-        const r = await dialog.showSaveDialog(mainWindow!, {
+        const saveOptions = {
           defaultPath: options?.suggestedName ?? '未命名筆記.md',
           filters: [{ name: 'Markdown', extensions: ['md'] }],
-        });
+        };
+        const r = win
+          ? await dialog.showSaveDialog(win, saveOptions)
+          : await dialog.showSaveDialog(saveOptions);
         if (r.canceled || !r.filePath) return { ok: false };
         path = r.filePath;
       }
       await writeFile(path, markdown, 'utf-8');
-      currentFilePath = path;
-      mainWindow?.setRepresentedFilename(path);
-      mainWindow?.setTitle(path.split('/').pop() ?? 'Simple Note');
-      mainWindow?.setDocumentEdited(false);
+      win?.setRepresentedFilename(path);
+      win?.setTitle(path.split('/').pop() ?? 'Simple Note');
+      win?.setDocumentEdited(false);
       return { ok: true, path };
     }
   );
 
-  ipcMain.handle('file:open', async () => {
-    const r = await dialog.showOpenDialog(mainWindow!, {
-      properties: ['openFile'],
-      filters: [{ name: 'Markdown', extensions: ['md'] }],
-    });
-    if (r.canceled || !r.filePaths[0]) return { ok: false };
-    const text = await readFile(r.filePaths[0], 'utf-8');
-    currentFilePath = r.filePaths[0];
-    mainWindow?.setRepresentedFilename(currentFilePath);
-    mainWindow?.setTitle(currentFilePath.split('/').pop() ?? 'Simple Note');
-    mainWindow?.setDocumentEdited(false);
-    return { ok: true, path: currentFilePath, content: text };
+  ipcMain.on('window:setDirty', (e, dirty: boolean) => {
+    BrowserWindow.fromWebContents(e.sender)?.setDocumentEdited(dirty);
   });
 
-  ipcMain.handle('file:new', () => {
-    currentFilePath = null;
-    mainWindow?.setRepresentedFilename('');
-    mainWindow?.setTitle('未命名筆記');
-    mainWindow?.setDocumentEdited(false);
-  });
-
-  ipcMain.on('window:setDirty', (_e, dirty: boolean) => {
-    mainWindow?.setDocumentEdited(dirty);
-  });
-
-  ipcMain.on('window:setTitle', (_e, title: string) => {
-    mainWindow?.setTitle(title);
+  ipcMain.on('window:setTitle', (e, title: string) => {
+    BrowserWindow.fromWebContents(e.sender)?.setTitle(title);
   });
 
   ipcMain.on('notify:show', (_e, options: { title: string; body: string }) => {
@@ -289,16 +303,24 @@ app.whenReady().then(() => {
     new Notification({ title: options.title, body: options.body, silent: true }).show();
   });
 
-  // Renderer signals it has mounted listeners; flush any pending open-file paths.
-  ipcMain.on('renderer:ready', () => {
-    rendererReady = true;
-    while (pendingOpenPaths.length > 0) {
-      const next = pendingOpenPaths.shift();
-      if (next) void deliverPathToRenderer(next);
+  // A window's renderer signals it has mounted listeners; flush the file (if
+  // any) that was queued for that specific window.
+  ipcMain.on('renderer:ready', (e) => {
+    const path = pendingOpenByWebContents.get(e.sender.id);
+    if (path) {
+      pendingOpenByWebContents.delete(e.sender.id);
+      void deliverPathToWindow(BrowserWindow.fromWebContents(e.sender), path);
     }
   });
 
-  createWindow();
+  // Open one window per file double-clicked before launch; otherwise a single
+  // blank window.
+  if (coldStartPaths.length > 0) {
+    for (const p of coldStartPaths) createWindow(p);
+    coldStartPaths.length = 0;
+  } else {
+    createWindow();
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

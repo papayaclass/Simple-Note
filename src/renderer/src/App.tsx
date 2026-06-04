@@ -188,31 +188,10 @@ export function App(): JSX.Element {
     setFile(path);
   }, [setFile, setTwoColumn]);
 
-  const doOpen = useCallback(async () => {
-    if (useStore.getState().dirty) {
-      const ok = await confirmDiscard();
-      if (!ok) return;
-    }
-    const r = await window.api.file.open();
-    if (r.ok && r.content && r.path) {
-      await loadContentByPath(r.path, r.content);
-    }
-  }, [loadContentByPath]);
-
-  const doNew = useCallback(async () => {
-    if (useStore.getState().dirty) {
-      const ok = await confirmDiscard();
-      if (!ok) return;
-    }
-    handleRef.current?.load(JSON.stringify(EMPTY_DOC));
-    rightHandleRef.current?.load(JSON.stringify(EMPTY_DOC));
-    setTwoColumn(false);
-    setFile(null);
-    await window.api.file.new();
-  }, [setFile, setTwoColumn]);
-
-  // Receive files opened from outside the app (Finder double-click, drag onto
-  // Dock, "Open With…"). Main reads the file and pushes path + content here.
+  // Receive a file pushed into this window by main. This covers files opened
+  // from outside the app (Finder double-click, drag onto Dock, "Open With…")
+  // and File → Open…, which now spawns a fresh window and has main load the
+  // chosen file into it. (File → New just opens a blank window — no file.)
   useEffect(() => {
     const off = window.api.onExternalOpen(async ({ path, content }) => {
       if (useStore.getState().dirty) {
@@ -230,12 +209,6 @@ export function App(): JSX.Element {
   useEffect(() => {
     const off = window.api.onMenu((cmd) => {
       switch (cmd) {
-        case 'new':
-          doNew();
-          break;
-        case 'open':
-          doOpen();
-          break;
         case 'save':
           doSave();
           break;
@@ -259,7 +232,7 @@ export function App(): JSX.Element {
       }
     });
     return off;
-  }, [doNew, doOpen, doSave, setPrefsOpen, toggleMathMode, setTwoColumn, setDirty]);
+  }, [doSave, setPrefsOpen, toggleMathMode, setTwoColumn, setDirty]);
 
   // Clicks anywhere outside the editor (the .app gutter, the .page padding,
   // or the centered margins around .page) should drop the caret into the last

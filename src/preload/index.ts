@@ -22,8 +22,6 @@ export interface SimpleNoteAPI {
       markdown: string,
       options: { path: string | null; suggestedName?: string }
     ) => Promise<{ ok: boolean; path?: string }>;
-    open: () => Promise<{ ok: boolean; path?: string; content?: string }>;
-    new: () => Promise<void>;
   };
   window: {
     setDirty: (dirty: boolean) => void;
@@ -54,8 +52,6 @@ const api: SimpleNoteAPI = {
   },
   file: {
     save: (markdown, options) => ipcRenderer.invoke('file:save', markdown, options),
-    open: () => ipcRenderer.invoke('file:open'),
-    new: () => ipcRenderer.invoke('file:new'),
   },
   window: {
     setDirty: (dirty) => ipcRenderer.send('window:setDirty', dirty),
@@ -72,8 +68,8 @@ const api: SimpleNoteAPI = {
       ipcRenderer.on(`menu:${cmd}`, listener);
       channels.push([`menu:${cmd}`, listener]);
     };
-    wrap('new');
-    wrap('open');
+    // 'new' and 'open' are handled entirely in main now (each spawns its own
+    // window), so the renderer no longer listens for them.
     wrap('save');
     wrap('preferences');
 
