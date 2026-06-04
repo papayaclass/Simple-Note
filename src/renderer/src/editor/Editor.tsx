@@ -265,6 +265,29 @@ export function Editor({ onChange, handleRef, autoFocus = true }: Props): JSX.El
     return () => unsub?.();
   }, [editor]);
 
+  // Notion-style divider: when a paragraph's text becomes exactly "---", replace
+  // it with a `divider` block and drop an empty paragraph below for the cursor to
+  // land in (so typing continues under the line). Mirrors the checkbox fix above:
+  // detect in onChange, mutate in a microtask to stay out of the change cycle.
+  useEffect(() => {
+    const unsub = editor.onChange(() => {
+      const block: any = editor.getTextCursorPosition().block;
+      if (!block || block.type !== 'paragraph') return;
+      if (blockPlainText(block) !== '---') return;
+      queueMicrotask(() => {
+        const res = (
+          editor.replaceBlocks as (
+            remove: string[],
+            insert: Array<{ type: string }>
+          ) => { insertedBlocks: Array<{ id: string; type: string }> }
+        )([block.id], [{ type: 'divider' }, { type: 'paragraph' }]);
+        const para = res.insertedBlocks[res.insertedBlocks.length - 1];
+        if (para) editor.setTextCursorPosition(para.id, 'end');
+      });
+    });
+    return () => unsub?.();
+  }, [editor]);
+
   // Custom keyboard shortcuts for block transforms / styles.
   // Use e.code (physical key) instead of e.key because Option modifies the key value
   // on macOS (Opt+V → √, Opt+4 → ¢) and breaks naive e.key matching.
