@@ -9,7 +9,23 @@ import {
 import { useStore } from '../store';
 import { AIResultModal, AIState } from './AIResultModal';
 import { PinyinModal } from './PinyinModal';
-import { MENU_COMMANDS, reconcileMenuCommands } from './commands';
+import { MENU_COMMANDS, reconcileMenuCommands, isDivider } from './commands';
+
+type MenuItem = { divider: true } | { label: string; disabled: boolean; onClick: () => void };
+
+// Drop leading/trailing dividers and collapse runs of adjacent dividers into one
+// (hidden commands between two dividers would otherwise leave them adjacent).
+function collapseDividers(items: MenuItem[]): MenuItem[] {
+  const result: MenuItem[] = [];
+  for (const item of items) {
+    if ('divider' in item) {
+      if (result.length === 0 || 'divider' in result[result.length - 1]) continue;
+    }
+    result.push(item);
+  }
+  while (result.length > 0 && 'divider' in result[result.length - 1]) result.pop();
+  return result;
+}
 
 interface Props {
   editor: any;
@@ -214,19 +230,23 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
   const labelByKey = new Map(MENU_COMMANDS.map((c) => [c.key, c]));
 
   // Built-in commands rendered in the user-defined order, hidden ones filtered
-  // out. AI Skills are appended after a divider (managed in the AI prefs tab).
-  const builtInItems = reconcileMenuCommands(menuCommands)
-    .filter((c) => c.visible !== false)
-    .map((c) => {
+  // out, user-inserted dividers kept in place. AI Skills are appended after a
+  // divider (managed in the AI prefs tab).
+  const builtInItems: MenuItem[] = [];
+  for (const c of reconcileMenuCommands(menuCommands)) {
+    if (isDivider(c)) {
+      builtInItems.push({ divider: true });
+    } else if (c.visible !== false) {
       const def = labelByKey.get(c.key)!;
-      return {
-        label: def.label,
+      builtInItems.push({
+        label: c.label?.trim() ? c.label : def.label,
         disabled: def.requiresSelection && !menu?.hasSelection,
         onClick: handlers[c.key],
-      };
-    });
+      });
+    }
+  }
 
-  const items = [
+  const items = collapseDividers([
     ...builtInItems,
     ...(skills.length > 0
       ? [
@@ -240,7 +260,7 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
           })),
         ]
       : []),
-  ];
+  ]);
 
   return (
     <>

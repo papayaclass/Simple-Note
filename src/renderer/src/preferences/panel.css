@@ -325,6 +325,52 @@
   color: var(--fg);
 }
 
+/* Editable command name: looks like plain text until focused. */
+.prefs-menu-label-input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  padding: 3px 6px;
+  margin: -3px 0;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: inherit;
+}
+.prefs-menu-label-input:hover {
+  border-color: var(--input-border);
+}
+.prefs-menu-label-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--input-bg);
+}
+
+/* A divider row: a horizontal line standing in for the label area. */
+.prefs-menu-divider-line {
+  flex: 1;
+  height: 1px;
+  background: var(--input-border);
+}
+
+.prefs-divider-add {
+  display: block;
+  width: 100%;
+  padding: 7px 8px;
+  border: 1px dashed var(--input-border);
+  border-radius: 8px;
+  background: none;
+  color: var(--fg-muted);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.prefs-divider-add:hover {
+  background: var(--input-bg);
+  color: var(--fg);
+}
+
 /* CSS toggle switch */
 .prefs-switch {
   position: relative;

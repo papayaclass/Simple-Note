@@ -9,7 +9,15 @@ export interface AISkill {
 export interface MenuCommandPref {
   key: string;
   visible: boolean;
+  label?: string;
 }
+
+export interface MenuDividerPref {
+  type: 'divider';
+  id: string;
+}
+
+export type MenuItemPref = MenuCommandPref | MenuDividerPref;
 
 export interface Preferences {
   pageWidth: number;
@@ -23,7 +31,7 @@ export interface Preferences {
   openRouterModel: string;
   aiGlobalInstruction: string;
   aiSkills: AISkill[];
-  menuCommands: MenuCommandPref[];
+  menuCommands: MenuItemPref[];
 }
 
 // Default order + visibility for the right-click menu commands. Kept in sync

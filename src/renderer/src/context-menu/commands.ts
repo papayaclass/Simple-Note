@@ -26,9 +26,23 @@ export const MENU_COMMANDS: MenuCommandDef[] = [
 export interface MenuCommandPref {
   key: string;
   visible: boolean;
+  // User-customized display name; falls back to the registry label when unset.
+  label?: string;
 }
 
-export const DEFAULT_MENU_COMMANDS: MenuCommandPref[] = MENU_COMMANDS.map((c) => ({
+// A user-inserted separator that produces a visual group break in the menu.
+export interface MenuDividerPref {
+  type: 'divider';
+  id: string;
+}
+
+// menuCommands holds both commands and dividers interleaved in one ordered list.
+export type MenuItemPref = MenuCommandPref | MenuDividerPref;
+
+export const isDivider = (item: MenuItemPref): item is MenuDividerPref =>
+  'type' in item && item.type === 'divider';
+
+export const DEFAULT_MENU_COMMANDS: MenuItemPref[] = MENU_COMMANDS.map((c) => ({
   key: c.key,
   visible: true,
 }));
@@ -36,14 +50,16 @@ export const DEFAULT_MENU_COMMANDS: MenuCommandPref[] = MENU_COMMANDS.map((c) =>
 // Reconcile stored prefs against the current registry: keep stored order for
 // known keys, append any registry keys missing from storage (e.g. newly added
 // commands like `pinyin` in older saves) with default visibility, and drop keys
-// no longer in the registry.
-export function reconcileMenuCommands(stored: MenuCommandPref[] | undefined): MenuCommandPref[] {
+// no longer in the registry. Dividers are kept as-is, in place.
+export function reconcileMenuCommands(stored: MenuItemPref[] | undefined): MenuItemPref[] {
   const known = new Set(MENU_COMMANDS.map((c) => c.key));
   const seen = new Set<string>();
-  const result: MenuCommandPref[] = [];
+  const result: MenuItemPref[] = [];
   for (const item of stored ?? []) {
-    if (known.has(item.key) && !seen.has(item.key)) {
-      result.push({ key: item.key, visible: item.visible !== false });
+    if (isDivider(item)) {
+      result.push(item);
+    } else if (known.has(item.key) && !seen.has(item.key)) {
+      result.push({ key: item.key, visible: item.visible !== false, label: item.label });
       seen.add(item.key);
     }
   }
