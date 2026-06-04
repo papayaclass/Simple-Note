@@ -21,6 +21,8 @@ export function PreferencesPanel(): JSX.Element | null {
   const [draft, setDraft] = useState<Preferences>(committedPrefs);
   const [category, setCategory] = useState<Category>('layout');
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  // Gap index (0..length) where the dragged row would land if dropped now.
+  const [dropIndex, setDropIndex] = useState<number | null>(null);
 
   // Re-seed draft each time the panel opens with the latest committed prefs,
   // and apply draft to the live page while editing so changes are visible.
@@ -69,11 +71,13 @@ export function PreferencesPanel(): JSX.Element | null {
   const setCommandVisible = (key: string, visible: boolean) =>
     update({ menuCommands: menuCommands.map((c) => (c.key === key ? { ...c, visible } : c)) });
 
-  const reorder = (from: number, to: number) => {
-    if (from === to) return;
+  // `gap` is the insertion position (0..length) in the original array coords.
+  const reorder = (from: number, gap: number) => {
+    const target = from < gap ? gap - 1 : gap;
+    if (target === from) return;
     const next = [...menuCommands];
     const [moved] = next.splice(from, 1);
-    next.splice(to, 0, moved);
+    next.splice(target, 0, moved);
     update({ menuCommands: next });
   };
 
@@ -148,20 +152,34 @@ export function PreferencesPanel(): JSX.Element | null {
                   />
                 </div>
 
-                <div className="prefs-menu-list">
+                <div
+                  className="prefs-menu-list"
+                  onDrop={() => {
+                    if (dragIndex !== null && dropIndex !== null) reorder(dragIndex, dropIndex);
+                    setDragIndex(null);
+                    setDropIndex(null);
+                  }}
+                  onDragEnd={() => {
+                    setDragIndex(null);
+                    setDropIndex(null);
+                  }}
+                >
                   <div className="prefs-menu-list-hint">拖曳調整順序，關閉則從右鍵選單隱藏。</div>
                   {menuCommands.map((c, i) => (
                     <div
                       key={c.key}
-                      className={`prefs-menu-row${dragIndex === i ? ' dragging' : ''}`}
+                      className={`prefs-menu-row${dragIndex === i ? ' dragging' : ''}${
+                        dropIndex === i ? ' drop-before' : ''
+                      }${dropIndex === i + 1 ? ' drop-after' : ''}`}
                       draggable
                       onDragStart={() => setDragIndex(i)}
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={() => {
-                        if (dragIndex !== null) reorder(dragIndex, i);
-                        setDragIndex(null);
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        // Top half → insert before this row, bottom half → after.
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const after = e.clientY > rect.top + rect.height / 2;
+                        setDropIndex(after ? i + 1 : i);
                       }}
-                      onDragEnd={() => setDragIndex(null)}
                     >
                       <span className="prefs-drag-handle" aria-hidden>
                         ⠿

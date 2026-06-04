@@ -279,6 +279,7 @@
 }
 
 .prefs-menu-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -290,6 +291,25 @@
 }
 .prefs-menu-row.dragging {
   opacity: 0.5;
+}
+
+/* Drop indicator: a blue line marking where the dragged row will land. */
+.prefs-menu-row.drop-before::before,
+.prefs-menu-row.drop-after::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  pointer-events: none;
+}
+.prefs-menu-row.drop-before::before {
+  top: -5px;
+}
+.prefs-menu-row.drop-after::after {
+  bottom: -5px;
 }
 
 .prefs-drag-handle {
