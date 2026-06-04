@@ -76,15 +76,38 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
     });
   };
 
+  // Apply a text→text transform to the selection while preserving block
+  // structure and inline marks. We can't round-trip through getSelectedText() +
+  // insertContent(): textBetween() joins blocks with no separator, so the
+  // re-inserted string collapses every selected paragraph into one. Instead we
+  // walk the ProseMirror text nodes inside the selection and rewrite each in
+  // place (last→first so earlier positions stay valid), leaving paragraph
+  // boundaries and marks untouched.
   const transformSelection = (fn: (text: string) => string) => {
-    const sel = editor.getSelectedText?.();
-    if (sel) {
-      const newText = fn(sel);
-      editor._tiptapEditor.commands.insertContent(newText);
-    } else {
-      const range = window.getSelection()?.toString() ?? '';
-      if (range) document.execCommand('insertText', false, fn(range));
+    const tt = editor._tiptapEditor;
+    const { state, view } = tt;
+    const { from, to, empty } = state.selection;
+    if (empty) return;
+    const edits: { start: number; end: number; text: string; marks: unknown[] }[] = [];
+    state.doc.nodesBetween(from, to, (node: any, pos: number) => {
+      if (!node.isText) return;
+      const start = Math.max(pos, from);
+      const end = Math.min(pos + node.nodeSize, to);
+      if (start >= end) return;
+      const original = node.text.slice(start - pos, end - pos);
+      const replaced = fn(original);
+      if (replaced !== original) edits.push({ start, end, text: replaced, marks: node.marks });
+    });
+    if (edits.length === 0) return;
+    const tr = state.tr;
+    for (let i = edits.length - 1; i >= 0; i--) {
+      const e = edits[i];
+      // schema.text() rejects empty strings, so delete instead when a transform
+      // produces no output (none of our current transforms do, but be safe).
+      if (e.text) tr.replaceWith(e.start, e.end, state.schema.text(e.text, e.marks as any));
+      else tr.delete(e.start, e.end);
     }
+    view.dispatch(tr);
   };
 
   const clearFormatting = () => {
