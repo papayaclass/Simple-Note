@@ -45,6 +45,7 @@ const DEFAULT_MENU_COMMANDS: MenuCommandPref[] = [
   'lorem',
   'wordCount',
   'pinyin',
+  'boshiamy',
   'googleSearch',
   'googleMaps',
   'youtube',

@@ -417,6 +417,56 @@
   margin-bottom: 8px;
 }
 
+/* 嘸蝦米查碼 modal */
+.boshiamy-list {
+  white-space: normal;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.boshiamy-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 4px 2px;
+}
+
+.boshiamy-row + .boshiamy-row {
+  border-top: 1px solid var(--panel-border);
+}
+
+.boshiamy-char {
+  flex: 0 0 1.6em;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.boshiamy-codes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.boshiamy-primary {
+  color: var(--fg);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.boshiamy-alt {
+  color: var(--fg-muted);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.boshiamy-none {
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
 /* AI result modal */
 .ai-modal-overlay {
   position: fixed;

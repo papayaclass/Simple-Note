@@ -17,6 +17,7 @@ export const MENU_COMMANDS: MenuCommandDef[] = [
   { key: 'lorem', label: '插入 Lorem Ipsum', requiresSelection: false },
   { key: 'wordCount', label: '字數統計', requiresSelection: true },
   { key: 'pinyin', label: '拼音查詢', requiresSelection: true },
+  { key: 'boshiamy', label: '嘸蝦米查碼', requiresSelection: true },
   { key: 'googleSearch', label: '在 Google 搜尋', requiresSelection: true },
   { key: 'googleMaps', label: '在 Google Maps 搜尋', requiresSelection: true },
   { key: 'youtube', label: '在 YouTube 搜尋', requiresSelection: true },

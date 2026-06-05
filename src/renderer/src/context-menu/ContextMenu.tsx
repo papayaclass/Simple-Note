@@ -3,12 +3,15 @@ import {
   halfToFullPunctuation,
   simplifiedToTraditional,
   toPinyin,
+  toBoshiamy,
+  BoshiamyEntry,
   LOREM_IPSUM,
   wordCount,
 } from './transforms';
 import { useStore } from '../store';
 import { AIResultModal, AIState } from './AIResultModal';
 import { PinyinModal } from './PinyinModal';
+import { BoshiamyModal } from './BoshiamyModal';
 import { MENU_COMMANDS, reconcileMenuCommands, isDivider } from './commands';
 
 type MenuItem = { divider: true } | { label: string; disabled: boolean; onClick: () => void };
@@ -43,10 +46,15 @@ interface PinyinState {
   pinyin: string;
 }
 
+interface BoshiamyState {
+  entries: BoshiamyEntry[];
+}
+
 export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null {
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [aiState, setAiState] = useState<AIState | null>(null);
   const [pinyinState, setPinyinState] = useState<PinyinState | null>(null);
+  const [boshiamyState, setBoshiamyState] = useState<BoshiamyState | null>(null);
   const setWordCount = useStore((s) => s.setWordCountPopover);
   const skills = useStore((s) => s.preferences.aiSkills);
   const menuCommands = useStore((s) => s.preferences.menuCommands);
@@ -171,6 +179,15 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
     close();
   };
 
+  const doBoshiamy = () => {
+    const text = (window.getSelection()?.toString() ?? '').trim();
+    if (!text) return;
+    const entries = toBoshiamy(text);
+    if (entries.length === 0) return;
+    setBoshiamyState({ entries });
+    close();
+  };
+
   // Open a web search for the selected text. window.open is intercepted by the
   // main process's setWindowOpenHandler, which routes it to the system browser
   // via shell.openExternal (see src/main/index.ts).
@@ -207,6 +224,7 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
       close();
     },
     pinyin: doPinyin,
+    boshiamy: doBoshiamy,
     googleSearch: () => {
       searchSelection((q) => `https://www.google.com/search?q=${q}`);
       close();
@@ -295,6 +313,9 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
           pinyin={pinyinState.pinyin}
           onClose={() => setPinyinState(null)}
         />
+      )}
+      {boshiamyState && (
+        <BoshiamyModal entries={boshiamyState.entries} onClose={() => setBoshiamyState(null)} />
       )}
     </>
   );
