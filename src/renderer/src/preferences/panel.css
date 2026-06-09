@@ -133,6 +133,12 @@
   margin-bottom: 14px;
 }
 
+.prefs-section-divider {
+  height: 1px;
+  background: var(--panel-border);
+  margin: 4px 0 18px;
+}
+
 .prefs-field label {
   display: flex;
   align-items: center;
@@ -536,6 +542,10 @@
   min-width: 200px;
   font-size: 13px;
   -webkit-app-region: no-drag;
+  /* Long menus near the bottom edge stay on-screen: cap the height and scroll
+     the overflow instead of spilling past the viewport. */
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
 }
 
 .context-menu-item {

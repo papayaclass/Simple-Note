@@ -17,6 +17,11 @@ export interface SimpleNoteAPI {
       userContent: string
     ) => Promise<{ ok: true; content: string } | { ok: false; reason: string }>;
   };
+  tts: {
+    speak: (
+      text: string
+    ) => Promise<{ ok: true; audio: string } | { ok: false; reason: string }>;
+  };
   youtube: {
     preview: (
       videoId: string
@@ -65,6 +70,9 @@ const api: SimpleNoteAPI = {
   },
   ai: {
     run: (userContent) => ipcRenderer.invoke('ai:run', userContent),
+  },
+  tts: {
+    speak: (text) => ipcRenderer.invoke('tts:speak', text),
   },
   youtube: {
     preview: (videoId) => ipcRenderer.invoke('youtube:preview', videoId),

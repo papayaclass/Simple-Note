@@ -6,6 +6,7 @@ import { useStore } from './store';
 import { PreferencesPanel } from './preferences/Panel';
 import { formatRemaining, formatAlarmLabel } from './timer/parse';
 import { playAlarm, stopAlarm } from './timer/sound';
+import { installSpeechShortcut } from './context-menu/speech';
 import './preferences/panel.css';
 
 export function App(): JSX.Element {
@@ -40,6 +41,13 @@ export function App(): JSX.Element {
   // A 1-second tick that drives the countdown display and fires timer/alarm
   // notifications. Only runs while a timer or alarm is active.
   const [now, setNow] = useState(() => Date.now());
+  // Register the Shift+Cmd+P pronunciation-replay shortcut once for the whole
+  // app (the singleton guards against duplicates), so two-column mode's two
+  // editors don't each fire it and play the audio twice.
+  useEffect(() => {
+    installSpeechShortcut();
+  }, []);
+
   useEffect(() => {
     if (!timer && alarms.length === 0) return;
     // Sync immediately so the countdown chip shows the correct value the moment

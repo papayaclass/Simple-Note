@@ -17,6 +17,8 @@ export interface Preferences {
   codeWrap: boolean;
   openRouterApiKey: string;
   openRouterModel: string;
+  geminiApiKey: string;
+  geminiTtsModel: string;
   aiGlobalInstruction: string;
   aiSkills: AISkill[];
   menuCommands: MenuItemPref[];
@@ -32,6 +34,8 @@ export const DEFAULT_PREFS: Preferences = {
   codeWrap: false,
   openRouterApiKey: '',
   openRouterModel: '',
+  geminiApiKey: '',
+  geminiTtsModel: 'gemini-3.1-flash-tts-preview',
   aiGlobalInstruction: '',
   aiSkills: [],
   menuCommands: DEFAULT_MENU_COMMANDS,

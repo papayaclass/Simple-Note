@@ -65,7 +65,9 @@ main 端在 `app.whenReady` 內註冊 handler，命名採 `namespace:action`（�
 
 **右鍵選單與文字轉換 (`src/renderer/src/context-menu/`)**
 
-提供簡轉繁（用 `opencc-js`）、半形標點轉全形、清除格式、插入 Lorem Ipsum、字數統計（含中文字、英文 words、含／不含空白字元）等命令。可從 macOS 應用選單（編輯 → ...）或右鍵叫出；兩者透過 `window.dispatchEvent(new CustomEvent('simple-note:command', ...))` 統一處理。
+提供簡轉繁（用 `opencc-js`）、半形標點轉全形、清除格式、插入 Lorem Ipsum、字數統計（含中文字、英文 words、含／不含空白字元）、聆聽發音等命令。可從 macOS 應用選單（編輯 → ...）或右鍵叫出；兩者透過 `window.dispatchEvent(new CustomEvent('simple-note:command', ...))` 統一處理。右鍵選單開啟後會用 `useLayoutEffect` 量測尺寸並把位置夾進可視範圍，過長時靠 CSS `max-height` + `overflow-y` 捲動。
+
+聆聽發音走 Gemini TTS（`src/main/gemini-tts.ts`）：main 端呼叫 `generateContent` 的 AUDIO 模式，把回傳的原始 PCM 補上 WAV 檔頭後以 base64 WAV 回傳，renderer 用 `<audio>` 播放。語音狀態集中在 `src/renderer/src/context-menu/speech.ts` 的**單例**（module scope，非 per-component）：`audioCache`（文字→音訊，重播不再送 API）、`inFlight`（同字併發去重）、`lastAudio`（重播上一次）。**務必保持單例**——雙欄模式有兩個 Editor → 兩個 `ContextMenu`，若把快取或 Shift+Cmd+P 監聽放回 component 內，按一次會播兩次甚至重疊。`installSpeechShortcut()` 在 `App.tsx` 只註冊一次（內部 `installed` 旗標防重複）。需在偏好設定的 API Keys 頁填入 Gemini API Key 與模型名稱（`geminiApiKey`、`geminiTtsModel`，預設 `gemini-3.1-flash-tts-preview`）。
 
 **樣式與排版**
 

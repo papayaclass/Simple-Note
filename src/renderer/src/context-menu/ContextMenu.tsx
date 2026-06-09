@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   halfToFullPunctuation,
   simplifiedToTraditional,
@@ -13,6 +13,7 @@ import { AIResultModal, AIState } from './AIResultModal';
 import { PinyinModal } from './PinyinModal';
 import { BoshiamyModal } from './BoshiamyModal';
 import { MENU_COMMANDS, reconcileMenuCommands, isDivider } from './commands';
+import { speak } from './speech';
 
 type MenuItem = { divider: true } | { label: string; disabled: boolean; onClick: () => void };
 
@@ -52,6 +53,11 @@ interface BoshiamyState {
 
 export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null {
   const [menu, setMenu] = useState<MenuState | null>(null);
+  // Position the menu is actually drawn at, clamped to stay inside the viewport
+  // (the raw click point can sit too close to the right/bottom edge for a long
+  // menu). Starts at the click point, then a layout effect nudges it on-screen.
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [aiState, setAiState] = useState<AIState | null>(null);
   const [pinyinState, setPinyinState] = useState<PinyinState | null>(null);
   const [boshiamyState, setBoshiamyState] = useState<BoshiamyState | null>(null);
@@ -69,6 +75,7 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
       const sel = window.getSelection();
       const hasSelection = !!sel && !sel.isCollapsed && sel.toString().length > 0;
       setMenu({ x: e.clientX, y: e.clientY, hasSelection });
+      setPos({ left: e.clientX, top: e.clientY });
     }
     function onClick() {
       setMenu(null);
@@ -82,6 +89,24 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
   }, []);
 
   const close = () => setMenu(null);
+
+  // Once the menu is laid out, clamp it so it never spills past the viewport
+  // edges. If it's taller than the screen, pin it to the top margin and let the
+  // CSS max-height + overflow scroll handle the rest.
+  useLayoutEffect(() => {
+    if (!menu || !menuRef.current) return;
+    const margin = 8;
+    const rect = menuRef.current.getBoundingClientRect();
+    let left = menu.x;
+    let top = menu.y;
+    if (left + rect.width + margin > window.innerWidth) {
+      left = Math.max(margin, window.innerWidth - rect.width - margin);
+    }
+    if (top + rect.height + margin > window.innerHeight) {
+      top = Math.max(margin, window.innerHeight - rect.height - margin);
+    }
+    if (left !== pos?.left || top !== pos?.top) setPos({ left, top });
+  }, [menu]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const runSkill = async (skill: { name: string; prompt: string }) => {
     const { from, to } = editor._tiptapEditor.state.selection;
@@ -243,6 +268,10 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
       );
       close();
     },
+    speak: () => {
+      void speak();
+      close();
+    },
   };
 
   const labelByKey = new Map(MENU_COMMANDS.map((c) => [c.key, c]));
@@ -284,8 +313,9 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
     <>
       {menu && (
         <div
+          ref={menuRef}
           className="context-menu"
-          style={{ position: 'fixed', top: menu.y, left: menu.x }}
+          style={{ position: 'fixed', top: pos?.top ?? menu.y, left: pos?.left ?? menu.x }}
           onMouseDown={(e) => e.stopPropagation()}
         >
           {items.map((item, i) =>

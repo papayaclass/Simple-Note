@@ -7,6 +7,7 @@ import { getPreferences, setPreference, setAllPreferences } from './preferences.
 import { getRate, clearRateCache } from './exchange-rate.js';
 import { getYouTubePreview } from './youtube-preview.js';
 import { runAI } from './openrouter.js';
+import { speakText } from './gemini-tts.js';
 
 app.setName('Simple Note');
 
@@ -263,6 +264,8 @@ app.whenReady().then(() => {
   ipcMain.handle('youtube:preview', async (_e, videoId: string) => getYouTubePreview(videoId));
 
   ipcMain.handle('ai:run', async (_e, userContent: string) => runAI(userContent));
+
+  ipcMain.handle('tts:speak', async (_e, text: string) => speakText(text));
 
   ipcMain.handle(
     'file:save',
