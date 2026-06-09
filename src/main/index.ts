@@ -5,6 +5,7 @@ import Store from 'electron-store';
 import { buildMenu } from './menu.js';
 import { getPreferences, setPreference, setAllPreferences } from './preferences.js';
 import { getRate, clearRateCache } from './exchange-rate.js';
+import { getYouTubePreview } from './youtube-preview.js';
 import { runAI } from './openrouter.js';
 
 app.setName('Simple Note');
@@ -258,6 +259,8 @@ app.whenReady().then(() => {
 
   ipcMain.handle('rate:get', async (_e, currency: string) => getRate(currency));
   ipcMain.handle('rate:clear', () => clearRateCache());
+
+  ipcMain.handle('youtube:preview', async (_e, videoId: string) => getYouTubePreview(videoId));
 
   ipcMain.handle('ai:run', async (_e, userContent: string) => runAI(userContent));
 

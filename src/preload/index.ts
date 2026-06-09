@@ -17,6 +17,22 @@ export interface SimpleNoteAPI {
       userContent: string
     ) => Promise<{ ok: true; content: string } | { ok: false; reason: string }>;
   };
+  youtube: {
+    preview: (
+      videoId: string
+    ) => Promise<
+      | {
+          ok: true;
+          data: {
+            title: string;
+            author: string;
+            thumbnail: string;
+            viewCount: string | null;
+          };
+        }
+      | { ok: false; reason: string }
+    >;
+  };
   file: {
     save: (
       markdown: string,
@@ -49,6 +65,9 @@ const api: SimpleNoteAPI = {
   },
   ai: {
     run: (userContent) => ipcRenderer.invoke('ai:run', userContent),
+  },
+  youtube: {
+    preview: (videoId) => ipcRenderer.invoke('youtube:preview', videoId),
   },
   file: {
     save: (markdown, options) => ipcRenderer.invoke('file:save', markdown, options),

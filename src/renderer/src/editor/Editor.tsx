@@ -11,6 +11,7 @@ import { TextSelection, AllSelection } from 'prosemirror-state';
 import { schema } from './schema';
 import { createLinkExtension } from './link';
 import { createMathPlugin } from '../math/overlay';
+import { createYouTubeMentionExtension } from './youtubeMention';
 import { createCodeWrapPlugin } from './codeWrap';
 import { createCodeBlockSelectPlugin } from './codeBlockSelect';
 import { deleteSelectedBlocks, deleteForwardEmptyBlock } from './blockDelete';
@@ -55,6 +56,7 @@ export function Editor({ onChange, handleRef, autoFocus = true }: Props): JSX.El
       key: 'simple-note-math',
       plugins: [createMathPlugin(() => useStore.getState().mathMode)],
     }),
+    createYouTubeMentionExtension(),
     createBlockNoteExtension({
       key: 'simple-note-codeblock-select',
       plugins: [createCodeBlockSelectPlugin()],

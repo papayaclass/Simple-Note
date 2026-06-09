@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Editor, EditorHandle } from './editor/Editor';
 import { attachMarquee } from './editor/marquee';
+import { YouTubePreviewHover } from './editor/youtubePreview';
 import { useStore } from './store';
 import { PreferencesPanel } from './preferences/Panel';
 import { formatRemaining, formatAlarmLabel } from './timer/parse';
@@ -283,6 +284,7 @@ export function App(): JSX.Element {
         </div>
       </div>
       <PreferencesPanel />
+      <YouTubePreviewHover />
       {wordCountPopover && (
         <div className="word-count-popover">
           <div className="word-count-row">
