@@ -245,6 +245,17 @@ app.on('before-quit', () => {
   if (ref) persistWindowBounds(ref);
 });
 
+function imageMimeToExt(mime: string): string {
+  switch (mime) {
+    case 'image/jpeg':
+      return 'jpg';
+    case 'image/svg+xml':
+      return 'svg';
+    default:
+      return mime.split('/')[1] ?? 'png';
+  }
+}
+
 app.whenReady().then(() => {
   buildMenu({
     onNew: () => createWindow(),
@@ -293,6 +304,26 @@ app.whenReady().then(() => {
       return { ok: true, path };
     }
   );
+
+  // Save an in-editor image (a data URL) to disk. Images are never persisted in
+  // the .md, so this is the only way to keep one — invoked from the preview
+  // lightbox's "另存新檔…" command.
+  ipcMain.handle('file:saveImage', async (e, dataUrl: string) => {
+    const win = BrowserWindow.fromWebContents(e.sender);
+    const m = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.*)$/s.exec(dataUrl);
+    if (!m) return { ok: false };
+    const ext = imageMimeToExt(m[1]!);
+    const saveOptions = {
+      defaultPath: `圖片.${ext}`,
+      filters: [{ name: 'Image', extensions: [ext] }],
+    };
+    const r = win
+      ? await dialog.showSaveDialog(win, saveOptions)
+      : await dialog.showSaveDialog(saveOptions);
+    if (r.canceled || !r.filePath) return { ok: false };
+    await writeFile(r.filePath, Buffer.from(m[2]!, 'base64'));
+    return { ok: true, path: r.filePath };
+  });
 
   ipcMain.on('window:setDirty', (e, dirty: boolean) => {
     BrowserWindow.fromWebContents(e.sender)?.setDocumentEdited(dirty);

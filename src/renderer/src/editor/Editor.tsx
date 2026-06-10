@@ -290,6 +290,55 @@ export function Editor({ onChange, handleRef, autoFocus = true }: Props): JSX.El
     return () => unsub?.();
   }, [editor]);
 
+  // Paste (Cmd+V) and Finder drag-drop of images. Listen on the editor host in
+  // the capture phase so we intercept before ProseMirror's own paste/drop, then
+  // stopPropagation+preventDefault to suppress the default handling. Each column
+  // has its own host, so the event is naturally scoped to the column it hit.
+  useEffect(() => {
+    const host = containerRef.current;
+    if (!host) return;
+
+    const onPaste = (e: ClipboardEvent): void => {
+      const files = imageFilesFrom(e.clipboardData);
+      if (files.length === 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const ref = editor.getTextCursorPosition().block.id;
+      void insertImageFiles(editor, files, ref);
+    };
+
+    const onDrop = (e: DragEvent): void => {
+      const files = imageFilesFrom(e.dataTransfer);
+      if (files.length === 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const view = (editor as any)._tiptapEditor.view;
+      let afterId: string | null = null;
+      const hit = view.posAtCoords({ left: e.clientX, top: e.clientY });
+      if (hit) afterId = resolveBlockId(view.state.doc, hit.pos);
+      if (!afterId) {
+        const blocks = editor.document;
+        afterId = blocks.length ? blocks[blocks.length - 1].id : null;
+      }
+      void insertImageFiles(editor, files, afterId);
+    };
+
+    const onDragOver = (e: DragEvent): void => {
+      if (e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files')) {
+        e.preventDefault();
+      }
+    };
+
+    host.addEventListener('paste', onPaste, true);
+    host.addEventListener('drop', onDrop, true);
+    host.addEventListener('dragover', onDragOver, true);
+    return () => {
+      host.removeEventListener('paste', onPaste, true);
+      host.removeEventListener('drop', onDrop, true);
+      host.removeEventListener('dragover', onDragOver, true);
+    };
+  }, [editor]);
+
   // Custom keyboard shortcuts for block transforms / styles.
   // Use e.code (physical key) instead of e.key because Option modifies the key value
   // on macOS (Opt+V → √, Opt+4 → ¢) and breaks naive e.key matching.
@@ -331,6 +380,12 @@ export function Editor({ onChange, handleRef, autoFocus = true }: Props): JSX.El
         transformCurrentBlock(editor, 'codeBlock');
         return;
       }
+      // Cmd+5 → checkbox
+      if (!e.altKey && !e.shiftKey && code === 'Digit5') {
+        e.preventDefault();
+        transformCurrentBlock(editor, 'checkListItem');
+        return;
+      }
       // Shift+Cmd+L → quote
       if (e.shiftKey && !e.altKey && code === 'KeyL') {
         e.preventDefault();
@@ -354,12 +409,6 @@ export function Editor({ onChange, handleRef, autoFocus = true }: Props): JSX.El
         e.preventDefault();
         const level = Number(code.slice(-1)) as 1 | 2 | 3;
         transformCurrentBlock(editor, 'heading', { level });
-        return;
-      }
-      // Option+Cmd+4 → checkbox
-      if (e.altKey && !e.shiftKey && code === 'Digit4') {
-        e.preventDefault();
-        transformCurrentBlock(editor, 'checkListItem');
         return;
       }
       // Option+Cmd+V → red text toggle
@@ -404,6 +453,45 @@ function transformCurrentBlock(
 ): void {
   const block = editor.getTextCursorPosition().block;
   editor.updateBlock(block, { type, props } as never);
+}
+
+// Pull image files out of a clipboard/drag payload (screenshots paste as
+// image/* files; Finder drops them as files too).
+function imageFilesFrom(data: DataTransfer | null): File[] {
+  if (!data) return [];
+  return Array.from(data.files).filter((f) => f.type.startsWith('image/'));
+}
+
+function readAsDataURL(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+// Insert each image as an `image` block, chained after the reference block so
+// multiple images keep their order. `afterId` null appends at the document end.
+async function insertImageFiles(editor: any, files: File[], afterId: string | null): Promise<void> {
+  let ref = afterId ?? editor.document[editor.document.length - 1]?.id ?? null;
+  for (const file of files) {
+    if (!ref) return;
+    const src = await readAsDataURL(file);
+    const [inserted] = editor.insertBlocks([{ type: 'image', props: { src } }], ref, 'after');
+    ref = inserted?.id ?? ref;
+  }
+}
+
+// Walk up from a ProseMirror position to the enclosing block's id (the
+// blockContainer node carries `attrs.id`), used to place a dropped image.
+function resolveBlockId(doc: any, pos: number): string | null {
+  const $pos = doc.resolve(Math.min(Math.max(pos, 0), doc.content.size));
+  for (let d = $pos.depth; d > 0; d--) {
+    const node = $pos.node(d);
+    if (node?.attrs?.id) return node.attrs.id;
+  }
+  return null;
 }
 
 // Extract the plain text of a BlockNote block's inline content.

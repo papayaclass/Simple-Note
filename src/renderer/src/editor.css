@@ -191,6 +191,117 @@
   background: transparent;
 }
 
+/* image block */
+.sn-image-block {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  line-height: 0; /* drop the inline baseline gap under the image */
+}
+.sn-image-block img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  cursor: grab; /* the image body can be dragged to reorder the block */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* while reordering an image: force the grabbing cursor everywhere and paint the
+   drop-position line */
+body.sn-image-dragging,
+body.sn-image-dragging * {
+  cursor: grabbing !important;
+}
+.sn-image-drop-indicator {
+  position: fixed;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 1px;
+  z-index: 10001;
+  pointer-events: none;
+}
+.sn-image-block.selected img,
+.sn-image-block.marquee-selected img {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* resize handles — generous hit areas that extend a little past the image edge,
+   shown only while the block is selected. The visible nub is the ::after. */
+.sn-image-handle {
+  position: absolute;
+  z-index: 3;
+}
+.sn-image-handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  transform: translate(-50%, -50%);
+  background: #fff;
+  border: 1.5px solid var(--accent);
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
+}
+.sn-h-nw,
+.sn-h-ne,
+.sn-h-sw,
+.sn-h-se {
+  width: 18px;
+  height: 18px;
+}
+.sn-h-nw {
+  top: -9px;
+  left: -9px;
+  cursor: nwse-resize;
+}
+.sn-h-ne {
+  top: -9px;
+  right: -9px;
+  cursor: nesw-resize;
+}
+.sn-h-sw {
+  bottom: -9px;
+  left: -9px;
+  cursor: nesw-resize;
+}
+.sn-h-se {
+  bottom: -9px;
+  right: -9px;
+  cursor: nwse-resize;
+}
+.sn-h-n,
+.sn-h-s {
+  left: 9px;
+  right: 9px;
+  height: 16px;
+  cursor: ns-resize;
+}
+.sn-h-n {
+  top: -8px;
+}
+.sn-h-s {
+  bottom: -8px;
+}
+.sn-h-e,
+.sn-h-w {
+  top: 9px;
+  bottom: 9px;
+  width: 16px;
+  cursor: ew-resize;
+}
+.sn-h-w {
+  left: -8px;
+}
+.sn-h-e {
+  right: -8px;
+}
+
 /* divider block (typed via "---") */
 .bn-divider {
   border: none;

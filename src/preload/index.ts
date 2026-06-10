@@ -43,6 +43,7 @@ export interface SimpleNoteAPI {
       markdown: string,
       options: { path: string | null; suggestedName?: string }
     ) => Promise<{ ok: boolean; path?: string }>;
+    saveImage: (dataUrl: string) => Promise<{ ok: boolean; path?: string }>;
   };
   window: {
     setDirty: (dirty: boolean) => void;
@@ -79,6 +80,7 @@ const api: SimpleNoteAPI = {
   },
   file: {
     save: (markdown, options) => ipcRenderer.invoke('file:save', markdown, options),
+    saveImage: (dataUrl) => ipcRenderer.invoke('file:saveImage', dataUrl),
   },
   window: {
     setDirty: (dirty) => ipcRenderer.send('window:setDirty', dirty),

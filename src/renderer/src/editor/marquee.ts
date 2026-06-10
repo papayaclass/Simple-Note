@@ -1,4 +1,5 @@
 import { TextSelection } from 'prosemirror-state';
+import { setMarqueeImageSelection, clearMarqueeImageSelection } from './image';
 
 const DRAG_THRESHOLD = 4; // px before a press becomes a marquee drag
 
@@ -55,6 +56,9 @@ export function attachMarquee(
 
   function onDown(e: MouseEvent): void {
     if (e.button !== 0) return;
+    // A fresh left-press clears any image frames left over from a previous
+    // marquee, mirroring how clicking clears the text selection.
+    clearMarqueeImageSelection();
     const t = e.target as HTMLElement;
     // Started on real block text → leave it to the editor's normal caret/drag.
     if (t.closest('.bn-block-content')) return;
@@ -146,6 +150,19 @@ export function attachMarquee(
     const right = Math.max(cx, startX);
     const top = Math.min(cy, startY);
     const bottom = Math.max(cy, startY);
+
+    // Image blocks have no text range, so they can't join the ProseMirror
+    // TextSelection. Mark the ones the rectangle touches so they show the same
+    // blue frame as a click-selected image (handled via image.tsx's store).
+    const imageIds: string[] = [];
+    view.dom.querySelectorAll<HTMLElement>('.sn-image-block').forEach((el) => {
+      const r = el.getBoundingClientRect();
+      const hit = r.right >= left && r.left <= right && r.bottom >= top && r.top <= bottom;
+      if (!hit) return;
+      const id = el.closest('[data-id]')?.getAttribute('data-id');
+      if (id) imageIds.push(id);
+    });
+    setMarqueeImageSelection(imageIds);
 
     const doc = view.state.doc;
     const ranges: Array<{ from: number; to: number }> = [];

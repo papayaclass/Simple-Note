@@ -4,6 +4,7 @@ import { attachMarquee } from './editor/marquee';
 import { YouTubePreviewHover } from './editor/youtubePreview';
 import { useStore } from './store';
 import { PreferencesPanel } from './preferences/Panel';
+import { ImageLightbox } from './ImageLightbox';
 import { formatRemaining, formatAlarmLabel } from './timer/parse';
 import { playAlarm, stopAlarm } from './timer/sound';
 import { installSpeechShortcut } from './context-menu/speech';
@@ -292,6 +293,7 @@ export function App(): JSX.Element {
         </div>
       </div>
       <PreferencesPanel />
+      <ImageLightbox />
       <YouTubePreviewHover />
       {wordCountPopover && (
         <div className="word-count-popover">
