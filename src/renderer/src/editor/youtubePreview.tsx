@@ -204,10 +204,7 @@ export function YouTubePreviewHover(): JSX.Element | null {
         ) : (
           <>
             <div className="sn-yt-title">{data?.title}</div>
-            <div className="sn-yt-meta">
-              {data?.author}
-              {data?.viewCount ? ` · ${data.viewCount}` : ''}
-            </div>
+            <div className="sn-yt-meta">{data?.author}</div>
           </>
         )}
       </div>

@@ -442,3 +442,11 @@ body.sn-image-dragging * {
   color: var(--fg-muted);
   font-weight: 500;
 }
+
+/* View count rendered in parentheses just after the link title. */
+.sn-yt-views {
+  color: var(--fg-muted);
+  margin-left: 6px;
+  user-select: none;
+  white-space: nowrap;
+}

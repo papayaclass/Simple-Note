@@ -11,6 +11,7 @@ const KEY = new PluginKey('youtube-mention');
 interface PreviewEntry {
   title?: string;
   channel?: string;
+  viewCount?: string | null;
   pending?: Promise<void>;
   failed?: boolean;
 }
@@ -23,7 +24,11 @@ function ensurePreview(id: string, onLoaded: () => void): void {
     .preview(id)
     .then((res) => {
       if (res.ok) {
-        previewCache.set(id, { title: res.data.title, channel: res.data.author });
+        previewCache.set(id, {
+          title: res.data.title,
+          channel: res.data.author,
+          viewCount: res.data.viewCount,
+        });
       } else {
         // Offline / unavailable: leave the raw URL untouched, don't spam retries.
         previewCache.set(id, { failed: true });
@@ -62,6 +67,14 @@ function buildMentionEl(channel: string): HTMLElement {
   return wrap;
 }
 
+function buildViewsEl(viewCount: string): HTMLElement {
+  const span = document.createElement('span');
+  span.className = 'sn-yt-views';
+  span.contentEditable = 'false';
+  span.textContent = `(${viewCount})`;
+  return span;
+}
+
 // Pull the YouTube link href off a text node, if it carries one.
 function youTubeHrefOf(node: any): string | null {
   if (!node.isText || !node.text) return null;
@@ -85,24 +98,45 @@ export function createYouTubeMentionPlugin(): Plugin {
     const decos: Decoration[] = [];
     doc.descendants((node: any, pos: number) => {
       if (!node.isTextblock) return true;
-      let prevHref: string | null = null;
+      // Collapse each contiguous YouTube link into one run so the channel widget
+      // sits before its start and the view-count widget after its end.
+      let run: { href: string; start: number; end: number } | null = null;
+      const runs: Array<{ href: string; start: number; end: number }> = [];
       node.forEach((child: any, offset: number) => {
         const href = youTubeHrefOf(child);
-        // Only the first text node of a contiguous link run gets the widget.
-        if (href && href !== prevHref) {
-          const id = parseYouTubeId(href)!;
-          const channel = previewCache.get(id)?.channel;
-          if (channel) {
-            decos.push(
-              Decoration.widget(pos + 1 + offset, () => buildMentionEl(channel), {
-                side: -1,
-                key: `yt:${id}:${channel}`,
-              })
-            );
-          }
+        const start = pos + 1 + offset;
+        const end = start + child.nodeSize;
+        if (href && run && run.href === href) {
+          run.end = end;
+        } else {
+          if (run) runs.push(run);
+          run = href ? { href, start, end } : null;
         }
-        prevHref = href;
       });
+      if (run) runs.push(run);
+
+      for (const r of runs) {
+        const id = parseYouTubeId(r.href)!;
+        const entry = previewCache.get(id);
+        const channel = entry?.channel;
+        if (channel) {
+          decos.push(
+            Decoration.widget(r.start, () => buildMentionEl(channel), {
+              side: -1,
+              key: `yt:${id}:${channel}`,
+            })
+          );
+        }
+        const viewCount = entry?.viewCount;
+        if (viewCount) {
+          decos.push(
+            Decoration.widget(r.end, () => buildViewsEl(viewCount), {
+              side: 1,
+              key: `ytv:${id}:${viewCount}`,
+            })
+          );
+        }
+      }
       return false;
     });
     return DecorationSet.create(doc, decos);
