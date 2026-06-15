@@ -8,6 +8,13 @@ export interface YouTubePreviewData {
   thumbnail: string;
   // Pre-formatted for display (e.g. "123 萬次觀看"); null when it can't be parsed.
   viewCount: string | null;
+  // Raw numeric view count for sorting; null when it can't be parsed. Mirrors
+  // viewCount (same source), kept separately so the renderer doesn't have to
+  // parse "123 萬次觀看" back into a number.
+  viewCountRaw: number | null;
+  // Pre-formatted upload date/time in Taiwan time (e.g. "2025年11月21日 上午6:00");
+  // null when the watch page doesn't expose it.
+  publishDate: string | null;
 }
 
 interface CacheEntry {
@@ -59,10 +66,14 @@ async function fetchOEmbed(videoId: string): Promise<{ title: string; author: st
   return { title: data.title ?? '', author: data.author_name ?? '' };
 }
 
-// View count isn't exposed by oEmbed, so scrape it from the watch page's
-// embedded JSON. This depends on YouTube's page shape; if it ever changes we
-// return null and the popup simply omits the line (no error shown).
-async function fetchViewCount(videoId: string): Promise<string | null> {
+// Neither view count nor upload date is exposed by oEmbed, so scrape both from
+// the watch page's embedded JSON in a single request. This depends on YouTube's
+// page shape; if it ever changes the affected field is null and the popup simply
+// omits that line (no error shown).
+async function fetchWatchPageData(
+  videoId: string
+): Promise<{ viewCount: string | null; viewCountRaw: number | null; publishDate: string | null }> {
+  const empty = { viewCount: null, viewCountRaw: null, publishDate: null };
   try {
     const res = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
       headers: {
@@ -72,13 +83,21 @@ async function fetchViewCount(videoId: string): Promise<string | null> {
           '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       },
     });
-    if (!res.ok) return null;
+    if (!res.ok) return empty;
     const html = await res.text();
-    const m = html.match(/"viewCount":"(\d+)"/);
-    if (!m) return null;
-    return formatViewCount(Number(m[1]));
+
+    const viewMatch = html.match(/"viewCount":"(\d+)"/);
+    const viewCountRaw = viewMatch ? Number(viewMatch[1]) : null;
+    const viewCount = viewCountRaw !== null ? formatViewCount(viewCountRaw) : null;
+
+    // "uploadDate" in the player microformat carries a full ISO timestamp with
+    // timezone (e.g. "2025-11-20T14:00:08-08:00") on current pages.
+    const dateMatch = html.match(/"uploadDate":"([^"]+)"/);
+    const publishDate = dateMatch ? formatPublishDate(dateMatch[1]) : null;
+
+    return { viewCount, viewCountRaw, publishDate };
   } catch {
-    return null;
+    return empty;
   }
 }
 
@@ -94,6 +113,20 @@ function formatViewCount(n: number): string {
   return `${n.toLocaleString('en-US')} 次觀看`;
 }
 
+// YouTube's uploadDate is effectively a calendar date — the time component is an
+// unreliable midnight placeholder — so we show the date only, rendered in Taiwan
+// time. Not every video exposes it; callers treat null as "omit the date".
+function formatPublishDate(raw: string): string | null {
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return null;
+  return new Intl.DateTimeFormat('zh-TW', {
+    timeZone: 'Asia/Taipei',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  }).format(d);
+}
+
 export async function getYouTubePreview(
   videoId: string
 ): Promise<{ ok: true; data: YouTubePreviewData } | { ok: false; reason: string }> {
@@ -106,16 +139,19 @@ export async function getYouTubePreview(
   }
 
   try {
-    // Title and view count are independent fetches; run them together.
-    const [oembed, viewCount] = await Promise.all([
+    // Title comes from oEmbed; view count and upload date from the watch page —
+    // independent fetches, so run them together.
+    const [oembed, watch] = await Promise.all([
       fetchOEmbed(videoId),
-      fetchViewCount(videoId),
+      fetchWatchPageData(videoId),
     ]);
     const data: YouTubePreviewData = {
       title: oembed.title,
       author: oembed.author,
       thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-      viewCount,
+      viewCount: watch.viewCount,
+      viewCountRaw: watch.viewCountRaw,
+      publishDate: watch.publishDate,
     };
     cache.set(videoId, { data, fetchedAt: Date.now() });
     void saveDiskCache();

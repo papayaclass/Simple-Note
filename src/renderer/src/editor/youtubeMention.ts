@@ -12,10 +12,20 @@ interface PreviewEntry {
   title?: string;
   channel?: string;
   viewCount?: string | null;
+  viewCountRaw?: number | null;
   pending?: Promise<void>;
   failed?: boolean;
 }
 const previewCache = new Map<string, PreviewEntry>();
+
+/**
+ * Raw numeric view count for a video id, or null when it isn't known yet
+ * (still loading, offline, or unavailable). Read by the "sort by views"
+ * command, which reuses the cache the mention plugin has already populated.
+ */
+export function getCachedViewCount(id: string): number | null {
+  return previewCache.get(id)?.viewCountRaw ?? null;
+}
 
 function ensurePreview(id: string, onLoaded: () => void): void {
   const cached = previewCache.get(id);
@@ -28,6 +38,7 @@ function ensurePreview(id: string, onLoaded: () => void): void {
           title: res.data.title,
           channel: res.data.author,
           viewCount: res.data.viewCount,
+          viewCountRaw: res.data.viewCountRaw,
         });
       } else {
         // Offline / unavailable: leave the raw URL untouched, don't spam retries.

@@ -34,6 +34,8 @@ interface PreviewData {
   author: string;
   thumbnail: string;
   viewCount: string | null;
+  viewCountRaw: number | null;
+  publishDate: string | null;
 }
 
 interface ViewState {
@@ -106,7 +108,14 @@ export function YouTubePreviewHover(): JSX.Element | null {
         rect,
         loading: true,
         error: false,
-        data: { title: '', author: '', thumbnail: thumbUrl(id), viewCount: null },
+        data: {
+          title: '',
+          author: '',
+          thumbnail: thumbUrl(id),
+          viewCount: null,
+          viewCountRaw: null,
+          publishDate: null,
+        },
       });
       window.api.youtube
         .preview(id)
@@ -204,7 +213,10 @@ export function YouTubePreviewHover(): JSX.Element | null {
         ) : (
           <>
             <div className="sn-yt-title">{data?.title}</div>
-            <div className="sn-yt-meta">{data?.author}</div>
+            <div className="sn-yt-meta">
+              {data?.author}
+              {data?.publishDate && ` (${data.publishDate})`}
+            </div>
           </>
         )}
       </div>

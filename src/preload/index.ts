@@ -33,6 +33,8 @@ export interface SimpleNoteAPI {
             author: string;
             thumbnail: string;
             viewCount: string | null;
+            viewCountRaw: number | null;
+            publishDate: string | null;
           };
         }
       | { ok: false; reason: string }

@@ -14,6 +14,8 @@ import { PinyinModal } from './PinyinModal';
 import { BoshiamyModal } from './BoshiamyModal';
 import { MENU_COMMANDS, reconcileMenuCommands, isDivider } from './commands';
 import { speak } from './speech';
+import { parseYouTubeId } from '../editor/youtubePreview';
+import { getCachedViewCount } from '../editor/youtubeMention';
 
 type MenuItem = { divider: true } | { label: string; disabled: boolean; onClick: () => void };
 
@@ -29,6 +31,21 @@ function collapseDividers(items: MenuItem[]): MenuItem[] {
   }
   while (result.length > 0 && 'divider' in result[result.length - 1]) result.pop();
   return result;
+}
+
+// The first YouTube video id linked anywhere in a top-level block, or null when
+// the block carries no YouTube link. Used to decide which blocks participate in
+// the "sort by views" command and to look up their view counts.
+function blockYouTubeId(block: any): string | null {
+  const content = block?.content;
+  if (!Array.isArray(content)) return null;
+  for (const inline of content) {
+    if (inline?.type === 'link' && typeof inline.href === 'string') {
+      const id = parseYouTubeId(inline.href);
+      if (id) return id;
+    }
+  }
+  return null;
 }
 
 interface Props {
@@ -191,6 +208,41 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
     tipTap.chain().focus().insertContent(LOREM_IPSUM).run();
   };
 
+  // Reorder every top-level block that links a YouTube video by view count
+  // (most-viewed first), leaving all other blocks where they are. The YouTube
+  // blocks are sorted among the slots they already occupy, so interleaved
+  // headings/text/images don't move. Blocks whose view count isn't known yet
+  // (still loading / offline / unavailable) sink to the bottom of that group,
+  // keeping their relative order. One replaceBlocks call = one undo step.
+  const sortYouTubeByViews = () => {
+    const blocks = editor.document as any[];
+    const slots: number[] = [];
+    const ytBlocks: Array<{ block: any; views: number | null; order: number }> = [];
+    blocks.forEach((block, i) => {
+      const id = blockYouTubeId(block);
+      if (!id) return;
+      slots.push(i);
+      ytBlocks.push({ block, views: getCachedViewCount(id), order: slots.length - 1 });
+    });
+    if (ytBlocks.length < 2) return; // nothing to reorder
+
+    const sorted = [...ytBlocks].sort((a, b) => {
+      if (a.views === b.views) return a.order - b.order; // stable
+      if (a.views === null) return 1; // unknown counts sink to the bottom
+      if (b.views === null) return -1;
+      return b.views - a.views; // most-viewed first
+    });
+
+    const next = blocks.slice();
+    slots.forEach((slot, k) => {
+      next[slot] = sorted[k].block;
+    });
+    (editor.replaceBlocks as (remove: unknown, insert: unknown) => void)(
+      blocks.map((b) => b.id),
+      next
+    );
+  };
+
   const doWordCount = () => {
     const text = window.getSelection()?.toString() ?? '';
     const wc = wordCount(text);
@@ -242,6 +294,10 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
     },
     lorem: () => {
       insertLoremIpsum();
+      close();
+    },
+    sortYoutube: () => {
+      sortYouTubeByViews();
       close();
     },
     wordCount: () => {

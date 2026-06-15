@@ -15,6 +15,7 @@ export const MENU_COMMANDS: MenuCommandDef[] = [
   { key: 'clearFormat', label: '清除所有格式', requiresSelection: true },
   { key: 'mergeBreaks', label: '分段符號轉分行符號', requiresSelection: true },
   { key: 'lorem', label: '插入 Lorem Ipsum', requiresSelection: false },
+  { key: 'sortYoutube', label: '依觀看數排序 YouTube', requiresSelection: false },
   { key: 'wordCount', label: '字數統計', requiresSelection: true },
   { key: 'pinyin', label: '拼音查詢', requiresSelection: true },
   { key: 'boshiamy', label: '嘸蝦米查碼', requiresSelection: true },
