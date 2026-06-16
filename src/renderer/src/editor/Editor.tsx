@@ -120,6 +120,53 @@ export function Editor({ onChange, handleRef, autoFocus = true }: Props): JSX.El
       },
     }),
     createBlockNoteExtension({
+      key: 'simple-note-heading-enter',
+      keyboardShortcuts: {
+        // Pressing Enter at the very start or end of a heading should leave a
+        // plain paragraph behind, not another heading. Splitting in the middle
+        // keeps the default behaviour (both halves stay headings). Returns false
+        // for every other case so the normal Enter handling still runs.
+        Enter: ({ editor }) => {
+          const { block } = editor.getTextCursorPosition();
+          if (block.type !== 'heading') return false;
+
+          const tt = (editor as unknown as { _tiptapEditor: { state: any } })._tiptapEditor;
+          const { selection } = tt.state;
+          if (!selection.empty) return false; // a real text selection → let default split
+          const { $from } = selection;
+          const atStart = $from.parentOffset === 0;
+          const atEnd = $from.parentOffset === $from.parent.content.size;
+
+          if (atStart && !atEnd) {
+            // Cursor at the start of a non-empty heading: push the heading down
+            // and drop a plain paragraph in the spot it used to occupy.
+            (editor.insertBlocks as (b: unknown, r: unknown, p: string) => unknown)(
+              [{ type: 'paragraph' }],
+              block,
+              'before'
+            );
+            return true;
+          }
+
+          if (atEnd) {
+            // Cursor at the end (or an empty heading): start a plain paragraph
+            // below and move the caret into it.
+            const [inserted] = (
+              editor.insertBlocks as (
+                b: unknown,
+                r: unknown,
+                p: string
+              ) => Array<{ id: string }>
+            )([{ type: 'paragraph' }], block, 'after');
+            if (inserted) editor.setTextCursorPosition(inserted.id, 'start');
+            return true;
+          }
+
+          return false; // middle of the heading → default split (stays a heading)
+        },
+      },
+    }),
+    createBlockNoteExtension({
       key: 'simple-note-select-all',
       keyboardShortcuts: {
         'Mod-a': ({ editor }) => {
