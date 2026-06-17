@@ -2,6 +2,8 @@ import { TextSelection } from 'prosemirror-state';
 import { setMarqueeImageSelection, clearMarqueeImageSelection } from './image';
 
 const DRAG_THRESHOLD = 4; // px before a press becomes a marquee drag
+const EDGE_ZONE = 56; // px from the container edge where auto-scroll kicks in
+const MAX_SCROLL_SPEED = 24; // px per frame at full intensity
 
 interface ProseView {
   state: any;
@@ -53,6 +55,12 @@ export function attachMarquee(
   let startY = 0;
   let active = false;
   let box: HTMLDivElement | null = null;
+  // Latest pointer position (viewport coords), kept so the auto-scroll loop can
+  // keep re-drawing / re-selecting while the mouse is held still at the edge.
+  let lastX = 0;
+  let lastY = 0;
+  let scrollVel = 0; // px/frame; +down, -up, 0 = idle
+  let rafId = 0;
 
   function onDown(e: MouseEvent): void {
     if (e.button !== 0) return;
@@ -100,13 +108,17 @@ export function attachMarquee(
       view.focus();
     }
     e.preventDefault();
-    drawBox(e.clientX, e.clientY);
-    selectWithin(e.clientX, e.clientY);
+    lastX = e.clientX;
+    lastY = e.clientY;
+    drawBox(lastX, lastY);
+    selectWithin(lastX, lastY);
+    updateAutoScroll();
   }
 
   function onUp(e: MouseEvent): void {
     window.removeEventListener('mousemove', onMove, true);
     window.removeEventListener('mouseup', onUp, true);
+    stopAutoScroll();
     if (box) {
       box.remove();
       box = null;
@@ -131,6 +143,53 @@ export function attachMarquee(
     }
     active = false;
     view = null;
+  }
+
+  // When the pointer nears the top/bottom edge of the scroll container while
+  // dragging, set a scroll velocity and (re)start the rAF loop. Leaving the edge
+  // zone sets the velocity to 0, which ends the loop on its next tick.
+  function updateAutoScroll(): void {
+    const rect = root.getBoundingClientRect();
+    const canScroll = root.scrollHeight > root.clientHeight;
+    let v = 0;
+    if (canScroll) {
+      if (lastY > rect.bottom - EDGE_ZONE) {
+        const intensity = Math.min((lastY - (rect.bottom - EDGE_ZONE)) / EDGE_ZONE, 1);
+        v = intensity * MAX_SCROLL_SPEED;
+      } else if (lastY < rect.top + EDGE_ZONE) {
+        const intensity = Math.min((rect.top + EDGE_ZONE - lastY) / EDGE_ZONE, 1);
+        v = -intensity * MAX_SCROLL_SPEED;
+      }
+    }
+    scrollVel = v;
+    if (v !== 0 && !rafId) rafId = requestAnimationFrame(autoScrollTick);
+  }
+
+  function autoScrollTick(): void {
+    rafId = 0;
+    if (!view || !active || scrollVel === 0) return;
+    const before = root.scrollTop;
+    root.scrollTop = before + scrollVel;
+    const delta = root.scrollTop - before; // actual movement (clamped at bounds)
+    if (delta !== 0) {
+      // The box is drawn in fixed viewport coords, but the selection should stay
+      // anchored to the content where the drag began. As the content scrolls up
+      // by `delta`, shift the start point up by the same amount so the rectangle
+      // keeps growing over the blocks scrolling into view.
+      startY -= delta;
+      drawBox(lastX, lastY);
+      selectWithin(lastX, lastY);
+      rafId = requestAnimationFrame(autoScrollTick);
+    } else {
+      // Hit the top/bottom of the document — nothing more to reveal.
+      scrollVel = 0;
+    }
+  }
+
+  function stopAutoScroll(): void {
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = 0;
+    scrollVel = 0;
   }
 
   function drawBox(cx: number, cy: number): void {
@@ -190,6 +249,7 @@ export function attachMarquee(
     root.removeEventListener('mousedown', onDown, true);
     window.removeEventListener('mousemove', onMove, true);
     window.removeEventListener('mouseup', onUp, true);
+    stopAutoScroll();
     if (box) box.remove();
   };
 }
