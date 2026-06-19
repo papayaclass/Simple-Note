@@ -25,6 +25,9 @@ export interface Preferences {
   lineHeight: number;
   paragraphSpacing: number;
   topPadding: number;
+  heading1Scale: number;
+  heading2Scale: number;
+  heading3Scale: number;
   exchangeRateApiKey: string;
   codeWrap: boolean;
   openRouterApiKey: string;
@@ -61,6 +64,9 @@ const DEFAULTS: Preferences = {
   lineHeight: 1.6,
   paragraphSpacing: 8,
   topPadding: 96,
+  heading1Scale: 2,
+  heading2Scale: 1.5,
+  heading3Scale: 1.2,
   exchangeRateApiKey: '',
   codeWrap: false,
   openRouterApiKey: '',
@@ -81,6 +87,9 @@ export function getPreferences(): Preferences {
     lineHeight: store.get('lineHeight', DEFAULTS.lineHeight),
     paragraphSpacing: store.get('paragraphSpacing', DEFAULTS.paragraphSpacing),
     topPadding: store.get('topPadding', DEFAULTS.topPadding),
+    heading1Scale: store.get('heading1Scale', DEFAULTS.heading1Scale),
+    heading2Scale: store.get('heading2Scale', DEFAULTS.heading2Scale),
+    heading3Scale: store.get('heading3Scale', DEFAULTS.heading3Scale),
     exchangeRateApiKey: store.get('exchangeRateApiKey', DEFAULTS.exchangeRateApiKey),
     codeWrap: store.get('codeWrap', DEFAULTS.codeWrap),
     openRouterApiKey: store.get('openRouterApiKey', DEFAULTS.openRouterApiKey),

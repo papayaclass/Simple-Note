@@ -13,6 +13,9 @@ export interface Preferences {
   lineHeight: number;
   paragraphSpacing: number;
   topPadding: number;
+  heading1Scale: number;
+  heading2Scale: number;
+  heading3Scale: number;
   exchangeRateApiKey: string;
   codeWrap: boolean;
   openRouterApiKey: string;
@@ -30,6 +33,9 @@ export const DEFAULT_PREFS: Preferences = {
   lineHeight: 1.6,
   paragraphSpacing: 8,
   topPadding: 96,
+  heading1Scale: 2,
+  heading2Scale: 1.5,
+  heading3Scale: 1.2,
   exchangeRateApiKey: '',
   codeWrap: false,
   openRouterApiKey: '',

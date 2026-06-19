@@ -30,16 +30,28 @@
 .bn-block-content[data-content-type='heading'] {
   font-weight: 700;
 }
+
+/* BlockNote 會省略預設 H1 的 data-level，因此 H1 要用無 data-level 的情況命中。 */
+.bn-block-content[data-content-type='heading']:not([data-level]),
+.bn-block-content[data-content-type='heading'][data-level='1'] {
+  --level: var(--heading-1-size, 2em);
+  font-size: var(--heading-1-size, 2em) !important;
+}
+.bn-block-content[data-content-type='heading'][data-level='2'] {
+  --level: var(--heading-2-size, 1.5em);
+  font-size: var(--heading-2-size, 1.5em) !important;
+}
+.bn-block-content[data-content-type='heading'][data-level='3'] {
+  --level: var(--heading-3-size, 1.2em);
+  font-size: var(--heading-3-size, 1.2em) !important;
+}
 [data-level='1'].bn-block-content {
-  font-size: 2em;
   line-height: 1.25;
 }
 [data-level='2'].bn-block-content {
-  font-size: 1.5em;
   line-height: 1.3;
 }
 [data-level='3'].bn-block-content {
-  font-size: 1.2em;
   line-height: 1.35;
 }
 

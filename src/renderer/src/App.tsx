@@ -117,6 +117,9 @@ export function App(): JSX.Element {
     r.setProperty('--line-height', `${preferences.lineHeight}`);
     r.setProperty('--paragraph-spacing', `${preferences.paragraphSpacing}px`);
     r.setProperty('--top-padding', `${preferences.topPadding}px`);
+    r.setProperty('--heading-1-size', `${preferences.heading1Scale}em`);
+    r.setProperty('--heading-2-size', `${preferences.heading2Scale}em`);
+    r.setProperty('--heading-3-size', `${preferences.heading3Scale}em`);
     document.documentElement.setAttribute(
       'data-code-wrap',
       preferences.codeWrap ? 'true' : 'false'

@@ -183,6 +183,33 @@ export function PreferencesPanel(): JSX.Element | null {
                   unit="px"
                   onChange={(v) => update({ topPadding: v })}
                 />
+                <Slider
+                  label="標題一大小"
+                  value={draft.heading1Scale}
+                  min={1}
+                  max={3}
+                  step={0.05}
+                  unit="×"
+                  onChange={(v) => update({ heading1Scale: v })}
+                />
+                <Slider
+                  label="標題二大小"
+                  value={draft.heading2Scale}
+                  min={1}
+                  max={3}
+                  step={0.05}
+                  unit="×"
+                  onChange={(v) => update({ heading2Scale: v })}
+                />
+                <Slider
+                  label="標題三大小"
+                  value={draft.heading3Scale}
+                  min={1}
+                  max={3}
+                  step={0.05}
+                  unit="×"
+                  onChange={(v) => update({ heading3Scale: v })}
+                />
               </>
             )}
 
