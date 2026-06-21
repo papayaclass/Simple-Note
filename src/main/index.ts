@@ -113,7 +113,9 @@ function getNewWindowBounds(): WindowBounds {
 function persistWindowBounds(win: BrowserWindow): void {
   if (!win || win.isDestroyed()) return;
   if (win.isMinimized() || win.isFullScreen()) return;
-  windowStore.set('bounds', win.getNormalBounds());
+  // On macOS, a zoomed/maximized window keeps its previous size in
+  // getNormalBounds(), so persist the actual visible bounds instead.
+  windowStore.set('bounds', win.getBounds());
 }
 
 function createWindow(openPath?: string): BrowserWindow {
