@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { clipboard, contextBridge, ipcRenderer } from 'electron';
 
 export interface SimpleNoteAPI {
   prefs: {
@@ -47,6 +47,9 @@ export interface SimpleNoteAPI {
     ) => Promise<{ ok: boolean; path?: string }>;
     saveImage: (dataUrl: string) => Promise<{ ok: boolean; path?: string }>;
   };
+  clipboard: {
+    readText: () => string;
+  };
   window: {
     setDirty: (dirty: boolean) => void;
     setTitle: (title: string) => void;
@@ -83,6 +86,9 @@ const api: SimpleNoteAPI = {
   file: {
     save: (markdown, options) => ipcRenderer.invoke('file:save', markdown, options),
     saveImage: (dataUrl) => ipcRenderer.invoke('file:saveImage', dataUrl),
+  },
+  clipboard: {
+    readText: () => clipboard.readText(),
   },
   window: {
     setDirty: (dirty) => ipcRenderer.send('window:setDirty', dirty),

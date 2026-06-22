@@ -50,6 +50,11 @@ export function buildMenu(h: MenuHandlers): void {
         { role: 'cut' },
         { role: 'copy' },
         { role: 'paste' },
+        {
+          label: '貼成純文字',
+          accelerator: 'Shift+CmdOrCtrl+V',
+          click: () => h.onCommand('paste-plain'),
+        },
         { role: 'selectAll' },
         { type: 'separator' },
         {

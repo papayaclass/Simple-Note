@@ -33,6 +33,8 @@ export interface EditorHandle {
   loadMarkdown: (md: string) => Promise<void>;
   asMarkdown: () => Promise<string>;
   focusLastBlock: () => void;
+  pastePlainText: () => void;
+  hasFocus: () => boolean;
   editor: ReturnType<typeof useCreateBlockNote>;
 }
 
@@ -252,6 +254,8 @@ export function Editor({ onChange, handleRef, autoFocus = true }: Props): JSX.El
         editor.setTextCursorPosition(last.id, 'end');
         editor.focus();
       },
+      pastePlainText: () => pastePlainText(editor),
+      hasFocus: () => editorHasFocus(editor),
     };
   }, [editor, handleRef]);
 
@@ -445,6 +449,13 @@ export function Editor({ onChange, handleRef, autoFocus = true }: Props): JSX.El
         editor.toggleStyles({ strike: true } as never);
         return;
       }
+      // Shift+Cmd+V → paste clipboard contents as plain text.
+      if (e.shiftKey && !e.altKey && code === 'KeyV') {
+        e.preventDefault();
+        e.stopPropagation();
+        pastePlainText(editor);
+        return;
+      }
       // Shift+Cmd+X → inline code
       if (e.shiftKey && !e.altKey && code === 'KeyX') {
         e.preventDefault();
@@ -500,6 +511,19 @@ function transformCurrentBlock(
 ): void {
   const block = editor.getTextCursorPosition().block;
   editor.updateBlock(block, { type, props } as never);
+}
+
+function editorHasFocus(editor: ReturnType<typeof useCreateBlockNote>): boolean {
+  return (
+    editor as unknown as { _tiptapEditor: { view: { hasFocus: () => boolean } } }
+  )._tiptapEditor.view.hasFocus();
+}
+
+function pastePlainText(editor: ReturnType<typeof useCreateBlockNote>): void {
+  const text = window.api.clipboard.readText();
+  if (!text) return;
+  editor.focus();
+  editor.pasteText(text);
 }
 
 // Pull image files out of a clipboard/drag payload (screenshots paste as

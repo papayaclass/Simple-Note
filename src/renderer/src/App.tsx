@@ -191,6 +191,12 @@ export function App(): JSX.Element {
     return false;
   }, [fileName, filePath, setFile, buildMarkdown]);
 
+  const activeEditor = useCallback((): EditorHandle | null => {
+    if (rightHandleRef.current?.hasFocus()) return rightHandleRef.current;
+    if (handleRef.current?.hasFocus()) return handleRef.current;
+    return handleRef.current;
+  }, []);
+
   const loadContentByPath = useCallback(async (path: string, content: string) => {
     if (!handleRef.current) return;
     // Files are plain Markdown: parse into the left column, clear the right, and
@@ -235,6 +241,9 @@ export function App(): JSX.Element {
           setTwoColumn(!useStore.getState().twoColumn);
           setDirty(true);
           break;
+        case 'paste-plain':
+          activeEditor()?.pastePlainText();
+          break;
         case 's2t':
         case 'half2full':
         case 'clear-format':
@@ -245,7 +254,7 @@ export function App(): JSX.Element {
       }
     });
     return off;
-  }, [doSave, setPrefsOpen, toggleMathMode, setTwoColumn, setDirty]);
+  }, [activeEditor, doSave, setPrefsOpen, toggleMathMode, setTwoColumn, setDirty]);
 
   // Clicks anywhere outside the editor (the .app gutter, the .page padding,
   // or the centered margins around .page) should drop the caret into the last
