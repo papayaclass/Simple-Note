@@ -4,6 +4,7 @@ export interface MenuHandlers {
   onNew: () => void;
   onOpen: () => void;
   onSave: () => void;
+  onPrint: () => void;
   onPreferences: () => void;
   onCommand: (cmd: string) => void;
 }
@@ -37,6 +38,7 @@ export function buildMenu(h: MenuHandlers): void {
         { label: '開啟…', accelerator: 'CmdOrCtrl+O', click: () => h.onOpen() },
         { type: 'separator' },
         { label: '儲存', accelerator: 'CmdOrCtrl+S', click: () => h.onSave() },
+        { label: '列印', accelerator: 'CmdOrCtrl+P', click: () => h.onPrint() },
         { type: 'separator' },
         { role: 'close' },
       ],

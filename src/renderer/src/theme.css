@@ -68,6 +68,29 @@ body,
   line-height: 1.5;
 }
 
+/* Printing: Chromium's direct-print pipeline subsets the on-screen CJK font
+   (PingFang TC) into a CID font that some printers refuse to render — Latin and
+   digits print but Chinese fails. For print only, drop PingFang TC so CJK falls
+   back to 'Heiti TC', a system sans that embeds more reliably. If a printer
+   still won't print Chinese, try another value ('STHeiti', 'Songti TC') or
+   bundle a CJK web font (e.g. Noto Sans TC) the way @blocknote ships Inter. */
+@media print {
+  html,
+  body,
+  #root,
+  .bn-editor {
+    font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', 'Heiti TC',
+      sans-serif !important;
+  }
+
+  /* The text-insertion caret is otherwise painted into the printout as a stray
+     vertical line at the cursor position. Hide it for printing only — the
+     on-screen caret is unaffected. */
+  * {
+    caret-color: transparent !important;
+  }
+}
+
 ::selection {
   background: var(--selection);
 }
@@ -258,6 +281,101 @@ body,
   -webkit-user-select: none;
   user-select: none;
   -webkit-user-drag: none;
+}
+
+@media print {
+  @page {
+    margin: 18mm;
+  }
+
+  :root {
+    --bg: #ffffff;
+    --fg: #000000;
+    --fg-muted: #555555;
+    --fg-faint: #777777;
+    --selection: transparent;
+    --code-bg: #f3f4f6;
+    --quote-border: #c7c7c7;
+    --math-tag-bg: #f3f4f6;
+    --math-tag-fg: #000000;
+    --result-fg: #555555;
+    --column-divider: #d4d4d4;
+    --top-padding: 0px;
+    color-scheme: light;
+  }
+
+  html,
+  body,
+  #root {
+    height: auto;
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .app {
+    height: auto;
+    overflow: visible;
+  }
+
+  .drag-bar,
+  .status-bar,
+  .marquee-box,
+  .prefs-overlay,
+  .context-menu,
+  .word-count-popover,
+  .image-lightbox,
+  .ai-modal-overlay,
+  .code-wrap-toggle,
+  .sn-image-handle,
+  .sn-image-drop-indicator,
+  .bn-side-menu,
+  .bn-formatting-toolbar,
+  .bn-suggestion-menu {
+    display: none !important;
+  }
+
+  .page {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    gap: 0;
+    transition: none !important;
+  }
+
+  .page.two-column {
+    max-width: none !important;
+    gap: 10mm;
+  }
+
+  .column-divider,
+  .column-right {
+    transition: none !important;
+  }
+
+  .bn-editor {
+    color: #000000 !important;
+  }
+
+  .bn-block-content[data-content-type='codeBlock'] {
+    overflow: visible;
+    white-space: pre-wrap;
+  }
+
+  .sn-image-block.selected img,
+  .sn-image-block.marquee-selected img {
+    outline: none !important;
+  }
+
+  a[href] {
+    color: #000000 !important;
+    text-decoration: underline;
+  }
 }
 .image-lightbox-menu {
   position: fixed;

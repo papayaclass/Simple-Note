@@ -223,6 +223,28 @@ function sendToFocused(channel: string): void {
   BrowserWindow.getFocusedWindow()?.webContents.send(channel);
 }
 
+// Print the focused window from the main process. The renderer's window.print()
+// pops the macOS print panel but doesn't reliably dispatch the job to the
+// printer (Electron disables Chromium's print-preview pipeline) and reports no
+// failure. webContents.print() is the supported path and tells us why a job
+// failed via its callback.
+function printFocused(): void {
+  const win = BrowserWindow.getFocusedWindow();
+  if (!win) return;
+  try {
+    win.webContents.print({ printBackground: true }, (success, failureReason) => {
+      // "Print job canceled" just means the user dismissed the dialog.
+      if (!success && failureReason && failureReason !== 'Print job canceled') {
+        console.error('[print] failed:', failureReason);
+        dialog.showErrorBox('列印失敗', `無法送出列印工作：${failureReason}`);
+      }
+    });
+  } catch (err) {
+    console.error('[print] threw:', err);
+    dialog.showErrorBox('列印失敗', String(err instanceof Error ? err.message : err));
+  }
+}
+
 // File → Open…: pick a file (dialog parented to the focused window) and load it
 // into a brand-new window, leaving the current one untouched.
 async function openViaDialog(): Promise<void> {
@@ -263,6 +285,7 @@ app.whenReady().then(() => {
     onNew: () => createWindow(),
     onOpen: () => void openViaDialog(),
     onSave: () => sendToFocused('menu:save'),
+    onPrint: () => printFocused(),
     onPreferences: () => sendToFocused('menu:preferences'),
     onCommand: (cmd) => BrowserWindow.getFocusedWindow()?.webContents.send('menu:command', cmd),
   });
