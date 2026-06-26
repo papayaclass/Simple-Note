@@ -2,8 +2,6 @@ import { useEffect, useRef } from 'react';
 import { createBlockNoteExtension, PartialBlock } from '@blocknote/core';
 import { BlockNoteView } from '@blocknote/mantine';
 import {
-  DragHandleButton,
-  SideMenu,
   SideMenuController,
   useCreateBlockNote,
 } from '@blocknote/react';
@@ -16,6 +14,7 @@ import { createCodeWrapPlugin } from './codeWrap';
 import { createCodeBlockSelectPlugin } from './codeBlockSelect';
 import { deleteSelectedBlocks, deleteForwardEmptyBlock } from './blockDelete';
 import { createToggleKeyboardExtension } from './toggle';
+import { SimpleNoteSideMenu } from './sideMenu';
 import { useStore } from '../store';
 import { ContextMenu } from '../context-menu/ContextMenu';
 import {
@@ -492,11 +491,7 @@ export function Editor({ onChange, handleRef, autoFocus = true }: Props): JSX.El
         emojiPicker={false}
       >
         <SideMenuController
-          sideMenu={(props) => (
-            <SideMenu {...props}>
-              <DragHandleButton {...props} />
-            </SideMenu>
-          )}
+          sideMenu={(props) => <SimpleNoteSideMenu {...props} />}
         />
       </BlockNoteView>
       <ContextMenu editor={editor} containerRef={containerRef} />

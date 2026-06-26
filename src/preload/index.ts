@@ -49,6 +49,7 @@ export interface SimpleNoteAPI {
   };
   clipboard: {
     readText: () => string;
+    writeText: (text: string) => void;
   };
   window: {
     setDirty: (dirty: boolean) => void;
@@ -89,6 +90,7 @@ const api: SimpleNoteAPI = {
   },
   clipboard: {
     readText: () => clipboard.readText(),
+    writeText: (text) => clipboard.writeText(text),
   },
   window: {
     setDirty: (dirty) => ipcRenderer.send('window:setDirty', dirty),

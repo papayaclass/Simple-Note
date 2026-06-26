@@ -329,6 +329,57 @@ body.sn-image-dragging * {
 }
 
 /* SideMenu — keep drag handle only (custom render in Editor.tsx) */
+.bn-container > div:has(.bn-side-menu) {
+  z-index: 10001 !important;
+  -webkit-app-region: no-drag;
+}
+
+.sn-side-menu-guard {
+  position: relative;
+  display: flex;
+  -webkit-app-region: no-drag;
+}
+
+.sn-side-menu-guard::after {
+  content: '';
+  position: absolute;
+  top: -8px;
+  right: -32px;
+  bottom: -8px;
+  width: 40px;
+  pointer-events: auto;
+}
+
+.bn-side-menu {
+  z-index: 10001;
+  -webkit-app-region: no-drag;
+}
+
+.sn-drag-handle-button {
+  position: relative;
+  z-index: 1;
+}
+
+.sn-drag-handle-icon {
+  display: block;
+  width: 20px;
+  height: 20px;
+  color: var(--bn-colors-side-menu);
+  position: relative;
+}
+
+.sn-drag-handle-icon::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 4px;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 8px 0 currentColor, 0 6px currentColor, 8px 6px currentColor,
+    0 12px currentColor, 8px 12px currentColor;
+}
 
 /* ---- YouTube link hover preview card ---- */
 .sn-yt-card {
