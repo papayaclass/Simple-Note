@@ -101,12 +101,21 @@ body,
   overflow: auto;
 }
 
-/* Columns are laid out with flexbox so the single ⇄ two-column switch can be
-   animated. The right column and divider always stay in the DOM (display:none
-   can't transition); single-column mode just collapses them to zero width with
-   flex-grow/flex-basis + opacity, and the page max-width + gap animate
-   alongside, so toggling smoothly expands/collapses the second column. */
+/* Three-column "push" layout: the article lives in the MIDDLE slot and never
+   moves; a blank scratch column on each side slides out on demand. All five
+   children (left, divider-left, middle, divider-right, right) always stay in the
+   DOM; the resting state collapses the side columns + dividers to zero width
+   with flex-grow/flex-basis + opacity.
+   The layout itself snaps instantly (no CSS transitions on width/max-width) —
+   the reveal/collapse motion is driven by a FLIP transform animation in App.tsx
+   so the whole layout slides cohesively in one direction (like a slide-in)
+   instead of unfolding at the divider. `.page.sliding` clips the off-edge part
+   of a sliding column while that animation runs.
+   --col-left-grow / --col-right-grow set the flex ratio of the two VISIBLE
+   columns and are driven by the draggable divider (see App.tsx). */
 .page {
+  --col-left-grow: 1;
+  --col-right-grow: 1;
   max-width: var(--page-width);
   width: 100%;
   margin: 0 auto;
@@ -115,55 +124,105 @@ body,
   display: flex;
   align-items: flex-start;
   gap: 0;
-  transition: max-width 280ms ease, gap 280ms ease;
+  position: relative;
+}
+
+.page.sliding {
+  overflow: hidden;
 }
 
 .column {
   min-width: 0;
 }
 
-/* Left column always fills the available width. */
-.column-left {
+/* The article column always fills the width in single-column mode. */
+.column-middle {
   flex: 1 1 0;
 }
 
-/* Single-column (default): divider + right column collapsed and faded out. */
+/* Side scratch columns: collapsed (flex-basis 0, grow 0) and faded out at rest.
+   Width changes are instant; the slide is the FLIP transform (see App.tsx). */
+.column-left,
+.column-right {
+  flex: 0 1 0;
+  opacity: 0;
+  overflow: hidden;
+}
+
+/* Both dividers: collapsed and inert at rest. */
 .column-divider {
   flex: 0 0 0;
   align-self: stretch;
   background: var(--column-divider);
   opacity: 0;
-  overflow: hidden;
-  transition: flex-basis 280ms ease, opacity 280ms ease;
+  overflow: visible;
+  pointer-events: none;
+  margin: 0;
+  transition: opacity 200ms ease;
 }
 
-.column-right {
-  flex: 0 1 0;
-  opacity: 0;
-  overflow: hidden;
-  transition: flex-grow 280ms ease, opacity 280ms ease;
-}
-
-/* Two-column: widen the page, open the gap, grow the right column to match the
-   left, and reveal the divider. */
-.page.two-column {
+/* Reveal the RIGHT scratch column (article pushed left). Visible order:
+   article (.column-middle) | divider-right | scratch (.column-right). */
+.page.reveal-right {
   max-width: var(--two-column-page-width);
-  gap: 32px;
+}
+.page.reveal-right .column-middle {
+  flex-grow: var(--col-left-grow);
+}
+.page.reveal-right .column-right {
+  flex-grow: var(--col-right-grow);
+  opacity: 1;
 }
 
-.page.two-column .column-divider {
+/* Reveal the LEFT scratch column (article pushed right). Visible order:
+   scratch (.column-left) | divider-left | article (.column-middle). */
+.page.reveal-left {
+  max-width: var(--two-column-page-width);
+}
+.page.reveal-left .column-left {
+  flex-grow: var(--col-left-grow);
+  opacity: 1;
+}
+.page.reveal-left .column-middle {
+  flex-grow: var(--col-right-grow);
+}
+
+/* The active divider becomes a draggable 1px line sitting in a 32px gutter.
+   Margin (not the page's flex `gap`) makes the gutter so the collapsed columns
+   don't add phantom gaps. A wide invisible ::before makes it easy to grab. */
+.page.reveal-left .divider-left,
+.page.reveal-right .divider-right {
   flex-basis: 1px;
+  margin: 0 32px;
   opacity: 1;
+  pointer-events: auto;
+  cursor: col-resize;
+  position: relative;
+}
+.page.reveal-left .divider-left::before,
+.page.reveal-right .divider-right::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -8px;
+  right: -8px;
+  cursor: col-resize;
 }
 
-.page.two-column .column-right {
-  flex-grow: 1;
-  opacity: 1;
+/* While dragging the divider, kill the column transitions so resizing tracks the
+   pointer instantly (the reveal/collapse slide is unaffected — it's a separate
+   state change). */
+.page.resizing .column-left,
+.page.resizing .column-right,
+.page.resizing .column-middle {
+  transition: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .page,
   .column-divider,
+  .column-left,
   .column-right {
     transition: none;
   }
@@ -201,6 +260,14 @@ body,
   /* Above .drag-bar (z-index 9999) so the clickable alarm chip isn't covered
      by the title-bar drag overlay. */
   z-index: 10000;
+}
+
+.file-name {
+  color: var(--fg-muted);
+  font-size: 12px;
+  line-height: 1;
+  user-select: none;
+  pointer-events: none;
 }
 
 .math-badge,

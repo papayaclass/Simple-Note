@@ -85,9 +85,14 @@ export function buildMenu(h: MenuHandlers): void {
       label: '檢視',
       submenu: [
         {
-          label: '切換雙欄',
-          accelerator: 'Shift+CmdOrCtrl+2',
-          click: () => h.onCommand('toggle-column'),
+          label: '將文章推往左側',
+          accelerator: 'Shift+CmdOrCtrl+Left',
+          click: () => h.onCommand('push-article-left'),
+        },
+        {
+          label: '將文章推往右側',
+          accelerator: 'Shift+CmdOrCtrl+Right',
+          click: () => h.onCommand('push-article-right'),
         },
         { type: 'separator' },
         {

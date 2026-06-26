@@ -7,6 +7,11 @@ export interface AISkill {
   prompt: string;
 }
 
+// Column layout as the article's position on a `[left] — center — [right]` track.
+// `center` is single-column; the other two reveal an independent blank column on
+// the opposite side (article-left reveals the right column, and vice versa).
+export type ColumnLayout = 'center' | 'article-left' | 'article-right';
+
 export interface Preferences {
   pageWidth: number;
   twoColumnPageWidth: number;
@@ -52,7 +57,8 @@ interface AppState {
   filePath: string | null;
   fileName: string;
   mathMode: boolean;
-  twoColumn: boolean;
+  columnLayout: ColumnLayout;
+  columnSplit: number;
   timer: { endsAt: number } | null;
   alarms: Array<{ id: string; at: number }>;
   preferences: Preferences;
@@ -66,8 +72,9 @@ interface AppState {
   setTimer: (t: { endsAt: number } | null) => void;
   addAlarm: (at: number) => void;
   removeAlarm: (id: string) => void;
-  setTwoColumn: (on: boolean) => void;
-  toggleTwoColumn: () => void;
+  setColumnLayout: (v: ColumnLayout) => void;
+  shiftColumn: (dir: 'left' | 'right') => void;
+  setColumnSplit: (v: number) => void;
   setPreferences: (p: Partial<Preferences>) => void;
   setPrefsPanelOpen: (open: boolean) => void;
   setWordCountPopover: (v: AppState['wordCountPopover']) => void;
@@ -78,7 +85,8 @@ export const useStore = create<AppState>((set) => ({
   filePath: null,
   fileName: '未命名筆記',
   mathMode: false,
-  twoColumn: false,
+  columnLayout: 'center',
+  columnSplit: 0.5,
   timer: null,
   alarms: [],
   preferences: DEFAULT_PREFS,
@@ -102,8 +110,18 @@ export const useStore = create<AppState>((set) => ({
       ),
     })),
   removeAlarm: (id) => set((s) => ({ alarms: s.alarms.filter((a) => a.id !== id) })),
-  setTwoColumn: (on) => set({ twoColumn: on }),
-  toggleTwoColumn: () => set((s) => ({ twoColumn: !s.twoColumn })),
+  setColumnLayout: (v) => set({ columnLayout: v }),
+  // Slide the article one step along the [article-left, center, article-right]
+  // track, clamped at the ends. Right advances toward article-right; Left toward
+  // article-left.
+  shiftColumn: (dir) =>
+    set((s) => {
+      const order: ColumnLayout[] = ['article-left', 'center', 'article-right'];
+      const i = order.indexOf(s.columnLayout);
+      const next = dir === 'right' ? Math.min(i + 1, 2) : Math.max(i - 1, 0);
+      return { columnLayout: order[next] };
+    }),
+  setColumnSplit: (v) => set({ columnSplit: v }),
   setPreferences: (p) => set((s) => ({ preferences: { ...s.preferences, ...p } })),
   setPrefsPanelOpen: (open) => set({ prefsPanelOpen: open }),
   setWordCountPopover: (v) => set({ wordCountPopover: v }),

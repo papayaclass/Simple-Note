@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
 **專案概述**
 
@@ -33,7 +33,7 @@ main 端在 `app.whenReady` 內註冊 handler，命名採 `namespace:action`（�
 
 **檔案儲存格式**
 
-存檔內容是純 Markdown：`file:save` 收下 renderer 用 `editor.blocksToMarkdownLossy` 產生的字串直接寫入 `.md`。雙欄展開時，`buildMarkdown` 依「畫面左欄在上、右欄在下」的順序由上而下合併兩欄文字（Markdown 無法表達多欄，布局不保存），空白欄會被略過。`file:save` 會記住 `currentFilePath`，後續按 Cmd+S 不再跳對話框；`file:new` 與 `file:open` 會更新標題列與 `representedFilename`。開啟檔案時一律用 `loadMarkdown` 解析進中欄（文章）、清空左右兩個空白欄並退回單欄。Renderer 端透過 `window.__simpleNote_isDirty()` / `window.__simpleNote_save()` 兩個全域函式，讓 main 在視窗關閉前可同步詢問是否儲存。
+存檔內容是純 Markdown：`file:save` 收下 renderer 用 `editor.blocksToMarkdownLossy` 產生的字串直接寫入 `.md`。雙欄模式啟用時，右欄文字會接到左欄下方（Markdown 無法表達多欄）。`file:save` 會記住 `currentFilePath`，後續按 Cmd+S 不再跳對話框；`file:new` 與 `file:open` 會更新標題列與 `representedFilename`。開啟檔案時一律用 `loadMarkdown` 解析進左欄、清空右欄並退回單欄。Renderer 端透過 `window.__simpleNote_isDirty()` / `window.__simpleNote_save()` 兩個全域函式，讓 main 在視窗關閉前可同步詢問是否儲存。
 
 **編輯器核心 (`src/renderer/src/editor/`)**
 
@@ -67,7 +67,7 @@ main 端在 `app.whenReady` 內註冊 handler，命名採 `namespace:action`（�
 
 提供簡轉繁（用 `opencc-js`）、半形標點轉全形、清除格式、插入 Lorem Ipsum、字數統計（含中文字、英文 words、含／不含空白字元）、聆聽發音等命令。可從 macOS 應用選單（編輯 → ...）或右鍵叫出；兩者透過 `window.dispatchEvent(new CustomEvent('simple-note:command', ...))` 統一處理。右鍵選單開啟後會用 `useLayoutEffect` 量測尺寸並把位置夾進可視範圍，過長時靠 CSS `max-height` + `overflow-y` 捲動。
 
-聆聽發音走 Gemini TTS（`src/main/gemini-tts.ts`）：main 端呼叫 `generateContent` 的 AUDIO 模式，把回傳的原始 PCM 補上 WAV 檔頭後以 base64 WAV 回傳，renderer 用 `<audio>` 播放。語音狀態集中在 `src/renderer/src/context-menu/speech.ts` 的**單例**（module scope，非 per-component）：`audioCache`（文字→音訊，重播不再送 API）、`inFlight`（同字併發去重）、`lastAudio`（重播上一次）。**務必保持單例**——三欄布局有三個 Editor → 三個 `ContextMenu`，若把快取或 Shift+Cmd+P 監聽放回 component 內，按一次會播兩次甚至重疊。`installSpeechShortcut()` 在 `App.tsx` 只註冊一次（內部 `installed` 旗標防重複）。需在偏好設定的 API Keys 頁填入 Gemini API Key 與模型名稱（`geminiApiKey`、`geminiTtsModel`，預設 `gemini-3.1-flash-tts-preview`）。
+聆聽發音走 Gemini TTS（`src/main/gemini-tts.ts`）：main 端呼叫 `generateContent` 的 AUDIO 模式，把回傳的原始 PCM 補上 WAV 檔頭後以 base64 WAV 回傳，renderer 用 `<audio>` 播放。語音狀態集中在 `src/renderer/src/context-menu/speech.ts` 的**單例**（module scope，非 per-component）：`audioCache`（文字→音訊，重播不再送 API）、`inFlight`（同字併發去重）、`lastAudio`（重播上一次）。**務必保持單例**——雙欄模式有兩個 Editor → 兩個 `ContextMenu`，若把快取或 Shift+Cmd+P 監聽放回 component 內，按一次會播兩次甚至重疊。`installSpeechShortcut()` 在 `App.tsx` 只註冊一次（內部 `installed` 旗標防重複）。需在偏好設定的 API Keys 頁填入 Gemini API Key 與模型名稱（`geminiApiKey`、`geminiTtsModel`，預設 `gemini-3.1-flash-tts-preview`）。
 
 **樣式與排版**
 
