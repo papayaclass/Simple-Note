@@ -228,13 +228,14 @@ body,
   }
 }
 
-/* Only the top strip is a drag region; everything else stays interactive. */
+/* Only the top strip is a drag region; everything else stays interactive.
+   Article text is masked at the filename line instead of lower in the page. */
 .drag-bar {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  height: 72px;
+  height: 28px;
   -webkit-app-region: drag;
   z-index: 9999;
 }
