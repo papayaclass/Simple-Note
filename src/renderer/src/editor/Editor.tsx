@@ -372,6 +372,7 @@ export function Editor({ onChange, handleRef, autoFocus = true }: Props): JSX.El
       for (const p of textPaths) {
         void window.api.vault.read(p).then((r) => {
           if (r.ok) void openFileInTab(p, r.content ?? '');
+          else console.error('[editor] failed to read dropped file:', p);
         });
       }
 
@@ -549,7 +550,7 @@ function textNoteFilesFrom(data: DataTransfer | null): string[] {
   if (!data) return [];
   return Array.from(data.files)
     .map((f) => (f as File & { path?: string }).path ?? '')
-    .filter((p) => /\.(md|txt)$/i.test(p));
+    .filter((p) => Boolean(p) && /\.(md|txt)$/i.test(p));
 }
 
 function readAsDataURL(file: File): Promise<string> {
