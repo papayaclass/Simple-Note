@@ -53,6 +53,8 @@ export function Editor({ onChange, handleRef, autoFocus = true, notePath = null 
   const mathMode = useStore((s) => s.mathMode);
   const codeWrap = useStore((s) => s.preferences.codeWrap);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const notePathRef = useRef<string | null>(notePath);
+  notePathRef.current = notePath;
 
   // Custom ProseMirror extensions (math overlay + two-stage Cmd-A) registered via BlockNote's extension API
   const customExtensions = useRef([
@@ -365,7 +367,7 @@ export function Editor({ onChange, handleRef, autoFocus = true, notePath = null 
       e.preventDefault();
       e.stopPropagation();
       const ref = editor.getTextCursorPosition().block.id;
-      void insertImageFiles(editor, files, ref);
+      void insertImageFiles(editor, files, ref, notePathRef.current);
     };
 
     const onDrop = (e: DragEvent): void => {
@@ -392,7 +394,7 @@ export function Editor({ onChange, handleRef, autoFocus = true, notePath = null 
           const blocks = editor.document;
           afterId = blocks.length ? blocks[blocks.length - 1].id : null;
         }
-        void insertImageFiles(editor, images, afterId);
+        void insertImageFiles(editor, images, afterId, notePathRef.current);
       }
     };
 
@@ -569,14 +571,31 @@ function readAsDataURL(file: File): Promise<string> {
   });
 }
 
-// Insert each image as an `image` block, chained after the reference block so
-// multiple images keep their order. `afterId` null appends at the document end.
-async function insertImageFiles(editor: any, files: File[], afterId: string | null): Promise<void> {
+// Insert each image as an `image` block. For each file we ask main where it
+// should live: in-vault notes back the image into <vault>/assets and store a
+// relative path; out-of-vault notes store an absolute path; pasted screenshots
+// without a source file fall back to an in-memory data URL when not in a vault.
+async function insertImageFiles(
+  editor: any,
+  files: File[],
+  afterId: string | null,
+  notePath: string | null
+): Promise<void> {
   let ref = afterId ?? editor.document[editor.document.length - 1]?.id ?? null;
   for (const file of files) {
     if (!ref) return;
-    const src = await readAsDataURL(file);
-    const [inserted] = editor.insertBlocks([{ type: 'image', props: { src } }], ref, 'after');
+    const sourcePath = (file as File & { path?: string }).path || '';
+    let blockSrc: string | null = null;
+    if (sourcePath) {
+      const r = await window.api.vault.saveImageForNote({ notePath, sourcePath });
+      blockSrc = r.ok ? r.persistSrc ?? null : null;
+    } else {
+      const dataUrl = await readAsDataURL(file);
+      const r = await window.api.vault.saveImageForNote({ notePath, dataUrl });
+      blockSrc = r.ok ? (r.memoryOnly ? dataUrl : r.persistSrc ?? null) : dataUrl;
+    }
+    if (!blockSrc) continue;
+    const [inserted] = editor.insertBlocks([{ type: 'image', props: { src: blockSrc } }], ref, 'after');
     ref = inserted?.id ?? ref;
   }
 }
