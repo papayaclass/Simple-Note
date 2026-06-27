@@ -16,6 +16,7 @@ import { deleteSelectedBlocks, deleteForwardEmptyBlock } from './blockDelete';
 import { createToggleKeyboardExtension } from './toggle';
 import { SimpleNoteSideMenu } from './sideMenu';
 import { useStore } from '../store';
+import { setEditorNoteDir, dirOf } from './noteDir';
 import { openFileInTab } from '../fileActions';
 import { ContextMenu } from '../context-menu/ContextMenu';
 import {
@@ -45,9 +46,10 @@ interface Props {
   onChange: () => void;
   handleRef: React.MutableRefObject<EditorHandle | null>;
   autoFocus?: boolean;
+  notePath?: string | null;
 }
 
-export function Editor({ onChange, handleRef, autoFocus = true }: Props): JSX.Element {
+export function Editor({ onChange, handleRef, autoFocus = true, notePath = null }: Props): JSX.Element {
   const mathMode = useStore((s) => s.mathMode);
   const codeWrap = useStore((s) => s.preferences.codeWrap);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -226,6 +228,11 @@ export function Editor({ onChange, handleRef, autoFocus = true }: Props): JSX.El
       emptyDocument: '',
     },
   });
+
+  // Tell image blocks which directory to resolve relative `src` paths against.
+  useEffect(() => {
+    setEditorNoteDir(editor, dirOf(notePath));
+  }, [editor, notePath]);
 
   // Expose handle
   useEffect(() => {

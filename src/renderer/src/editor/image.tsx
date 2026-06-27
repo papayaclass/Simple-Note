@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { defaultProps } from '@blocknote/core';
 import { createReactBlockSpec } from '@blocknote/react';
+import {
+  getEditorNoteDir,
+  imageCacheKey,
+  getResolvedImage,
+  setResolvedImage,
+} from './noteDir';
 
 // In-session image block. The image is held as a data URL in the `src` prop and
 // only lives in memory: there is deliberately NO `toExternalHTML`/`parse`, so
@@ -51,6 +57,36 @@ export function clearMarqueeImageSelection(): void {
 
 function ImageBlockView({ block, editor }: { block: any; editor: any }): JSX.Element {
   const src: string = block.props.src;
+  const isData = src.startsWith('data:');
+  const noteDir = getEditorNoteDir(editor);
+  const cacheKey = imageCacheKey(noteDir, src);
+  const [displaySrc, setDisplaySrc] = useState<string | null>(
+    isData ? src : getResolvedImage(cacheKey) ?? null
+  );
+
+  // File-path images are read back as data URLs via IPC (and cached) so they
+  // render regardless of the renderer's origin.
+  useEffect(() => {
+    if (isData) {
+      setDisplaySrc(src);
+      return;
+    }
+    const cached = getResolvedImage(cacheKey);
+    if (cached) {
+      setDisplaySrc(cached);
+      return;
+    }
+    let cancelled = false;
+    void window.api.vault.readImageAsDataUrl(noteDir, src).then((r) => {
+      if (cancelled || !r.ok || !r.dataUrl) return;
+      setResolvedImage(cacheKey, r.dataUrl);
+      setDisplaySrc(r.dataUrl);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isData, src, noteDir, cacheKey]);
+
   const width: number = block.props.width;
   const [selected, setSelected] = useState(false);
   const [marqueeSelected, setMarqueeSelected] = useState(false);
@@ -181,12 +217,14 @@ function ImageBlockView({ block, editor }: { block: any; editor: any }): JSX.Ele
       contentEditable={false}
       onPointerDown={onBodyPointerDown}
       onDoubleClick={() =>
-        window.dispatchEvent(new CustomEvent('simple-note:preview-image', { detail: src }))
+        window.dispatchEvent(
+          new CustomEvent('simple-note:preview-image', { detail: displaySrc ?? src })
+        )
       }
     >
       <img
         ref={imgRef}
-        src={src}
+        src={displaySrc ?? undefined}
         alt=""
         draggable={false}
         style={width ? { width: `${width}px` } : undefined}

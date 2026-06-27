@@ -40,6 +40,7 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
     (s) => s.tabs.find((t) => t.id === tabId)?.columnLayout ?? 'center'
   );
   const columnSplit = useStore((s) => s.tabs.find((t) => t.id === tabId)?.columnSplit ?? 0.5);
+  const filePath = useStore((s) => s.tabs.find((t) => t.id === tabId)?.filePath ?? null);
   const setTabDirty = useStore((s) => s.setTabDirty);
   const setTabFile = useStore((s) => s.setTabFile);
   const setTabColumnSplit = useStore((s) => s.setTabColumnSplit);
@@ -462,15 +463,15 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
     >
       <div className={`page${pageLayoutClass}`} ref={pageRef}>
         <div className="column column-left" ref={leftColRef}>
-          <Editor onChange={onEditorChange} handleRef={leftHandleRef} autoFocus={false} />
+          <Editor onChange={onEditorChange} handleRef={leftHandleRef} autoFocus={false} notePath={filePath} />
         </div>
         <div className="column-divider divider-left" onPointerDown={onDividerPointerDown} />
         <div className="column column-middle" ref={midColRef}>
-          <Editor onChange={onEditorChange} handleRef={midHandleRef} autoFocus={initialAutoFocus.current} />
+          <Editor onChange={onEditorChange} handleRef={midHandleRef} autoFocus={initialAutoFocus.current} notePath={filePath} />
         </div>
         <div className="column-divider divider-right" onPointerDown={onDividerPointerDown} />
         <div className="column column-right" ref={rightColRef}>
-          <Editor onChange={onEditorChange} handleRef={rightHandleRef} autoFocus={false} />
+          <Editor onChange={onEditorChange} handleRef={rightHandleRef} autoFocus={false} notePath={filePath} />
         </div>
       </div>
     </div>
