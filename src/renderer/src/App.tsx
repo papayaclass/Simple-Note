@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useStore, useActiveTab } from './store';
 import { DocumentView, getDocumentView } from './DocumentView';
+import { ImageView } from './ImageView';
 import { Sidebar } from './sidebar/Sidebar';
 import { TabBar } from './tabs/TabBar';
 import {
@@ -236,9 +237,13 @@ export function App(): JSX.Element {
       <div className="main-area">
         <TabBar onToggleSidebar={handleToggleSidebar} />
         <div className="tab-content">
-          {tabs.map((t) => (
-            <DocumentView key={t.id} tabId={t.id} active={t.id === activeTabId} />
-          ))}
+          {tabs.map((t) =>
+            t.kind === 'image' ? (
+              <ImageView key={t.id} tabId={t.id} active={t.id === activeTabId} />
+            ) : (
+              <DocumentView key={t.id} tabId={t.id} active={t.id === activeTabId} />
+            )
+          )}
         </div>
       </div>
 

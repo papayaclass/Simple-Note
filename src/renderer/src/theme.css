@@ -156,6 +156,29 @@ body,
   display: none;
 }
 
+.image-view {
+  height: 100%;
+  width: 100%;
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.image-view[hidden] {
+  display: none;
+}
+.image-view-img {
+  max-width: 92%;
+  max-height: 92%;
+  object-fit: contain;
+  cursor: zoom-in;
+  box-shadow: 0 2px 18px rgba(0, 0, 0, 0.12);
+}
+.image-view-empty {
+  color: var(--fg-muted);
+  font-size: 14px;
+}
+
 /* Three-column "push" layout: the article lives in the MIDDLE slot and never
    moves; a blank scratch column on each side slides out on demand. All five
    children (left, divider-left, middle, divider-right, right) always stay in the

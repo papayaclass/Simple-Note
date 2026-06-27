@@ -47,6 +47,9 @@ export interface Tab {
   // True for freshly-created untitled files: the filename auto-follows the
   // document's first heading until the user manually renames it.
   autoName: boolean;
+  // 'editor' (default) renders a DocumentView; 'image' renders a read-only
+  // ImageView previewing the file at filePath.
+  kind: 'editor' | 'image';
 }
 
 export interface Preferences {
@@ -121,6 +124,7 @@ export interface NewTabOptions {
   initialMarkdown?: string;
   autoFocus?: boolean;
   autoName?: boolean;
+  kind?: 'editor' | 'image';
 }
 
 export function makeTab(opts: NewTabOptions = {}): Tab {
@@ -135,6 +139,7 @@ export function makeTab(opts: NewTabOptions = {}): Tab {
     initialMarkdown: opts.initialMarkdown,
     autoFocus: opts.autoFocus ?? true,
     autoName: opts.autoName ?? false,
+    kind: opts.kind ?? 'editor',
   };
 }
 

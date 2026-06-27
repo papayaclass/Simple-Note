@@ -108,3 +108,26 @@ export async function createNewTab(): Promise<void> {
   const tabId = s.addTab();
   focusTabWhenReady(tabId);
 }
+
+const IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.avif'];
+
+export function isImagePath(p: string): boolean {
+  const i = p.lastIndexOf('.');
+  return i >= 0 && IMAGE_EXTS.includes(p.slice(i).toLowerCase());
+}
+
+export function isTextNotePath(p: string): boolean {
+  return /\.(md|txt)$/i.test(p);
+}
+
+// Open an image file in a read-only preview tab (sidebar single-click on an
+// image). Re-activates an existing preview tab for the same image if present.
+export async function openImageTab(path: string): Promise<void> {
+  const s = useStore.getState();
+  const existing = s.tabs.find((t) => t.filePath === path && t.kind === 'image');
+  if (existing) {
+    s.setActiveTab(existing.id);
+    return;
+  }
+  s.addTab({ filePath: path, kind: 'image', autoFocus: false });
+}
