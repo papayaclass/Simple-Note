@@ -564,6 +564,11 @@ export function Sidebar(): JSX.Element {
           { label: '新增資料夾', onClick: () => void newFolder() },
           // Deferred so it opens *after* PopMenu auto-closes this menu.
           { label: '排序…', onClick: () => setTimeout(() => openSortMenu(e.clientX, e.clientY), 0) },
+          {
+            label: '顯示於 Finder',
+            disabled: !vaultPath,
+            onClick: () => void window.api.vault.openSelf(),
+          },
         ],
       });
     },
