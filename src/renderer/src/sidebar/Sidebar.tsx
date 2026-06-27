@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useStore, VaultNode, SortMode } from '../store';
 import {
   openFileInTab,
+  openImageTab,
+  isImagePath,
+  isTextNotePath,
   refreshVaultTree,
   retargetLastEditedFile,
   forgetLastEditedFile,
@@ -557,7 +560,13 @@ export function Sidebar(): JSX.Element {
       e.stopPropagation();
       setSelectedPath(node.path);
       const items: MenuItem[] = [
-        { label: '在新分頁開啟', onClick: () => node.type === 'file' && void openFileInTab(node.path) },
+        {
+          label: '在新分頁開啟',
+          onClick: () =>
+            isImagePath(node.path)
+              ? void openImageTab(node.path)
+              : node.type === 'file' && void openFileInTab(node.path),
+        },
         { label: '重新命名', onClick: () => setRenamingPath(node.path) },
         { label: '複製', onClick: () => void doDuplicate(node.path) },
         { label: '顯示在 Finder', onClick: () => void window.api.vault.reveal(node.path) },
@@ -625,8 +634,9 @@ export function Sidebar(): JSX.Element {
     },
     onOpen: (node) => {
       setSelectedPath(node.path);
-      // Keep focus in the sidebar so Enter/Delete shortcuts keep working.
-      void openFileInTab(node.path, undefined, { autoFocus: false });
+      if (isImagePath(node.path)) void openImageTab(node.path);
+      else if (isTextNotePath(node.path)) void openFileInTab(node.path, undefined, { autoFocus: false });
+      // Other file types: select only, no open.
       containerRef.current?.focus();
     },
     onToggleFolder: (path) =>

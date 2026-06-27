@@ -146,7 +146,7 @@ async function readDir(dir: string): Promise<VaultNode[]> {
         birthtimeMs: stat.birthtimeMs,
         children: await readDir(full),
       });
-    } else if (ent.isFile() && extname(ent.name).toLowerCase() === '.md') {
+    } else if (ent.isFile()) {
       const stat = await fs.stat(full).catch(() => null);
       if (!stat) continue;
       nodes.push({
