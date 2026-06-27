@@ -565,15 +565,19 @@ export function Sidebar(): JSX.Element {
           onClick: () =>
             isImagePath(node.path)
               ? void openImageTab(node.path)
-              : node.type === 'file' && void openFileInTab(node.path),
+              : isTextNotePath(node.path)
+                ? void openFileInTab(node.path)
+                : undefined,
         },
         { label: '重新命名', onClick: () => setRenamingPath(node.path) },
         { label: '複製', onClick: () => void doDuplicate(node.path) },
         { label: '顯示在 Finder', onClick: () => void window.api.vault.reveal(node.path) },
         { label: '刪除', danger: true, onClick: () => void doDelete(node.path) },
       ];
-      // Folders can't be opened in a tab.
-      if (node.type === 'folder') items.shift();
+      // Folders can't be opened in a tab, and neither can non-image/non-text files.
+      if (node.type === 'folder' || (!isImagePath(node.path) && !isTextNotePath(node.path))) {
+        items.shift();
+      }
       setMenu({ x: e.clientX, y: e.clientY, items });
     },
     [setSelectedPath, doDuplicate, doDelete]
