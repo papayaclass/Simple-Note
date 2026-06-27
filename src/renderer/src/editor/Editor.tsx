@@ -588,13 +588,16 @@ async function insertImageFiles(
     let blockSrc: string | null = null;
     if (sourcePath) {
       const r = await window.api.vault.saveImageForNote({ notePath, sourcePath });
-      blockSrc = r.ok ? r.persistSrc ?? null : null;
+      blockSrc = r.ok ? r.persistSrc || null : null;
     } else {
       const dataUrl = await readAsDataURL(file);
       const r = await window.api.vault.saveImageForNote({ notePath, dataUrl });
-      blockSrc = r.ok ? (r.memoryOnly ? dataUrl : r.persistSrc ?? null) : dataUrl;
+      blockSrc = r.ok ? (r.memoryOnly ? dataUrl : r.persistSrc || null) : dataUrl;
     }
-    if (!blockSrc) continue;
+    if (!blockSrc) {
+      console.warn('[editor] image insert skipped:', sourcePath || '(clipboard image)');
+      continue;
+    }
     const [inserted] = editor.insertBlocks([{ type: 'image', props: { src: blockSrc } }], ref, 'after');
     ref = inserted?.id ?? ref;
   }
