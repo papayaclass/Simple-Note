@@ -7,15 +7,24 @@ import { useStore } from './store';
 export function ImageView({ tabId, active }: { tabId: string; active: boolean }): JSX.Element {
   const filePath = useStore((s) => s.tabs.find((t) => t.id === tabId)?.filePath ?? null);
   const [src, setSrc] = useState<string | null>(null);
+  const [state, setState] = useState<'loading' | 'ok' | 'error'>('loading');
 
   useEffect(() => {
     let cancelled = false;
     if (!filePath) {
+      setState('error');
       setSrc(null);
       return;
     }
+    setState('loading');
     void window.api.vault.readImageAsDataUrl(null, filePath).then((r) => {
-      if (!cancelled) setSrc(r.ok ? r.dataUrl ?? null : null);
+      if (cancelled) return;
+      if (r.ok && r.dataUrl) {
+        setSrc(r.dataUrl);
+        setState('ok');
+      } else {
+        setState('error');
+      }
     });
     return () => {
       cancelled = true;
@@ -24,7 +33,7 @@ export function ImageView({ tabId, active }: { tabId: string; active: boolean })
 
   return (
     <div className="image-view" hidden={!active}>
-      {src ? (
+      {state === 'ok' && src ? (
         <img
           className="image-view-img"
           src={src}
@@ -34,9 +43,9 @@ export function ImageView({ tabId, active }: { tabId: string; active: boolean })
             window.dispatchEvent(new CustomEvent('simple-note:preview-image', { detail: src }))
           }
         />
-      ) : (
+      ) : state === 'error' ? (
         <div className="image-view-empty">無法載入圖片</div>
-      )}
+      ) : null}
     </div>
   );
 }
