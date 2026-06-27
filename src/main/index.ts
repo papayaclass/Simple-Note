@@ -23,6 +23,10 @@ import {
   revealEntry,
   moveToVault,
   startWatching,
+  importExternal,
+  saveImageForNote,
+  readImageAsDataUrl,
+  openSelf,
 } from './vault.js';
 
 app.setName('Simple Note');
@@ -344,6 +348,18 @@ app.whenReady().then(() => {
   ipcMain.handle('vault:moveToVault', (e, markdown: string, suggestedName?: string) =>
     moveToVault(BrowserWindow.fromWebContents(e.sender), markdown, suggestedName)
   );
+  ipcMain.handle('vault:importExternal', (_e, paths: string[], destDir: string | null) =>
+    importExternal(paths, destDir)
+  );
+  ipcMain.handle(
+    'vault:saveImageForNote',
+    (_e, args: { notePath: string | null; sourcePath?: string; dataUrl?: string }) =>
+      saveImageForNote(args)
+  );
+  ipcMain.handle('vault:readImageAsDataUrl', (_e, noteDir: string | null, src: string) =>
+    readImageAsDataUrl(noteDir, src)
+  );
+  ipcMain.handle('vault:openSelf', () => openSelf());
   // "Open in new window" from a tab's context menu.
   ipcMain.on('window:openFile', (_e, path: string) => createWindow(path));
 

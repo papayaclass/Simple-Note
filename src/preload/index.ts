@@ -81,6 +81,20 @@ export interface SimpleNoteAPI {
       markdown: string,
       suggestedName?: string
     ) => Promise<{ ok: boolean; path?: string }>;
+    importExternal: (
+      paths: string[],
+      destDir: string | null
+    ) => Promise<{ ok: boolean; moved: string[] }>;
+    saveImageForNote: (args: {
+      notePath: string | null;
+      sourcePath?: string;
+      dataUrl?: string;
+    }) => Promise<{ ok: boolean; persistSrc?: string; absPath?: string; memoryOnly?: boolean }>;
+    readImageAsDataUrl: (
+      noteDir: string | null,
+      src: string
+    ) => Promise<{ ok: boolean; dataUrl?: string }>;
+    openSelf: () => Promise<void>;
   };
   clipboard: {
     readText: () => string;
@@ -144,6 +158,12 @@ const api: SimpleNoteAPI = {
     reveal: (path) => ipcRenderer.invoke('vault:reveal', path),
     moveToVault: (markdown, suggestedName) =>
       ipcRenderer.invoke('vault:moveToVault', markdown, suggestedName),
+    importExternal: (paths, destDir) =>
+      ipcRenderer.invoke('vault:importExternal', paths, destDir),
+    saveImageForNote: (args) => ipcRenderer.invoke('vault:saveImageForNote', args),
+    readImageAsDataUrl: (noteDir, src) =>
+      ipcRenderer.invoke('vault:readImageAsDataUrl', noteDir, src),
+    openSelf: () => ipcRenderer.invoke('vault:openSelf'),
   },
   clipboard: {
     readText: () => clipboard.readText(),

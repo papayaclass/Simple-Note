@@ -1,6 +1,6 @@
 import { BrowserWindow, dialog, shell } from 'electron';
 import { promises as fs, watch, FSWatcher } from 'node:fs';
-import { join, dirname, basename, extname } from 'node:path';
+import { join, dirname, basename, extname, isAbsolute, relative, resolve } from 'node:path';
 import { getPreferences, setPreference } from './preferences.js';
 
 // A single node in the vault file tree. Folders carry `children`; files don't.
@@ -11,6 +11,57 @@ export interface VaultNode {
   mtimeMs: number;
   birthtimeMs: number;
   children?: VaultNode[];
+}
+
+const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.avif']);
+const IMPORT_EXTS = new Set(['.md', '.txt', ...IMAGE_EXTS]);
+
+export function isInVault(p: string): boolean {
+  const v = getVault();
+  return !!v && (p === v || p.startsWith(v + '/'));
+}
+
+function mimeFromExt(p: string): string {
+  switch (extname(p).toLowerCase()) {
+    case '.png':
+      return 'image/png';
+    case '.jpg':
+    case '.jpeg':
+      return 'image/jpeg';
+    case '.gif':
+      return 'image/gif';
+    case '.webp':
+      return 'image/webp';
+    case '.svg':
+      return 'image/svg+xml';
+    case '.bmp':
+      return 'image/bmp';
+    case '.avif':
+      return 'image/avif';
+    default:
+      return 'application/octet-stream';
+  }
+}
+
+function imageMimeToExtName(mime: string): string {
+  switch (mime) {
+    case 'image/jpeg':
+      return 'jpg';
+    case 'image/svg+xml':
+      return 'svg';
+    case 'image/png':
+      return 'png';
+    case 'image/gif':
+      return 'gif';
+    case 'image/webp':
+      return 'webp';
+    case 'image/bmp':
+      return 'bmp';
+    case 'image/avif':
+      return 'avif';
+    default:
+      return mime.split('/')[1] ?? 'png';
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -260,4 +311,103 @@ export async function moveToVault(
   if (r.canceled || !r.filePath) return { ok: false };
   await fs.writeFile(r.filePath, markdown, 'utf-8');
   return { ok: true, path: r.filePath };
+}
+
+// Move external files into the vault (drag from Finder onto the sidebar). Only
+// md/txt/image files are accepted; others are skipped. Cross-device renames
+// fall back to copy + unlink. Name collisions resolve with uniquePath.
+export async function importExternal(
+  paths: string[],
+  destDir: string | null
+): Promise<{ ok: boolean; moved: string[] }> {
+  const vault = getVault();
+  if (!vault) return { ok: false, moved: [] };
+  const dir =
+    destDir && (destDir === vault || destDir.startsWith(vault + '/')) ? destDir : vault;
+  const moved: string[] = [];
+  for (const src of paths) {
+    const ext = extname(src).toLowerCase();
+    if (!IMPORT_EXTS.has(ext)) continue;
+    const dest = await uniquePath(dir, basename(src, ext), ext);
+    try {
+      await fs.rename(src, dest);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException)?.code === 'EXDEV') {
+        await fs.copyFile(src, dest);
+        await fs.unlink(src);
+      } else {
+        console.error('[vault] import failed:', src, err);
+        continue;
+      }
+    }
+    moved.push(dest);
+  }
+  return { ok: moved.length > 0, moved };
+}
+
+// Decide how an inserted image should be persisted/referenced (feature 4).
+export async function saveImageForNote(args: {
+  notePath: string | null;
+  sourcePath?: string;
+  dataUrl?: string;
+}): Promise<{ ok: boolean; persistSrc?: string; absPath?: string; memoryOnly?: boolean }> {
+  const { notePath, sourcePath, dataUrl } = args;
+  const vault = getVault();
+  const noteInVault = !!notePath && isInVault(notePath);
+  const noteDir = notePath ? dirname(notePath) : null;
+
+  if (sourcePath) {
+    // A real file on disk (dragged from Finder).
+    if (noteInVault && vault && noteDir) {
+      let assetAbs = sourcePath;
+      if (!isInVault(sourcePath)) {
+        const assetsDir = join(vault, 'assets');
+        await fs.mkdir(assetsDir, { recursive: true });
+        const ext = extname(sourcePath);
+        assetAbs = await uniquePath(assetsDir, basename(sourcePath, ext), ext);
+        await fs.copyFile(sourcePath, assetAbs);
+      }
+      return { ok: true, persistSrc: relative(noteDir, assetAbs), absPath: assetAbs };
+    }
+    // Note lives outside the vault (or is untitled): reference the original path.
+    return { ok: true, persistSrc: sourcePath, absPath: sourcePath };
+  }
+
+  if (dataUrl) {
+    // No source file (pasted screenshot / clipboard image).
+    if (noteInVault && vault && noteDir) {
+      const m = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.*)$/s.exec(dataUrl);
+      if (!m) return { ok: false };
+      const ext = '.' + imageMimeToExtName(m[1]!);
+      const assetsDir = join(vault, 'assets');
+      await fs.mkdir(assetsDir, { recursive: true });
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const assetAbs = await uniquePath(assetsDir, `Pasted image ${stamp}`, ext);
+      await fs.writeFile(assetAbs, Buffer.from(m[2]!, 'base64'));
+      return { ok: true, persistSrc: relative(noteDir, assetAbs), absPath: assetAbs };
+    }
+    return { ok: true, memoryOnly: true };
+  }
+  return { ok: false };
+}
+
+// Read an image file (path may be relative to the note dir) as a data URL, used
+// to display file-path image blocks and image-preview tabs.
+export async function readImageAsDataUrl(
+  noteDir: string | null,
+  src: string
+): Promise<{ ok: boolean; dataUrl?: string }> {
+  try {
+    const abs = isAbsolute(src) ? src : noteDir ? resolve(noteDir, src) : src;
+    const buf = await fs.readFile(abs);
+    return { ok: true, dataUrl: `data:${mimeFromExt(abs)};base64,${buf.toString('base64')}` };
+  } catch {
+    return { ok: false };
+  }
+}
+
+// Open the vault folder itself in Finder (sidebar empty-area "顯示於 Finder").
+export function openSelf(): void {
+  const v = getVault();
+  if (v) void shell.openPath(v);
 }
