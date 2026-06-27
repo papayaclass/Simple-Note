@@ -217,8 +217,15 @@ export async function renameEntry(
   // Files keep their .md extension even if the user omitted it while renaming.
   let finalName = newName.trim();
   if (!finalName) return { ok: false, reason: 'empty' };
-  if (stat.isFile() && extname(path).toLowerCase() === '.md' && !/\.md$/i.test(finalName)) {
-    finalName += '.md';
+  // Preserve the original file extension when the new name omits one. The
+  // sidebar now lists txt/images/etc., so without this, renaming "photo.png"
+  // to "photo" would silently drop the file's type (and an image with no
+  // extension stops being previewable). Typing a new extension still wins.
+  if (stat.isFile()) {
+    const origExt = extname(path);
+    if (origExt && !extname(finalName)) {
+      finalName += origExt;
+    }
   }
   const target = join(dir, finalName);
   if (target === path) return { ok: true, path };

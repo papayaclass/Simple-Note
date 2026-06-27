@@ -58,6 +58,10 @@ export function clearMarqueeImageSelection(): void {
 function ImageBlockView({ block, editor }: { block: any; editor: any }): JSX.Element {
   const src: string = block.props.src;
   const isData = src.startsWith('data:');
+  // noteDir is captured here at render time from the editor→dir registry. A
+  // note's directory only changes when it is moved/renamed; relative image
+  // paths are deliberately NOT rewritten on cross-folder moves (a documented
+  // known limitation), so capturing at mount is sufficient for supported flows.
   const noteDir = getEditorNoteDir(editor);
   const cacheKey = imageCacheKey(noteDir, src);
   const [displaySrc, setDisplaySrc] = useState<string | null>(
