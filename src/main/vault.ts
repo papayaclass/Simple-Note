@@ -333,8 +333,13 @@ export async function importExternal(
       await fs.rename(src, dest);
     } catch (err) {
       if ((err as NodeJS.ErrnoException)?.code === 'EXDEV') {
-        await fs.copyFile(src, dest);
-        await fs.unlink(src);
+        try {
+          await fs.copyFile(src, dest);
+          await fs.unlink(src);
+        } catch (copyErr) {
+          console.error('[vault] import failed:', src, copyErr);
+          continue;
+        }
       } else {
         console.error('[vault] import failed:', src, err);
         continue;
@@ -398,7 +403,8 @@ export async function readImageAsDataUrl(
   src: string
 ): Promise<{ ok: boolean; dataUrl?: string }> {
   try {
-    const abs = isAbsolute(src) ? src : noteDir ? resolve(noteDir, src) : src;
+    if (!isAbsolute(src) && !noteDir) return { ok: false };
+    const abs = isAbsolute(src) ? src : resolve(noteDir!, src);
     const buf = await fs.readFile(abs);
     return { ok: true, dataUrl: `data:${mimeFromExt(abs)};base64,${buf.toString('base64')}` };
   } catch {
