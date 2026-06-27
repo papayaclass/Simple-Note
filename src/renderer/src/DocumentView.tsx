@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { Editor, EditorHandle } from './editor/Editor';
 import { attachMarquee } from './editor/marquee';
 import { useStore, ColumnLayout } from './store';
-import { isPathInVault, refreshVaultTree } from './fileActions';
+import { isPathInVault, refreshVaultTree, rememberLastEditedFile } from './fileActions';
 
 // Imperative interface each DocumentView registers so the app shell (menu save,
 // window-close dirty check, tab context menu) can act on a specific tab without
@@ -11,7 +11,9 @@ export interface DocumentViewHandle {
   save: () => Promise<boolean>;
   buildMarkdown: () => Promise<string>;
   hasContent: () => boolean;
+  cancelPendingAutoSave: () => void;
   pastePlainText: () => void;
+  focusLastBlock: () => void;
   focus: () => void;
 }
 
@@ -274,6 +276,13 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
     }
   }, []);
 
+  const cancelPendingAutoSave = useCallback(() => {
+    if (autoSaveTimer.current) {
+      window.clearTimeout(autoSaveTimer.current);
+      autoSaveTimer.current = null;
+    }
+  }, []);
+
   // Merge the visible columns into one Markdown string (top-to-bottom by the
   // on-screen left→right order). Empty scratch columns are dropped.
   const buildMarkdown = useCallback(async (): Promise<string> => {
@@ -304,6 +313,7 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
         const cur = useStore.getState().tabs.find((t) => t.id === tabId);
         if (cur?.filePath !== r.path) setTabFile(tabId, r.path);
         else if (cur?.dirty) setTabDirty(tabId, false);
+        rememberLastEditedFile(r.path);
         return true;
       }
       return false;
@@ -326,6 +336,7 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
         const r = await window.api.vault.rename(tab.filePath, heading);
         if (r.ok && r.path) {
           useStore.getState().retargetTabs(tab.filePath, r.path);
+          rememberLastEditedFile(r.path);
           await refreshVaultTree();
         }
         return;
@@ -366,13 +377,17 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
     save: async () => false,
     buildMarkdown: async () => '',
     hasContent: () => false,
+    cancelPendingAutoSave: () => {},
     pastePlainText: () => {},
+    focusLastBlock: () => {},
     focus: () => {},
   });
   viewApiRef.current.save = save;
   viewApiRef.current.buildMarkdown = buildMarkdown;
   viewApiRef.current.hasContent = hasContent;
+  viewApiRef.current.cancelPendingAutoSave = cancelPendingAutoSave;
   viewApiRef.current.pastePlainText = () => focusedHandle()?.pastePlainText();
+  viewApiRef.current.focusLastBlock = () => midHandleRef.current?.focusLastBlock();
   viewApiRef.current.focus = () => midHandleRef.current?.focus();
   useEffect(() => {
     registry.set(tabId, viewApiRef.current);

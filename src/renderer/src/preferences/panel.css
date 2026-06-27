@@ -160,6 +160,7 @@
 
 .prefs-field input[type='password'],
 .prefs-field input[type='text'],
+.prefs-field select,
 .prefs-field textarea {
   width: 100%;
   background: var(--input-bg);
@@ -179,6 +180,7 @@
 
 .prefs-field input[type='password']:focus,
 .prefs-field input[type='text']:focus,
+.prefs-field select:focus,
 .prefs-field textarea:focus {
   border-color: var(--accent);
 }

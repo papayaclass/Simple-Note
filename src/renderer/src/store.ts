@@ -20,6 +20,7 @@ export interface AISkill {
 }
 
 export type SortMode = 'manual' | 'name' | 'created' | 'modified';
+export type StartupBehavior = 'newBlank' | 'lastEdited';
 
 // Column layout as the article's position on a `[left] — center — [right]` track.
 // `center` is single-column; the other two reveal an independent blank column on
@@ -66,6 +67,8 @@ export interface Preferences {
   aiGlobalInstruction: string;
   aiSkills: AISkill[];
   menuCommands: MenuItemPref[];
+  startupBehavior: StartupBehavior;
+  lastEditedFilePath: string;
   // File-management prefs (mirrored in src/main/preferences.ts).
   vaultPath: string;
   sidebarOpen: boolean;
@@ -93,6 +96,8 @@ export const DEFAULT_PREFS: Preferences = {
   aiGlobalInstruction: '',
   aiSkills: [],
   menuCommands: DEFAULT_MENU_COMMANDS,
+  startupBehavior: 'newBlank',
+  lastEditedFilePath: '',
   vaultPath: '',
   sidebarOpen: true,
   sidebarWidth: 250,

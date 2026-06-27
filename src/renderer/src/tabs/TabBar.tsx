@@ -1,7 +1,12 @@
 import { useCallback, useRef, useState } from 'react';
 import { useStore, Tab } from '../store';
 import { getDocumentView } from '../DocumentView';
-import { refreshVaultTree, createNewTab } from '../fileActions';
+import {
+  refreshVaultTree,
+  createNewTab,
+  rememberLastEditedFile,
+  forgetLastEditedFile,
+} from '../fileActions';
 import { PopMenu, PopMenuState } from '../ui/PopMenu';
 import './tabs.css';
 
@@ -39,12 +44,36 @@ export function TabBar({ onToggleSidebar }: { onToggleSidebar: () => void }): JS
     }
   }, [addTab]);
 
+  const deleteDocument = useCallback(
+    async (tab: Tab) => {
+      if (!tab.filePath || !isInVault(tab.filePath)) return;
+      const path = tab.filePath;
+      getDocumentView(tab.id)?.cancelPendingAutoSave();
+      const r = await window.api.vault.delete(path);
+      if (!r.ok) {
+        void getDocumentView(tab.id)?.save();
+        return;
+      }
+
+      const s = useStore.getState();
+      forgetLastEditedFile(path);
+      if (s.selectedPath === path) s.setSelectedPath(null);
+      const tabsToClose = s.tabs.filter((t) => t.filePath === path).map((t) => t.id);
+      for (const id of tabsToClose) {
+        useStore.getState().closeTab(id);
+      }
+      await refreshVaultTree();
+    },
+    [isInVault]
+  );
+
   const saveToVault = useCallback(
     async (tab: Tab) => {
       const md = (await getDocumentView(tab.id)?.buildMarkdown()) ?? '';
       const r = await window.api.vault.moveToVault(md, `${tab.fileName}.md`);
       if (r.ok && r.path) {
         setTabFile(tab.id, r.path);
+        rememberLastEditedFile(r.path);
         await refreshVaultTree();
       }
     },
@@ -71,10 +100,17 @@ export function TabBar({ onToggleSidebar }: { onToggleSidebar: () => void }): JS
             disabled: !outsideVault,
             onClick: () => void saveToVault(tab),
           },
+          { divider: true },
+          {
+            label: '刪除文件',
+            danger: true,
+            disabled: outsideVault,
+            onClick: () => void deleteDocument(tab),
+          },
         ],
       });
     },
-    [isInVault, duplicateTab, closeTab, saveToVault]
+    [isInVault, duplicateTab, closeTab, saveToVault, deleteDocument]
   );
 
   const onDragOver = useCallback((e: React.DragEvent, index: number) => {

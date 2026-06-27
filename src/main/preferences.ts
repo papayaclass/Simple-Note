@@ -20,6 +20,7 @@ export interface MenuDividerPref {
 export type MenuItemPref = MenuCommandPref | MenuDividerPref;
 
 export type SortMode = 'manual' | 'name' | 'created' | 'modified';
+export type StartupBehavior = 'newBlank' | 'lastEdited';
 
 export interface Preferences {
   vaultPath: string;
@@ -46,6 +47,8 @@ export interface Preferences {
   aiGlobalInstruction: string;
   aiSkills: AISkill[];
   menuCommands: MenuItemPref[];
+  startupBehavior: StartupBehavior;
+  lastEditedFilePath: string;
 }
 
 // Default order + visibility for the right-click menu commands. Kept in sync
@@ -91,6 +94,8 @@ const DEFAULTS: Preferences = {
   aiGlobalInstruction: '',
   aiSkills: [],
   menuCommands: DEFAULT_MENU_COMMANDS,
+  startupBehavior: 'newBlank',
+  lastEditedFilePath: '',
 };
 
 const store = new Store<Preferences>({ name: 'preferences', defaults: DEFAULTS });
@@ -120,6 +125,8 @@ export function getPreferences(): Preferences {
     aiGlobalInstruction: store.get('aiGlobalInstruction', DEFAULTS.aiGlobalInstruction),
     aiSkills: store.get('aiSkills', DEFAULTS.aiSkills),
     menuCommands: store.get('menuCommands', DEFAULTS.menuCommands),
+    startupBehavior: store.get('startupBehavior', DEFAULTS.startupBehavior),
+    lastEditedFilePath: store.get('lastEditedFilePath', DEFAULTS.lastEditedFilePath),
   };
 }
 

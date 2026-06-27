@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useStore, VaultNode, SortMode } from '../store';
-import { openFileInTab, refreshVaultTree } from '../fileActions';
+import {
+  openFileInTab,
+  refreshVaultTree,
+  retargetLastEditedFile,
+  forgetLastEditedFile,
+} from '../fileActions';
+import { getDocumentView } from '../DocumentView';
 import { PopMenu, PopMenuItem, PopMenuState } from '../ui/PopMenu';
 import './sidebar.css';
 
@@ -364,6 +370,7 @@ export function Sidebar(): JSX.Element {
         // file activates the existing tab instead of orphaning it. A manual
         // rename also stops first-heading auto-naming.
         retargetTabs(node.path, r.path);
+        retargetLastEditedFile(node.path, r.path);
         clearAutoName(r.path);
         const nextOrder: Record<string, string[]> = {};
         for (const [parent, paths] of Object.entries(useStore.getState().preferences.manualOrder)) {
@@ -444,6 +451,7 @@ export function Sidebar(): JSX.Element {
           commitManualOrder(nextOrder);
         }
         retargetTabs(srcPath, r.path);
+        retargetLastEditedFile(srcPath, r.path);
         setSelectedPath(r.path);
         await refreshVaultTree();
       }
@@ -453,8 +461,28 @@ export function Sidebar(): JSX.Element {
 
   const doDelete = useCallback(
     async (path: string) => {
-      await window.api.vault.delete(path);
-      if (selectedPath === path) setSelectedPath(null);
+      const tabsToClose = useStore
+        .getState()
+        .tabs.filter((t) => t.filePath === path || t.filePath?.startsWith(path + '/'))
+        .map((t) => t.id);
+      for (const id of tabsToClose) {
+        getDocumentView(id)?.cancelPendingAutoSave();
+      }
+
+      const r = await window.api.vault.delete(path);
+      if (!r.ok) {
+        for (const id of tabsToClose) {
+          void getDocumentView(id)?.save();
+        }
+        return;
+      }
+
+      const s = useStore.getState();
+      forgetLastEditedFile(path);
+      if (selectedPath === path || selectedPath?.startsWith(path + '/')) setSelectedPath(null);
+      for (const id of tabsToClose) {
+        s.closeTab(id);
+      }
       await refreshVaultTree();
     },
     [selectedPath, setSelectedPath]

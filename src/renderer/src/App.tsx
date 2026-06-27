@@ -3,7 +3,13 @@ import { useStore, useActiveTab } from './store';
 import { DocumentView, getDocumentView } from './DocumentView';
 import { Sidebar } from './sidebar/Sidebar';
 import { TabBar } from './tabs/TabBar';
-import { openFileInTab, refreshVaultTree, createNewTab, isPathInVault } from './fileActions';
+import {
+  openFileInTab,
+  refreshVaultTree,
+  createNewTab,
+  isPathInVault,
+  forgetLastEditedFile,
+} from './fileActions';
 import { PreferencesPanel } from './preferences/Panel';
 import { ImageLightbox } from './ImageLightbox';
 import { YouTubePreviewHover } from './editor/youtubePreview';
@@ -99,6 +105,18 @@ export function App(): JSX.Element {
       const vp = await window.api.vault.get();
       useStore.getState().setVaultPath(vp);
       if (vp) await refreshVaultTree();
+      if (stored.startupBehavior === 'lastEdited' && stored.lastEditedFilePath) {
+        await new Promise((resolve) => window.setTimeout(resolve, 0));
+        const s = useStore.getState();
+        const stillBlank =
+          s.tabs.length === 1 && !s.tabs[0]?.filePath && !s.tabs[0]?.dirty;
+        if (stillBlank) {
+          const opened = await openFileInTab(stored.lastEditedFilePath, undefined, {
+            autoFocus: true,
+          });
+          if (!opened) forgetLastEditedFile(stored.lastEditedFilePath);
+        }
+      }
     })();
   }, [setPreferences]);
 

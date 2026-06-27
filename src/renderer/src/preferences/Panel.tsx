@@ -184,6 +184,23 @@ export function PreferencesPanel(): JSX.Element | null {
                 <p className="prefs-hint">
                   放在儲存庫內的 Markdown 檔會顯示在左側側邊欄。儲存庫之外的檔案仍可開啟編輯，但不會出現在側邊欄。
                 </p>
+
+                <div className="prefs-section-divider" />
+
+                <div className="prefs-field">
+                  <label>程式開啟時的預設行為</label>
+                  <select
+                    value={draft.startupBehavior}
+                    onChange={(e) =>
+                      update({
+                        startupBehavior: e.target.value as Preferences['startupBehavior'],
+                      })
+                    }
+                  >
+                    <option value="newBlank">新增空白文件</option>
+                    <option value="lastEdited">開啟上次編輯的文件</option>
+                  </select>
+                </div>
               </>
             )}
 
