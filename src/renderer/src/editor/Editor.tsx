@@ -16,6 +16,7 @@ import { deleteSelectedBlocks, deleteForwardEmptyBlock } from './blockDelete';
 import { createToggleKeyboardExtension } from './toggle';
 import { SimpleNoteSideMenu } from './sideMenu';
 import { useStore } from '../store';
+import { openFileInTab } from '../fileActions';
 import { ContextMenu } from '../context-menu/ContextMenu';
 import {
   TIMER_RE,
@@ -361,19 +362,30 @@ export function Editor({ onChange, handleRef, autoFocus = true }: Props): JSX.El
     };
 
     const onDrop = (e: DragEvent): void => {
-      const files = imageFilesFrom(e.dataTransfer);
-      if (files.length === 0) return;
+      const images = imageFilesFrom(e.dataTransfer);
+      const textPaths = textNoteFilesFrom(e.dataTransfer);
+      if (images.length === 0 && textPaths.length === 0) return;
       e.preventDefault();
       e.stopPropagation();
-      const view = (editor as any)._tiptapEditor.view;
-      let afterId: string | null = null;
-      const hit = view.posAtCoords({ left: e.clientX, top: e.clientY });
-      if (hit) afterId = resolveBlockId(view.state.doc, hit.pos);
-      if (!afterId) {
-        const blocks = editor.document;
-        afterId = blocks.length ? blocks[blocks.length - 1].id : null;
+
+      // md/txt dropped from Finder open as new tabs (storage location unchanged).
+      for (const p of textPaths) {
+        void window.api.vault.read(p).then((r) => {
+          if (r.ok) void openFileInTab(p, r.content ?? '');
+        });
       }
-      void insertImageFiles(editor, files, afterId);
+
+      if (images.length > 0) {
+        const view = (editor as any)._tiptapEditor.view;
+        let afterId: string | null = null;
+        const hit = view.posAtCoords({ left: e.clientX, top: e.clientY });
+        if (hit) afterId = resolveBlockId(view.state.doc, hit.pos);
+        if (!afterId) {
+          const blocks = editor.document;
+          afterId = blocks.length ? blocks[blocks.length - 1].id : null;
+        }
+        void insertImageFiles(editor, images, afterId);
+      }
     };
 
     const onDragOver = (e: DragEvent): void => {
@@ -529,6 +541,15 @@ function pastePlainText(editor: ReturnType<typeof useCreateBlockNote>): void {
 function imageFilesFrom(data: DataTransfer | null): File[] {
   if (!data) return [];
   return Array.from(data.files).filter((f) => f.type.startsWith('image/'));
+}
+
+// Pull md/txt files (with their Finder paths) out of a drag payload. Electron
+// augments dropped File objects with an absolute `.path`.
+function textNoteFilesFrom(data: DataTransfer | null): string[] {
+  if (!data) return [];
+  return Array.from(data.files)
+    .map((f) => (f as File & { path?: string }).path ?? '')
+    .filter((p) => /\.(md|txt)$/i.test(p));
 }
 
 function readAsDataURL(file: File): Promise<string> {
