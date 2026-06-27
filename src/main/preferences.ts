@@ -19,7 +19,16 @@ export interface MenuDividerPref {
 
 export type MenuItemPref = MenuCommandPref | MenuDividerPref;
 
+export type SortMode = 'manual' | 'name' | 'created' | 'modified';
+
 export interface Preferences {
+  vaultPath: string;
+  sidebarOpen: boolean;
+  sidebarWidth: number;
+  sortMode: SortMode;
+  sortAsc: boolean;
+  // Per-folder manual ordering: folder path → ordered array of child paths.
+  manualOrder: Record<string, string[]>;
   pageWidth: number;
   twoColumnPageWidth: number;
   lineHeight: number;
@@ -59,6 +68,12 @@ const DEFAULT_MENU_COMMANDS: MenuCommandPref[] = [
 ].map((key) => ({ key, visible: true }));
 
 const DEFAULTS: Preferences = {
+  vaultPath: '',
+  sidebarOpen: true,
+  sidebarWidth: 250,
+  sortMode: 'manual',
+  sortAsc: true,
+  manualOrder: {},
   pageWidth: 720,
   twoColumnPageWidth: 1080,
   lineHeight: 1.6,
@@ -82,6 +97,12 @@ const store = new Store<Preferences>({ name: 'preferences', defaults: DEFAULTS }
 
 export function getPreferences(): Preferences {
   return {
+    vaultPath: store.get('vaultPath', DEFAULTS.vaultPath),
+    sidebarOpen: store.get('sidebarOpen', DEFAULTS.sidebarOpen),
+    sidebarWidth: store.get('sidebarWidth', DEFAULTS.sidebarWidth),
+    sortMode: store.get('sortMode', DEFAULTS.sortMode),
+    sortAsc: store.get('sortAsc', DEFAULTS.sortAsc),
+    manualOrder: store.get('manualOrder', DEFAULTS.manualOrder),
     pageWidth: store.get('pageWidth', DEFAULTS.pageWidth),
     twoColumnPageWidth: store.get('twoColumnPageWidth', DEFAULTS.twoColumnPageWidth),
     lineHeight: store.get('lineHeight', DEFAULTS.lineHeight),

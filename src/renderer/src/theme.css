@@ -18,6 +18,9 @@
   --math-tag-fg: #1a1a1a;
   --result-fg: #6b7280;
   --column-divider: rgba(0, 0, 0, 0.12);
+  --sidebar-bg: #f3f3f1;
+  --hover-bg: rgba(0, 0, 0, 0.05);
+  --sidebar-width: 250px;
 
   /* dynamic, controlled by preferences */
   --page-width: 720px;
@@ -48,6 +51,8 @@
     --math-tag-fg: #e8e8e8;
     --result-fg: #9ca3af;
     --column-divider: rgba(255, 255, 255, 0.12);
+    --sidebar-bg: #242424;
+    --hover-bg: rgba(255, 255, 255, 0.07);
   }
 }
 
@@ -95,10 +100,60 @@ body,
   background: var(--selection);
 }
 
-.app {
+/* Top-level shell: sidebar | main area (tab bar + tab content). */
+.window-root {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* Collapsible sidebar wrapper: animates width so the sidebar slides in/out.
+   The inner .sidebar keeps its full width and is clipped, so its content
+   doesn't reflow during the slide. */
+.sidebar-shell {
+  flex: 0 0 auto;
+  width: var(--sidebar-width);
+  height: 100%;
+  overflow: hidden;
+  transition: width 220ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.sidebar-shell:not(.open) {
+  width: 0;
+}
+/* No transition while dragging the resize handle — track the pointer instantly. */
+.window-root.resizing-sidebar .sidebar-shell {
+  transition: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-shell {
+    transition: none;
+  }
+}
+
+.main-area {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Holds every tab's DocumentView; only the active one is shown. */
+.tab-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+}
+
+/* One document surface. The scroll container for its page. */
+.document-view {
   height: 100%;
   width: 100%;
   overflow: auto;
+}
+.document-view[hidden] {
+  display: none;
 }
 
 /* Three-column "push" layout: the article lives in the MIDDLE slot and never
@@ -229,13 +284,16 @@ body,
 }
 
 /* Only the top strip is a drag region; everything else stays interactive.
-   Article text is masked at the filename line instead of lower in the page. */
+   Painted with the page background (not transparent) so article text scrolled
+   up under it is masked at the filename line instead of bleeding to the very
+   top edge. The filename / chips in .status-bar (z 10000) sit above this. */
 .drag-bar {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   height: 28px;
+  background: var(--bg);
   -webkit-app-region: drag;
   z-index: 9999;
 }
@@ -252,14 +310,12 @@ body,
 
 .status-bar {
   position: fixed;
-  top: 14px;
-  left: 80px;
+  bottom: 12px;
+  right: 16px;
   display: flex;
   gap: 6px;
   align-items: center;
   -webkit-app-region: no-drag;
-  /* Above .drag-bar (z-index 9999) so the clickable alarm chip isn't covered
-     by the title-bar drag overlay. */
   z-index: 10000;
 }
 
@@ -269,6 +325,18 @@ body,
   line-height: 1;
   user-select: none;
   pointer-events: none;
+}
+
+/* Unsaved-changes indicator shown beside the filename; mirrors the OS
+   "document edited" dot but next to the in-app filename. */
+.dirty-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--fg-muted);
+  vertical-align: middle;
 }
 
 .math-badge,

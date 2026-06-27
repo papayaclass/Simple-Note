@@ -32,6 +32,7 @@ export interface EditorHandle {
   loadMarkdown: (md: string) => Promise<void>;
   asMarkdown: () => Promise<string>;
   focusLastBlock: () => void;
+  focus: () => void;
   pastePlainText: () => void;
   hasFocus: () => boolean;
   editor: ReturnType<typeof useCreateBlockNote>;
@@ -242,7 +243,8 @@ export function Editor({ onChange, handleRef, autoFocus = true }: Props): JSX.El
         }
       },
       loadMarkdown: async (md: string) => {
-        const blocks = await editor.tryParseMarkdownToBlocks(md);
+        const parsed = await editor.tryParseMarkdownToBlocks(md);
+        const blocks = parsed.length > 0 ? parsed : INITIAL_CONTENT;
         (editor.replaceBlocks as (a: unknown, b: unknown) => unknown)(editor.document, blocks);
       },
       asMarkdown: async () => editor.blocksToMarkdownLossy(editor.document),
@@ -253,6 +255,7 @@ export function Editor({ onChange, handleRef, autoFocus = true }: Props): JSX.El
         editor.setTextCursorPosition(last.id, 'end');
         editor.focus();
       },
+      focus: () => editor.focus(),
       pastePlainText: () => pastePlainText(editor),
       hasFocus: () => editorHasFocus(editor),
     };

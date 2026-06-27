@@ -33,7 +33,7 @@ main 端在 `app.whenReady` 內註冊 handler，命名採 `namespace:action`（�
 
 **檔案儲存格式**
 
-存檔內容是純 Markdown：`file:save` 收下 renderer 用 `editor.blocksToMarkdownLossy` 產生的字串直接寫入 `.md`。雙欄展開時，`buildMarkdown` 依「畫面左欄在上、右欄在下」的順序由上而下合併兩欄文字（Markdown 無法表達多欄，布局不保存），空白欄會被略過。`file:save` 會記住 `currentFilePath`，後續按 Cmd+S 不再跳對話框；`file:new` 與 `file:open` 會更新標題列與 `representedFilename`。開啟檔案時一律用 `loadMarkdown` 解析進中欄（文章）、清空左右兩個空白欄並退回單欄。Renderer 端透過 `window.__simpleNote_isDirty()` / `window.__simpleNote_save()` 兩個全域函式，讓 main 在視窗關閉前可同步詢問是否儲存。
+存檔內容是純 Markdown：`file:save` 收下 renderer 用 `editor.blocksToMarkdownLossy` 產生的字串直接寫入 `.md`。雙欄展開時，`buildMarkdown` 依「畫面左欄在上、右欄在下」的順序由上而下合併兩欄文字（Markdown 無法表達多欄，布局不保存），空白欄會被略過。`file:save` 會記住分頁的檔案路徑，後續按 Cmd+S 不再跳對話框。Renderer 端透過 `window.__simpleNote_isDirty()` / `window.__simpleNote_save()` 兩個全域函式，讓 main 在視窗關閉前可同步詢問是否儲存（會檢查 / 儲存所有未存的分頁）。
 
 **編輯器核心 (`src/renderer/src/editor/`)**
 

@@ -1,0 +1,873 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useStore, VaultNode, SortMode } from '../store';
+import { openFileInTab, refreshVaultTree } from '../fileActions';
+import { PopMenu, PopMenuItem, PopMenuState } from '../ui/PopMenu';
+import './sidebar.css';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+function parentDir(p: string): string {
+  const i = p.lastIndexOf('/');
+  return i >= 0 ? p.slice(0, i) : '';
+}
+
+function replacePathPrefix(path: string, oldPath: string, newPath: string): string {
+  if (path === oldPath) return newPath;
+  return path.startsWith(oldPath + '/') ? newPath + path.slice(oldPath.length) : path;
+}
+
+function displayName(node: VaultNode): string {
+  return node.type === 'file' ? node.name.replace(/\.md$/i, '') : node.name;
+}
+
+function sortChildren(
+  nodes: VaultNode[],
+  parentPath: string,
+  sortMode: SortMode,
+  manualOrder: Record<string, string[]>,
+  asc = true
+): VaultNode[] {
+  const arr = [...nodes];
+  if (sortMode === 'manual') {
+    const order = manualOrder[parentPath] ?? [];
+    const idx = (p: string): number => {
+      const i = order.indexOf(p);
+      return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+    };
+    arr.sort((a, b) => idx(a.path) - idx(b.path) || a.name.localeCompare(b.name, 'zh-Hant'));
+    return arr;
+  }
+  arr.sort((a, b) => {
+    // Folders always group above files, regardless of direction.
+    if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
+    let c: number;
+    if (sortMode === 'name') c = a.name.localeCompare(b.name, 'zh-Hant');
+    else if (sortMode === 'created') c = a.birthtimeMs - b.birthtimeMs;
+    else c = a.mtimeMs - b.mtimeMs; // modified
+    return asc ? c : -c;
+  });
+  return arr;
+}
+
+function findSiblings(tree: VaultNode[], parentPath: string, vaultPath: string): VaultNode[] {
+  if (parentPath === vaultPath) return tree;
+  const stack = [...tree];
+  while (stack.length) {
+    const n = stack.pop()!;
+    if (n.type === 'folder') {
+      if (n.path === parentPath) return n.children ?? [];
+      stack.push(...(n.children ?? []));
+    }
+  }
+  return [];
+}
+
+async function persistPref(key: string, value: unknown): Promise<void> {
+  await window.api.prefs.set(key, value);
+}
+
+type MenuItem = PopMenuItem;
+type MenuState = PopMenuState;
+type DropLine = { path: string; pos: 'before' | 'after' };
+type RootDrop = 'top' | 'bottom';
+type DropIntent =
+  | { type: 'folder'; path: string }
+  | { type: 'reorder'; path: string; pos: 'before' | 'after' }
+  | { type: 'root'; pos: RootDrop };
+type ManualPlacement =
+  | { type: 'edge'; pos: RootDrop }
+  | { type: 'target'; targetPath: string; pos: 'before' | 'after' };
+
+// ---------------------------------------------------------------------------
+// Shared per-render context passed down the tree
+// ---------------------------------------------------------------------------
+interface TreeCtx {
+  selectedPath: string | null;
+  renamingPath: string | null;
+  sortMode: SortMode;
+  sortAsc: boolean;
+  manualOrder: Record<string, string[]>;
+  expanded: Set<string>;
+  // A file row being hovered for reorder (blue before/after line).
+  dragOver: DropLine | null;
+  // A folder being hovered as a drop target (blue overlay).
+  dropFolder: string | null;
+  onSelect: (node: VaultNode) => void;
+  onOpen: (node: VaultNode) => void;
+  onToggleFolder: (path: string) => void;
+  onContext: (e: React.MouseEvent, node: VaultNode) => void;
+  onRenameCommit: (node: VaultNode, name: string) => void;
+  onRenameCancel: () => void;
+  onDragStart: (e: React.DragEvent, node: VaultNode) => void;
+  onDragOver: (e: React.DragEvent, node: VaultNode) => void;
+  onDrop: (e: React.DragEvent, node: VaultNode) => void;
+  onDragEnd: () => void;
+}
+
+function TreeItem({
+  node,
+  depth,
+  ctx,
+}: {
+  node: VaultNode;
+  depth: number;
+  ctx: TreeCtx;
+}): JSX.Element {
+  const selected = ctx.selectedPath === node.path;
+  const renaming = ctx.renamingPath === node.path;
+  const isFolder = node.type === 'folder';
+  const open = ctx.expanded.has(node.path);
+  const draggable = !renaming;
+  const dragLine =
+    ctx.dragOver && ctx.dragOver.path === node.path ? ctx.dragOver.pos : null;
+  const folderDrop = isFolder && ctx.dropFolder === node.path;
+
+  const children =
+    isFolder && open
+      ? sortChildren(node.children ?? [], node.path, ctx.sortMode, ctx.manualOrder, ctx.sortAsc)
+      : [];
+
+  return (
+    <div className="tree-item">
+      {dragLine === 'before' && <div className="drop-line" style={{ marginLeft: depth * 14 }} />}
+      <div
+        className={`tree-row${selected ? ' selected' : ''}${folderDrop ? ' drop-target' : ''}`}
+        style={{ paddingLeft: 8 + depth * 14 }}
+        draggable={draggable}
+        onClick={() => {
+          if (isFolder) {
+            ctx.onSelect(node);
+            ctx.onToggleFolder(node.path);
+          } else {
+            ctx.onOpen(node);
+          }
+        }}
+        onContextMenu={(e) => ctx.onContext(e, node)}
+        onDragStart={(e) => ctx.onDragStart(e, node)}
+        onDragOver={(e) => ctx.onDragOver(e, node)}
+        onDrop={(e) => ctx.onDrop(e, node)}
+        onDragEnd={ctx.onDragEnd}
+      >
+        {isFolder ? (
+          <span className={`twisty${open ? ' open' : ''}`} aria-hidden="true">
+            <ChevronIcon />
+          </span>
+        ) : (
+          <span className="twisty-spacer" aria-hidden="true" />
+        )}
+        {renaming ? (
+          <RenameInput
+            initial={displayName(node)}
+            onCommit={(name) => ctx.onRenameCommit(node, name)}
+            onCancel={ctx.onRenameCancel}
+          />
+        ) : (
+          <span className="tree-label">{displayName(node)}</span>
+        )}
+      </div>
+      {dragLine === 'after' && <div className="drop-line" style={{ marginLeft: depth * 14 }} />}
+      {children.map((c) => (
+        <TreeItem key={c.path} node={c} depth={depth + 1} ctx={ctx} />
+      ))}
+    </div>
+  );
+}
+
+function RenameInput({
+  initial,
+  onCommit,
+  onCancel,
+}: {
+  initial: string;
+  onCommit: (name: string) => void;
+  onCancel: () => void;
+}): JSX.Element {
+  const ref = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (el) {
+      el.focus();
+      el.select();
+    }
+  }, []);
+  return (
+    <input
+      ref={ref}
+      className="rename-input"
+      defaultValue={initial}
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onBlur={(e) => onCommit(e.currentTarget.value)}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          onCommit(e.currentTarget.value);
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          onCancel();
+        }
+      }}
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sidebar
+// ---------------------------------------------------------------------------
+export function Sidebar(): JSX.Element {
+  const vaultPath = useStore((s) => s.vaultPath);
+  const setVaultPath = useStore((s) => s.setVaultPath);
+  const fileTree = useStore((s) => s.fileTree);
+  const sortMode = useStore((s) => s.sortMode);
+  const setSortMode = useStore((s) => s.setSortMode);
+  const sortAsc = useStore((s) => s.sortAsc);
+  const setSortAsc = useStore((s) => s.setSortAsc);
+  const selectedPath = useStore((s) => s.selectedPath);
+  const setSelectedPath = useStore((s) => s.setSelectedPath);
+  const manualOrder = useStore((s) => s.preferences.manualOrder);
+  const setPreferences = useStore((s) => s.setPreferences);
+  const retargetTabs = useStore((s) => s.retargetTabs);
+  const clearAutoName = useStore((s) => s.clearAutoName);
+
+  const [renamingPath, setRenamingPath] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [menu, setMenu] = useState<MenuState | null>(null);
+  const [dragOver, setDragOver] = useState<DropLine | null>(null);
+  const [dropFolder, setDropFolder] = useState<string | null>(null);
+  // Top/bottom drop zone for moving a file out of its folder to the vault root.
+  const [rootDrop, setRootDrop] = useState<RootDrop | null>(null);
+  const draggingPath = useRef<string | null>(null);
+  const dropIntent = useRef<DropIntent | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  // Reveal the selected file by expanding its ancestor folders (e.g. when a tab
+  // switch selects a file that lives inside a collapsed folder).
+  useEffect(() => {
+    if (!selectedPath || !vaultPath) return;
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      let changed = false;
+      let p = parentDir(selectedPath);
+      while (p && p !== vaultPath && p.startsWith(vaultPath)) {
+        if (!next.has(p)) {
+          next.add(p);
+          changed = true;
+        }
+        p = parentDir(p);
+      }
+      return changed ? next : prev;
+    });
+  }, [selectedPath, vaultPath]);
+
+  const chooseVault = useCallback(async () => {
+    const path = await window.api.vault.pick();
+    if (path) {
+      setVaultPath(path);
+      setPreferences({ vaultPath: path });
+      await refreshVaultTree();
+    }
+  }, [setVaultPath, setPreferences]);
+
+  // Target directory for new file/folder: selected folder, the folder a
+  // selected file lives in, or the vault root.
+  const targetDir = useCallback((): string | null => {
+    if (!vaultPath) return null;
+    if (!selectedPath) return vaultPath;
+    const node = findNode(fileTree, selectedPath);
+    if (node?.type === 'folder') return node.path;
+    return parentDir(selectedPath) || vaultPath;
+  }, [vaultPath, selectedPath, fileTree]);
+
+  const newFile = useCallback(async () => {
+    const dir = targetDir();
+    const r = await window.api.vault.createFile(dir);
+    if (r.ok && r.path) {
+      await refreshVaultTree();
+      setSelectedPath(r.path);
+      // Focus the editor so typing a heading auto-names the file.
+      void openFileInTab(r.path, '', { autoFocus: true, autoName: true });
+    }
+  }, [targetDir, setSelectedPath]);
+
+  const newFolder = useCallback(async () => {
+    const dir = targetDir();
+    const r = await window.api.vault.createFolder(dir);
+    if (r.ok && r.path) {
+      await refreshVaultTree();
+      setSelectedPath(r.path);
+      setRenamingPath(r.path);
+    }
+  }, [targetDir, setSelectedPath]);
+
+  const changeSort = useCallback(
+    (mode: SortMode) => {
+      setSortMode(mode);
+      void persistPref('sortMode', mode);
+    },
+    [setSortMode]
+  );
+
+  const changeAsc = useCallback(
+    (asc: boolean) => {
+      setSortAsc(asc);
+      void persistPref('sortAsc', asc);
+    },
+    [setSortAsc]
+  );
+
+  const openSortMenu = useCallback(
+    (x: number, y: number) => {
+      const opt = (label: string, mode: SortMode): MenuItem => ({
+        label,
+        checked: sortMode === mode,
+        onClick: () => changeSort(mode),
+      });
+      // Direction only applies to the keyed sort modes; greyed out for manual.
+      const manual = sortMode === 'manual';
+      setMenu({
+        x,
+        y,
+        items: [
+          opt('無（手動排序）', 'manual'),
+          opt('依名稱', 'name'),
+          opt('依建立時間', 'created'),
+          opt('依修改時間', 'modified'),
+          { divider: true },
+          {
+            label: '遞增排序',
+            checked: manual ? undefined : sortAsc,
+            disabled: manual,
+            onClick: () => changeAsc(true),
+          },
+          {
+            label: '遞減排序',
+            checked: manual ? undefined : !sortAsc,
+            disabled: manual,
+            onClick: () => changeAsc(false),
+          },
+        ],
+      });
+    },
+    [sortMode, sortAsc, changeSort, changeAsc]
+  );
+
+  const doRename = useCallback(
+    async (node: VaultNode, rawName: string) => {
+      setRenamingPath(null);
+      const name = rawName.trim();
+      if (!name || name === displayName(node)) return;
+      const r = await window.api.vault.rename(node.path, name);
+      if (r.ok && r.path) {
+        // Repoint any open tab(s) so the tab name follows and re-selecting the
+        // file activates the existing tab instead of orphaning it. A manual
+        // rename also stops first-heading auto-naming.
+        retargetTabs(node.path, r.path);
+        clearAutoName(r.path);
+        const nextOrder: Record<string, string[]> = {};
+        for (const [parent, paths] of Object.entries(useStore.getState().preferences.manualOrder)) {
+          const nextParent = replacePathPrefix(parent, node.path, r.path);
+          nextOrder[nextParent] = paths.map((path) => replacePathPrefix(path, node.path, r.path));
+        }
+        setPreferences({ manualOrder: nextOrder });
+        void persistPref('manualOrder', nextOrder);
+        setSelectedPath(r.path);
+        await refreshVaultTree();
+      }
+    },
+    [setSelectedPath, retargetTabs, clearAutoName, setPreferences]
+  );
+
+  const manualOrderWithPlacement = useCallback(
+    (
+      baseOrder: Record<string, string[]>,
+      path: string,
+      parentPath: string,
+      placement: ManualPlacement
+    ): Record<string, string[]> => {
+      if (!vaultPath) return baseOrder;
+      const ordered = sortChildren(
+        findSiblings(fileTree, parentPath, vaultPath),
+        parentPath,
+        'manual',
+        baseOrder
+      )
+        .map((n) => n.path)
+        .filter((p) => p !== path);
+      let insertAt = ordered.length;
+      if (placement.type === 'edge') {
+        insertAt = placement.pos === 'top' ? 0 : ordered.length;
+      } else {
+        const targetIndex = ordered.indexOf(placement.targetPath);
+        if (targetIndex !== -1) {
+          insertAt = placement.pos === 'before' ? targetIndex : targetIndex + 1;
+        }
+      }
+      const nextPaths = [...ordered];
+      nextPaths.splice(insertAt, 0, path);
+      return { ...baseOrder, [parentPath]: nextPaths };
+    },
+    [fileTree, vaultPath]
+  );
+
+  const commitManualOrder = useCallback(
+    (next: Record<string, string[]>): void => {
+      setPreferences({ manualOrder: next });
+      void persistPref('manualOrder', next);
+    },
+    [setPreferences]
+  );
+
+  // Move a node into another directory, optionally placing it in manual order.
+  const doMove = useCallback(
+    async (srcPath: string, destDir: string, placement?: ManualPlacement) => {
+      const r = await window.api.vault.move(srcPath, destDir);
+      if (r.ok && r.path) {
+        if (sortMode === 'manual') {
+          const currentOrder = useStore.getState().preferences.manualOrder;
+          const removedFromOldParent: Record<string, string[]> = {};
+          for (const [parent, paths] of Object.entries(currentOrder)) {
+            removedFromOldParent[parent] = paths.filter((path) => path !== srcPath);
+          }
+          const retargeted: Record<string, string[]> = {};
+          for (const [parent, paths] of Object.entries(removedFromOldParent)) {
+            const nextParent = replacePathPrefix(parent, srcPath, r.path);
+            retargeted[nextParent] = paths.map((path) => replacePathPrefix(path, srcPath, r.path));
+          }
+          const nextOrder = placement
+            ? manualOrderWithPlacement(retargeted, r.path, destDir, placement)
+            : manualOrderWithPlacement(retargeted, r.path, destDir, {
+                type: 'edge',
+                pos: 'bottom',
+              });
+          commitManualOrder(nextOrder);
+        }
+        retargetTabs(srcPath, r.path);
+        setSelectedPath(r.path);
+        await refreshVaultTree();
+      }
+    },
+    [sortMode, manualOrderWithPlacement, commitManualOrder, setSelectedPath, retargetTabs]
+  );
+
+  const doDelete = useCallback(
+    async (path: string) => {
+      await window.api.vault.delete(path);
+      if (selectedPath === path) setSelectedPath(null);
+      await refreshVaultTree();
+    },
+    [selectedPath, setSelectedPath]
+  );
+
+  const doDuplicate = useCallback(async (path: string) => {
+    const r = await window.api.vault.duplicate(path);
+    if (r.ok) await refreshVaultTree();
+  }, []);
+
+  // Manual-order reordering on drop. Same-parent drops only rewrite order;
+  // cross-parent before/after drops move the file to the target's parent first.
+  const handlePlacementDrop = useCallback(
+    (draggedPath: string, targetPath: string, pos: 'before' | 'after') => {
+      if (!vaultPath || sortMode !== 'manual' || draggedPath === targetPath) return;
+      const dParent = parentDir(draggedPath);
+      const tParent = parentDir(targetPath);
+      if (targetPath.startsWith(draggedPath + '/')) return;
+      if (dParent !== tParent) {
+        void doMove(draggedPath, tParent, { type: 'target', targetPath, pos });
+        return;
+      }
+      const next = manualOrderWithPlacement(manualOrder, draggedPath, dParent, {
+        type: 'target',
+        targetPath,
+        pos,
+      });
+      commitManualOrder(next);
+    },
+    [vaultPath, sortMode, manualOrder, manualOrderWithPlacement, commitManualOrder, doMove]
+  );
+
+  const handleRootDrop = useCallback(
+    (draggedPath: string, pos: RootDrop) => {
+      if (!vaultPath) return;
+      if (parentDir(draggedPath) === vaultPath) {
+        if (sortMode !== 'manual') return;
+        const next = manualOrderWithPlacement(manualOrder, draggedPath, vaultPath, {
+          type: 'edge',
+          pos,
+        });
+        commitManualOrder(next);
+      } else {
+        void doMove(draggedPath, vaultPath, { type: 'edge', pos });
+      }
+    },
+    [vaultPath, sortMode, manualOrder, manualOrderWithPlacement, commitManualOrder, doMove]
+  );
+
+  const openContext = useCallback(
+    (e: React.MouseEvent, node: VaultNode) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setSelectedPath(node.path);
+      const items: MenuItem[] = [
+        { label: '在新分頁開啟', onClick: () => node.type === 'file' && void openFileInTab(node.path) },
+        { label: '重新命名', onClick: () => setRenamingPath(node.path) },
+        { label: '複製', onClick: () => void doDuplicate(node.path) },
+        { label: '顯示在 Finder', onClick: () => void window.api.vault.reveal(node.path) },
+        { label: '刪除', danger: true, onClick: () => void doDelete(node.path) },
+      ];
+      // Folders can't be opened in a tab.
+      if (node.type === 'folder') items.shift();
+      setMenu({ x: e.clientX, y: e.clientY, items });
+    },
+    [setSelectedPath, doDuplicate, doDelete]
+  );
+
+  const openEmptyContext = useCallback(
+    (e: React.MouseEvent) => {
+      // Only when clicking the empty area, not a row.
+      if ((e.target as HTMLElement).closest('.tree-row')) return;
+      e.preventDefault();
+      setMenu({
+        x: e.clientX,
+        y: e.clientY,
+        items: [
+          { label: '新增文件', onClick: () => void newFile() },
+          { label: '新增資料夾', onClick: () => void newFolder() },
+          // Deferred so it opens *after* PopMenu auto-closes this menu.
+          { label: '排序…', onClick: () => setTimeout(() => openSortMenu(e.clientX, e.clientY), 0) },
+        ],
+      });
+    },
+    [newFile, newFolder, openSortMenu]
+  );
+
+  // Enter = rename selected; Delete = trash selected.
+  const onKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (renamingPath) return;
+      if (!selectedPath) return;
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        setRenamingPath(selectedPath);
+      } else if (e.key === 'Backspace' || e.key === 'Delete') {
+        e.preventDefault();
+        void doDelete(selectedPath);
+      }
+    },
+    [renamingPath, selectedPath, doDelete]
+  );
+
+  const ctx: TreeCtx = {
+    selectedPath,
+    renamingPath,
+    sortMode,
+    sortAsc,
+    manualOrder,
+    expanded,
+    dragOver,
+    dropFolder,
+    onSelect: (node) => {
+      setSelectedPath(node.path);
+      containerRef.current?.focus();
+    },
+    onOpen: (node) => {
+      setSelectedPath(node.path);
+      // Keep focus in the sidebar so Enter/Delete shortcuts keep working.
+      void openFileInTab(node.path, undefined, { autoFocus: false });
+      containerRef.current?.focus();
+    },
+    onToggleFolder: (path) =>
+      setExpanded((prev) => {
+        const next = new Set(prev);
+        if (next.has(path)) next.delete(path);
+        else next.add(path);
+        return next;
+      }),
+    onContext: openContext,
+    onRenameCommit: doRename,
+    onRenameCancel: () => setRenamingPath(null),
+    onDragStart: (e, node) => {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', node.path);
+      draggingPath.current = node.path;
+      dropIntent.current = null;
+      requestAnimationFrame(() => {
+        setSelectedPath(node.path);
+        containerRef.current?.focus();
+      });
+    },
+    onDragOver: (e, node) => {
+      const dragged = draggingPath.current;
+      if (!dragged) return;
+      if (node.type === 'folder') {
+        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        const edgeZone = rect.height * 0.28;
+        const canReorderAroundFolder =
+          sortMode === 'manual' &&
+          dragged !== node.path &&
+          !node.path.startsWith(dragged + '/');
+        if (canReorderAroundFolder && e.clientY <= rect.top + edgeZone) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          dropIntent.current = { type: 'reorder', path: node.path, pos: 'before' };
+          setDragOver({ path: node.path, pos: 'before' });
+          setDropFolder(null);
+          setRootDrop(null);
+          return;
+        }
+        if (canReorderAroundFolder && e.clientY >= rect.bottom - edgeZone) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          dropIntent.current = { type: 'reorder', path: node.path, pos: 'after' };
+          setDragOver({ path: node.path, pos: 'after' });
+          setDropFolder(null);
+          setRootDrop(null);
+          return;
+        }
+        // Dropping into a folder — highlight it (skip its own subtree).
+        if (dragged === node.path || node.path.startsWith(dragged + '/')) {
+          dropIntent.current = null;
+          setDragOver(null);
+          setDropFolder(null);
+          setRootDrop(null);
+          return;
+        }
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        dropIntent.current = { type: 'folder', path: node.path };
+        setDropFolder(node.path);
+        setDragOver(null);
+        setRootDrop(null);
+      } else if (sortMode === 'manual') {
+        if (dragged === node.path) {
+          dropIntent.current = null;
+          setDragOver(null);
+          setDropFolder(null);
+          setRootDrop(null);
+          return;
+        }
+        // Reordering among files — show a before/after line.
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        const pos = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+        dropIntent.current = { type: 'reorder', path: node.path, pos };
+        setDragOver({ path: node.path, pos });
+        setDropFolder(null);
+        setRootDrop(null);
+      }
+    },
+    onDrop: (e, _node) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const dragged = draggingPath.current;
+      const intent = dropIntent.current;
+      if (dragged && intent) {
+        if (intent.type === 'folder') void doMove(dragged, intent.path);
+        else if (intent.type === 'reorder') handlePlacementDrop(dragged, intent.path, intent.pos);
+        else handleRootDrop(dragged, intent.pos);
+      }
+      setDragOver(null);
+      setDropFolder(null);
+      setRootDrop(null);
+      draggingPath.current = null;
+      dropIntent.current = null;
+    },
+    onDragEnd: () => {
+      setDragOver(null);
+      setDropFolder(null);
+      setRootDrop(null);
+      draggingPath.current = null;
+      dropIntent.current = null;
+    },
+  };
+
+  // Top/bottom edge of the tree = "move out to vault root" zone. Handled in the
+  // capture phase so it wins over row-level reorder/folder handlers.
+  const onTreeDragOverCapture = (e: React.DragEvent): void => {
+    const dragged = draggingPath.current;
+    if (!dragged || !vaultPath) return;
+    const canDropToRoot = parentDir(dragged) !== vaultPath || sortMode === 'manual';
+    if (!canDropToRoot) return;
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const rows = Array.from(
+      (e.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('.tree-row')
+    );
+    const firstRow = rows[0]?.getBoundingClientRect();
+    const lastRow = rows[rows.length - 1]?.getBoundingClientRect();
+    if (e.clientY <= (firstRow?.top ?? rect.top) - 4 || e.clientY <= rect.top + 16) {
+      e.preventDefault();
+      e.stopPropagation();
+      dropIntent.current = { type: 'root', pos: 'top' };
+      setRootDrop('top');
+      setDragOver(null);
+      setDropFolder(null);
+    } else if (e.clientY >= (lastRow?.bottom ?? rect.top) + 4 || e.clientY >= rect.bottom - 16) {
+      e.preventDefault();
+      e.stopPropagation();
+      dropIntent.current = { type: 'root', pos: 'bottom' };
+      setRootDrop('bottom');
+      setDragOver(null);
+      setDropFolder(null);
+    } else if (rootDrop) {
+      dropIntent.current = null;
+      setRootDrop(null);
+    }
+  };
+  const onTreeDropCapture = (e: React.DragEvent): void => {
+    const dragged = draggingPath.current;
+    const intent = dropIntent.current;
+    if (dragged && intent?.type === 'root') {
+      e.preventDefault();
+      e.stopPropagation();
+      handleRootDrop(dragged, intent.pos);
+      setRootDrop(null);
+      setDragOver(null);
+      setDropFolder(null);
+      draggingPath.current = null;
+      dropIntent.current = null;
+    }
+  };
+
+  const sortedRoots = vaultPath
+    ? sortChildren(fileTree, vaultPath, sortMode, manualOrder, sortAsc)
+    : [];
+
+  // Drag the right edge to resize. The sidebar sits flush to the window's left
+  // edge, so the pointer's clientX is the new width (clamped). Written straight
+  // to the CSS var for instant tracking, committed to prefs on release.
+  const onResizeStart = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      const root = document.querySelector('.window-root');
+      root?.classList.add('resizing-sidebar');
+      document.body.style.cursor = 'ew-resize';
+      const handle = e.currentTarget;
+      handle.setPointerCapture(e.pointerId);
+      let width = useStore.getState().preferences.sidebarWidth;
+      const onMove = (ev: PointerEvent): void => {
+        width = Math.min(480, Math.max(180, ev.clientX));
+        document.documentElement.style.setProperty('--sidebar-width', `${width}px`);
+      };
+      const onUp = (): void => {
+        window.removeEventListener('pointermove', onMove, true);
+        window.removeEventListener('pointerup', onUp, true);
+        root?.classList.remove('resizing-sidebar');
+        document.body.style.cursor = '';
+        try {
+          handle.releasePointerCapture(e.pointerId);
+        } catch {
+          // ignore
+        }
+        setPreferences({ sidebarWidth: width });
+        void persistPref('sidebarWidth', width);
+      };
+      window.addEventListener('pointermove', onMove, true);
+      window.addEventListener('pointerup', onUp, true);
+    },
+    [setPreferences]
+  );
+
+  return (
+    <div className="sidebar">
+      <div className="sidebar-drag" />
+      <div className="sidebar-header">
+        <button className="sidebar-icon-btn" title="新增文件" onClick={() => void newFile()}>
+          <NewFileIcon />
+        </button>
+        <button className="sidebar-icon-btn" title="新增資料夾" onClick={() => void newFolder()}>
+          <NewFolderIcon />
+        </button>
+        <button
+          className="sidebar-icon-btn"
+          title="排序"
+          onClick={(e) => {
+            const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            openSortMenu(r.left, r.bottom + 4);
+          }}
+        >
+          <SortIcon />
+        </button>
+      </div>
+      <div
+        className={`sidebar-tree${rootDrop ? ` root-drop-${rootDrop}` : ''}`}
+        ref={containerRef}
+        tabIndex={0}
+        onKeyDown={onKeyDown}
+        onContextMenu={openEmptyContext}
+        onDragOverCapture={onTreeDragOverCapture}
+        onDropCapture={onTreeDropCapture}
+        onMouseDown={(e) => {
+          // Click on empty area clears selection.
+          if (!(e.target as HTMLElement).closest('.tree-row')) setSelectedPath(null);
+        }}
+      >
+        {!vaultPath ? (
+          <div className="sidebar-empty">
+            <p>尚未設定儲存庫</p>
+            <button className="sidebar-empty-btn" onClick={() => void chooseVault()}>
+              選擇儲存庫資料夾
+            </button>
+          </div>
+        ) : (
+          <>
+            {rootDrop === 'top' && <div className="drop-line root-drop-line" />}
+            {sortedRoots.map((n) => <TreeItem key={n.path} node={n} depth={0} ctx={ctx} />)}
+            {rootDrop === 'bottom' && <div className="drop-line root-drop-line" />}
+          </>
+        )}
+      </div>
+      <div className="sidebar-resizer" onPointerDown={onResizeStart} />
+      {menu && <PopMenu state={menu} onClose={() => setMenu(null)} />}
+    </div>
+  );
+}
+
+function findNode(tree: VaultNode[], path: string): VaultNode | null {
+  const stack = [...tree];
+  while (stack.length) {
+    const n = stack.pop()!;
+    if (n.path === path) return n;
+    if (n.children) stack.push(...n.children);
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Icons
+// ---------------------------------------------------------------------------
+function NewFileIcon(): JSX.Element {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 3v4a1 1 0 0 0 1 1h4" />
+      <path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z" />
+      <path d="M12 11v6M9 14h6" />
+    </svg>
+  );
+}
+function NewFolderIcon(): JSX.Element {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+      <path d="M12 11v6M9 14h6" />
+    </svg>
+  );
+}
+// Obsidian-style folder toggle chevron (rotates 90° via `.twisty.open`).
+function ChevronIcon(): JSX.Element {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 6l6 6-6 6" />
+    </svg>
+  );
+}
+function SortIcon(): JSX.Element {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M7 4v16M7 4l-3 3M7 4l3 3" />
+      <path d="M13 7h7M13 12h5M13 17h3" />
+    </svg>
+  );
+}

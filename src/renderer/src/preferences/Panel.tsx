@@ -1,10 +1,12 @@
 import { useEffect, useState, DragEvent } from 'react';
 import { useStore, Preferences } from '../store';
+import { refreshVaultTree } from '../fileActions';
 import { MENU_COMMANDS, reconcileMenuCommands, isDivider } from '../context-menu/commands';
 
-type Category = 'layout' | 'menu' | 'apikeys' | 'instruction' | 'ai';
+type Category = 'general' | 'layout' | 'menu' | 'apikeys' | 'instruction' | 'ai';
 
 const CATEGORIES: { id: Category; label: string }[] = [
+  { id: 'general', label: '一般' },
   { id: 'layout', label: '版面調整' },
   { id: 'menu', label: '右鍵選單' },
   { id: 'apikeys', label: 'API Keys' },
@@ -21,7 +23,7 @@ export function PreferencesPanel(): JSX.Element | null {
   const setPrefs = useStore((s) => s.setPreferences);
 
   const [draft, setDraft] = useState<Preferences>(committedPrefs);
-  const [category, setCategory] = useState<Category>('layout');
+  const [category, setCategory] = useState<Category>('general');
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   // Gap index (0..length) where the dragged row would land if dropped now.
   const [dropIndex, setDropIndex] = useState<number | null>(null);
@@ -35,7 +37,7 @@ export function PreferencesPanel(): JSX.Element | null {
     if (open) {
       setDraft(committedPrefs);
       setPrefs(committedPrefs);
-      setCategory('layout');
+      setCategory('general');
     }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -68,6 +70,24 @@ export function PreferencesPanel(): JSX.Element | null {
     setOpen(false);
   };
   const update = (patch: Partial<Preferences>) => setDraft((d) => ({ ...d, ...patch }));
+
+  // Vault selection acts immediately (the native dialog already persists it in
+  // main), so mirror it into the draft + live store and refresh the tree.
+  const pickVaultFolder = async () => {
+    const path = await window.api.vault.pick();
+    if (!path) return;
+    update({ vaultPath: path });
+    setPrefs({ vaultPath: path });
+    useStore.getState().setVaultPath(path);
+    await refreshVaultTree();
+  };
+  const clearVaultFolder = async () => {
+    await window.api.vault.clear();
+    update({ vaultPath: '' });
+    setPrefs({ vaultPath: '' });
+    useStore.getState().setVaultPath(null);
+    useStore.getState().setFileTree([]);
+  };
 
   // Always work with a reconciled (complete, ordered) command list so newly
   // added commands appear and the saved order/visibility stays in sync.
@@ -145,6 +165,28 @@ export function PreferencesPanel(): JSX.Element | null {
 
         <div className="prefs-body">
           <div className="prefs-body-scroll">
+            {category === 'general' && (
+              <>
+                <div className="prefs-field">
+                  <label>儲存庫資料夾</label>
+                  <div className="vault-path">{draft.vaultPath || '尚未設定'}</div>
+                  <div className="vault-actions">
+                    <button className="vault-btn" onClick={() => void pickVaultFolder()}>
+                      選擇資料夾…
+                    </button>
+                    {draft.vaultPath && (
+                      <button className="vault-btn" onClick={() => void clearVaultFolder()}>
+                        清除
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <p className="prefs-hint">
+                  放在儲存庫內的 Markdown 檔會顯示在左側側邊欄。儲存庫之外的檔案仍可開啟編輯，但不會出現在側邊欄。
+                </p>
+              </>
+            )}
+
             {category === 'layout' && (
               <>
                 <Slider

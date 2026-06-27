@@ -1,0 +1,167 @@
+.sidebar {
+  width: var(--sidebar-width, 250px);
+  flex: none;
+  height: 100%;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--hr);
+  user-select: none;
+  overflow: hidden;
+}
+
+/* Grab strip on the right edge for resizing the sidebar. */
+.sidebar-resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: ew-resize;
+  z-index: 5;
+}
+.sidebar-resizer:hover {
+  background: var(--hr);
+}
+
+/* Top strip reserved for the macOS traffic lights; draggable. */
+.sidebar-drag {
+  height: 38px;
+  flex: 0 0 38px;
+  -webkit-app-region: drag;
+}
+
+.sidebar-header {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  padding: 2px 8px 6px;
+  -webkit-app-region: no-drag;
+}
+
+.sidebar-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+.sidebar-icon-btn:hover {
+  background: var(--hover-bg, rgba(127, 127, 127, 0.12));
+  color: var(--fg);
+}
+
+.sidebar-tree {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 4px 6px 40px;
+  outline: none;
+}
+
+.tree-item {
+  position: relative;
+}
+
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 26px;
+  padding-right: 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--fg);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tree-row:hover {
+  background: var(--hover-bg, rgba(127, 127, 127, 0.1));
+}
+.tree-row.selected {
+  background: var(--selection);
+}
+
+/* Folder drop target while dragging a file/folder onto it (blue overlay). */
+.tree-row.drop-target {
+  background: var(--selection);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.twisty,
+.twisty-spacer {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  flex: 0 0 16px;
+  color: var(--fg-muted);
+}
+.twisty {
+  transition: transform 120ms ease;
+}
+.twisty.open {
+  transform: rotate(90deg);
+}
+
+.tree-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rename-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  font: inherit;
+  font-size: 13px;
+  color: var(--fg);
+  background: var(--input-bg);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 1px 4px;
+  outline: none;
+}
+
+/* Blue horizontal insertion line shown while dragging to reorder. */
+.drop-line {
+  height: 2px;
+  background: var(--accent);
+  border-radius: 1px;
+  margin: 0 8px;
+  pointer-events: none;
+}
+
+.root-drop-line {
+  margin: 3px 8px;
+}
+
+.sidebar-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 24px 16px;
+  color: var(--fg-muted);
+  font-size: 13px;
+  text-align: center;
+}
+.sidebar-empty p {
+  margin: 0;
+}
+.sidebar-empty-btn {
+  padding: 6px 12px;
+  border: 1px solid var(--input-border);
+  border-radius: 6px;
+  background: var(--input-bg);
+  color: var(--fg);
+  font-size: 12px;
+  cursor: pointer;
+}
+.sidebar-empty-btn:hover {
+  border-color: var(--accent);
+}

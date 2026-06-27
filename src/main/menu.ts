@@ -40,7 +40,11 @@ export function buildMenu(h: MenuHandlers): void {
         { label: '儲存', accelerator: 'CmdOrCtrl+S', click: () => h.onSave() },
         { label: '列印', accelerator: 'CmdOrCtrl+P', click: () => h.onPrint() },
         { type: 'separator' },
-        { role: 'close' },
+        {
+          label: '關閉',
+          accelerator: 'CmdOrCtrl+W',
+          click: () => h.onCommand('close-tab-or-window'),
+        },
       ],
     },
     {
@@ -84,6 +88,12 @@ export function buildMenu(h: MenuHandlers): void {
     {
       label: '檢視',
       submenu: [
+        {
+          label: '切換側邊欄',
+          accelerator: 'Shift+CmdOrCtrl+F',
+          click: () => h.onCommand('toggle-sidebar'),
+        },
+        { type: 'separator' },
         {
           label: '將文章推往左側',
           accelerator: 'Shift+CmdOrCtrl+Left',

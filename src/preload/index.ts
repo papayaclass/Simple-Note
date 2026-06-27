@@ -1,5 +1,16 @@
 import { clipboard, contextBridge, ipcRenderer } from 'electron';
 
+// One node in the vault file tree (mirrors VaultNode in src/main/vault.ts —
+// preload compiles separately, so the shape is re-declared here).
+export interface VaultNode {
+  name: string;
+  path: string;
+  type: 'file' | 'folder';
+  mtimeMs: number;
+  birthtimeMs: number;
+  children?: VaultNode[];
+}
+
 export interface SimpleNoteAPI {
   prefs: {
     get: () => Promise<Record<string, unknown>>;
@@ -47,6 +58,30 @@ export interface SimpleNoteAPI {
     ) => Promise<{ ok: boolean; path?: string }>;
     saveImage: (dataUrl: string) => Promise<{ ok: boolean; path?: string }>;
   };
+  vault: {
+    pick: () => Promise<string | null>;
+    get: () => Promise<string | null>;
+    clear: () => Promise<void>;
+    list: () => Promise<VaultNode[]>;
+    read: (path: string) => Promise<{ ok: boolean; content?: string }>;
+    createFile: (dir?: string | null) => Promise<{ ok: boolean; path?: string }>;
+    createFolder: (dir?: string | null) => Promise<{ ok: boolean; path?: string }>;
+    rename: (
+      path: string,
+      newName: string
+    ) => Promise<{ ok: boolean; path?: string; reason?: string }>;
+    delete: (path: string) => Promise<{ ok: boolean }>;
+    duplicate: (path: string) => Promise<{ ok: boolean; path?: string }>;
+    move: (
+      src: string,
+      destDir: string
+    ) => Promise<{ ok: boolean; path?: string; reason?: string }>;
+    reveal: (path: string) => Promise<void>;
+    moveToVault: (
+      markdown: string,
+      suggestedName?: string
+    ) => Promise<{ ok: boolean; path?: string }>;
+  };
   clipboard: {
     readText: () => string;
     writeText: (text: string) => void;
@@ -54,6 +89,8 @@ export interface SimpleNoteAPI {
   window: {
     setDirty: (dirty: boolean) => void;
     setTitle: (title: string) => void;
+    close: () => void;
+    openInNewWindow: (path: string) => void;
   };
   notify: {
     show: (title: string, body: string) => void;
@@ -62,6 +99,10 @@ export interface SimpleNoteAPI {
   onExternalOpen: (
     handler: (payload: { path: string; content: string }) => void
   ) => () => void;
+  onOpenInTab: (
+    handler: (payload: { path: string; content: string }) => void
+  ) => () => void;
+  onVaultChanged: (handler: () => void) => () => void;
   notifyReady: () => void;
 }
 
@@ -88,6 +129,22 @@ const api: SimpleNoteAPI = {
     save: (markdown, options) => ipcRenderer.invoke('file:save', markdown, options),
     saveImage: (dataUrl) => ipcRenderer.invoke('file:saveImage', dataUrl),
   },
+  vault: {
+    pick: () => ipcRenderer.invoke('vault:pick'),
+    get: () => ipcRenderer.invoke('vault:get'),
+    clear: () => ipcRenderer.invoke('vault:clear'),
+    list: () => ipcRenderer.invoke('vault:list'),
+    read: (path) => ipcRenderer.invoke('vault:read', path),
+    createFile: (dir) => ipcRenderer.invoke('vault:createFile', dir),
+    createFolder: (dir) => ipcRenderer.invoke('vault:createFolder', dir),
+    rename: (path, newName) => ipcRenderer.invoke('vault:rename', path, newName),
+    delete: (path) => ipcRenderer.invoke('vault:delete', path),
+    duplicate: (path) => ipcRenderer.invoke('vault:duplicate', path),
+    move: (src, destDir) => ipcRenderer.invoke('vault:move', src, destDir),
+    reveal: (path) => ipcRenderer.invoke('vault:reveal', path),
+    moveToVault: (markdown, suggestedName) =>
+      ipcRenderer.invoke('vault:moveToVault', markdown, suggestedName),
+  },
   clipboard: {
     readText: () => clipboard.readText(),
     writeText: (text) => clipboard.writeText(text),
@@ -95,6 +152,8 @@ const api: SimpleNoteAPI = {
   window: {
     setDirty: (dirty) => ipcRenderer.send('window:setDirty', dirty),
     setTitle: (title) => ipcRenderer.send('window:setTitle', title),
+    close: () => ipcRenderer.send('window:close'),
+    openInNewWindow: (path) => ipcRenderer.send('window:openFile', path),
   },
   notify: {
     show: (title, body) => ipcRenderer.send('notify:show', { title, body }),
@@ -107,10 +166,11 @@ const api: SimpleNoteAPI = {
       ipcRenderer.on(`menu:${cmd}`, listener);
       channels.push([`menu:${cmd}`, listener]);
     };
-    // 'new' and 'open' are handled entirely in main now (each spawns its own
-    // window), so the renderer no longer listens for them.
+    // 'open' is handled in main (reads the file then pushes it as a tab via
+    // 'file:openInTab'). 'new-tab' asks the renderer to add a blank tab.
     wrap('save');
     wrap('preferences');
+    wrap('new-tab');
 
     const cmdListener: Listener = (_e, cmd) => handler(String(cmd));
     ipcRenderer.on('menu:command', cmdListener);
@@ -125,6 +185,17 @@ const api: SimpleNoteAPI = {
       handler(payload);
     ipcRenderer.on('file:externalOpen', listener);
     return () => ipcRenderer.removeListener('file:externalOpen', listener);
+  },
+  onOpenInTab: (handler) => {
+    const listener = (_e: unknown, payload: { path: string; content: string }) =>
+      handler(payload);
+    ipcRenderer.on('file:openInTab', listener);
+    return () => ipcRenderer.removeListener('file:openInTab', listener);
+  },
+  onVaultChanged: (handler) => {
+    const listener = (): void => handler();
+    ipcRenderer.on('vault:changed', listener);
+    return () => ipcRenderer.removeListener('vault:changed', listener);
   },
   notifyReady: () => ipcRenderer.send('renderer:ready'),
 };

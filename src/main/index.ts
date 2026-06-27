@@ -8,6 +8,22 @@ import { getRate, clearRateCache } from './exchange-rate.js';
 import { getYouTubePreview } from './youtube-preview.js';
 import { runAI } from './openrouter.js';
 import { speakText } from './gemini-tts.js';
+import {
+  pickVault,
+  getVault,
+  clearVault,
+  listVault,
+  readMarkdown,
+  createFile,
+  createFolder,
+  renameEntry,
+  deleteEntry,
+  duplicateEntry,
+  moveEntry,
+  revealEntry,
+  moveToVault,
+  startWatching,
+} from './vault.js';
 
 app.setName('Simple Note');
 
@@ -245,8 +261,8 @@ function printFocused(): void {
   }
 }
 
-// File → Open…: pick a file (dialog parented to the focused window) and load it
-// into a brand-new window, leaving the current one untouched.
+// File → Open…: pick a file and open it as a new TAB in the focused window
+// (Obsidian model). With no window open, fall back to spawning a fresh one.
 async function openViaDialog(): Promise<void> {
   const focused = BrowserWindow.getFocusedWindow();
   const options = {
@@ -257,7 +273,25 @@ async function openViaDialog(): Promise<void> {
     ? await dialog.showOpenDialog(focused, options)
     : await dialog.showOpenDialog(options);
   if (r.canceled || !r.filePaths[0]) return;
-  createWindow(r.filePaths[0]);
+  const path = r.filePaths[0];
+  if (focused && !focused.isDestroyed()) {
+    const content = await readFile(path, 'utf-8').catch(() => null);
+    if (content !== null) {
+      focused.webContents.send('file:openInTab', { path, content });
+      return;
+    }
+  }
+  createWindow(path);
+}
+
+// File → New: open a fresh tab in the focused window, or a new window if none.
+function newTabOrWindow(): void {
+  const focused = BrowserWindow.getFocusedWindow();
+  if (focused && !focused.isDestroyed()) {
+    focused.webContents.send('menu:new-tab');
+  } else {
+    createWindow();
+  }
 }
 
 // Safety net for Cmd+Q / app.quit() paths where a window's close handler may
@@ -282,7 +316,7 @@ function imageMimeToExt(mime: string): string {
 
 app.whenReady().then(() => {
   buildMenu({
-    onNew: () => createWindow(),
+    onNew: () => newTabOrWindow(),
     onOpen: () => void openViaDialog(),
     onSave: () => sendToFocused('menu:save'),
     onPrint: () => printFocused(),
@@ -293,6 +327,32 @@ app.whenReady().then(() => {
   ipcMain.handle('prefs:get', () => getPreferences());
   ipcMain.handle('prefs:set', (_e, key: string, value: unknown) => setPreference(key, value));
   ipcMain.handle('prefs:setAll', (_e, prefs: Record<string, unknown>) => setAllPreferences(prefs));
+
+  // Vault / file-management IPC.
+  ipcMain.handle('vault:pick', (e) => pickVault(BrowserWindow.fromWebContents(e.sender)));
+  ipcMain.handle('vault:get', () => getVault());
+  ipcMain.handle('vault:clear', () => clearVault());
+  ipcMain.handle('vault:list', () => listVault());
+  ipcMain.handle('vault:read', (_e, path: string) => readMarkdown(path));
+  ipcMain.handle('vault:createFile', (_e, dir?: string | null) => createFile(dir));
+  ipcMain.handle('vault:createFolder', (_e, dir?: string | null) => createFolder(dir));
+  ipcMain.handle('vault:rename', (_e, path: string, newName: string) => renameEntry(path, newName));
+  ipcMain.handle('vault:delete', (_e, path: string) => deleteEntry(path));
+  ipcMain.handle('vault:duplicate', (_e, path: string) => duplicateEntry(path));
+  ipcMain.handle('vault:move', (_e, src: string, destDir: string) => moveEntry(src, destDir));
+  ipcMain.handle('vault:reveal', (_e, path: string) => revealEntry(path));
+  ipcMain.handle('vault:moveToVault', (e, markdown: string, suggestedName?: string) =>
+    moveToVault(BrowserWindow.fromWebContents(e.sender), markdown, suggestedName)
+  );
+  // "Open in new window" from a tab's context menu.
+  ipcMain.on('window:openFile', (_e, path: string) => createWindow(path));
+
+  ipcMain.on('window:close', (e) => {
+    BrowserWindow.fromWebContents(e.sender)?.close();
+  });
+
+  // Start watching the saved vault (if any) so external changes push updates.
+  startWatching(getVault());
 
   ipcMain.handle('rate:get', async (_e, currency: string) => getRate(currency));
   ipcMain.handle('rate:clear', () => clearRateCache());
