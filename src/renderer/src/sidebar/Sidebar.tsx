@@ -13,6 +13,8 @@ import { getDocumentView } from '../DocumentView';
 import { PopMenu, PopMenuItem, PopMenuState } from '../ui/PopMenu';
 import './sidebar.css';
 
+const SIDEBAR_PATH_MIME = 'application/x-simple-note-path';
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -28,6 +30,14 @@ function replacePathPrefix(path: string, oldPath: string, newPath: string): stri
 
 function displayName(node: VaultNode): string {
   return node.type === 'file' ? node.name.replace(/\.md$/i, '') : node.name;
+}
+
+function filePathFor(file: File): string {
+  try {
+    return window.api.file.getPathForFile(file);
+  } catch {
+    return '';
+  }
 }
 
 function sortChildren(
@@ -261,7 +271,7 @@ export function Sidebar(): JSX.Element {
   const importExternalFiles = useCallback(
     async (files: FileList, destDir: string | null) => {
       const paths = Array.from(files)
-        .map((f) => (f as File & { path?: string }).path ?? '')
+        .map((f) => filePathFor(f))
         .filter(Boolean);
       if (paths.length === 0) return;
       const r = await window.api.vault.importExternal(paths, destDir);
@@ -388,20 +398,21 @@ export function Sidebar(): JSX.Element {
       if (!name || name === displayName(node)) return;
       const r = await window.api.vault.rename(node.path, name);
       if (r.ok && r.path) {
+        const newPath = r.path;
         // Repoint any open tab(s) so the tab name follows and re-selecting the
         // file activates the existing tab instead of orphaning it. A manual
         // rename also stops first-heading auto-naming.
-        retargetTabs(node.path, r.path);
-        retargetLastEditedFile(node.path, r.path);
-        clearAutoName(r.path);
+        retargetTabs(node.path, newPath);
+        retargetLastEditedFile(node.path, newPath);
+        clearAutoName(newPath);
         const nextOrder: Record<string, string[]> = {};
         for (const [parent, paths] of Object.entries(useStore.getState().preferences.manualOrder)) {
-          const nextParent = replacePathPrefix(parent, node.path, r.path);
-          nextOrder[nextParent] = paths.map((path) => replacePathPrefix(path, node.path, r.path));
+          const nextParent = replacePathPrefix(parent, node.path, newPath);
+          nextOrder[nextParent] = paths.map((path) => replacePathPrefix(path, node.path, newPath));
         }
         setPreferences({ manualOrder: nextOrder });
         void persistPref('manualOrder', nextOrder);
-        setSelectedPath(r.path);
+        setSelectedPath(newPath);
         await refreshVaultTree();
       }
     },
@@ -453,6 +464,7 @@ export function Sidebar(): JSX.Element {
     async (srcPath: string, destDir: string, placement?: ManualPlacement) => {
       const r = await window.api.vault.move(srcPath, destDir);
       if (r.ok && r.path) {
+        const newPath = r.path;
         if (sortMode === 'manual') {
           const currentOrder = useStore.getState().preferences.manualOrder;
           const removedFromOldParent: Record<string, string[]> = {};
@@ -461,20 +473,20 @@ export function Sidebar(): JSX.Element {
           }
           const retargeted: Record<string, string[]> = {};
           for (const [parent, paths] of Object.entries(removedFromOldParent)) {
-            const nextParent = replacePathPrefix(parent, srcPath, r.path);
-            retargeted[nextParent] = paths.map((path) => replacePathPrefix(path, srcPath, r.path));
+            const nextParent = replacePathPrefix(parent, srcPath, newPath);
+            retargeted[nextParent] = paths.map((path) => replacePathPrefix(path, srcPath, newPath));
           }
           const nextOrder = placement
-            ? manualOrderWithPlacement(retargeted, r.path, destDir, placement)
-            : manualOrderWithPlacement(retargeted, r.path, destDir, {
+            ? manualOrderWithPlacement(retargeted, newPath, destDir, placement)
+            : manualOrderWithPlacement(retargeted, newPath, destDir, {
                 type: 'edge',
                 pos: 'bottom',
               });
           commitManualOrder(nextOrder);
         }
-        retargetTabs(srcPath, r.path);
-        retargetLastEditedFile(srcPath, r.path);
-        setSelectedPath(r.path);
+        retargetTabs(srcPath, newPath);
+        retargetLastEditedFile(srcPath, newPath);
+        setSelectedPath(newPath);
         await refreshVaultTree();
       }
     },
@@ -656,6 +668,7 @@ export function Sidebar(): JSX.Element {
     onDragStart: (e, node) => {
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', node.path);
+      e.dataTransfer.setData(SIDEBAR_PATH_MIME, node.path);
       draggingPath.current = node.path;
       dropIntent.current = null;
       requestAnimationFrame(() => {

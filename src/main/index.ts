@@ -271,7 +271,7 @@ async function openViaDialog(): Promise<void> {
   const focused = BrowserWindow.getFocusedWindow();
   const options = {
     properties: ['openFile' as const],
-    filters: [{ name: 'Markdown', extensions: ['md'] }],
+    filters: [{ name: 'Markdown / Text', extensions: ['md', 'txt'] }],
   };
   const r = focused
     ? await dialog.showOpenDialog(focused, options)

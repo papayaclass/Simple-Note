@@ -1,4 +1,4 @@
-import { clipboard, contextBridge, ipcRenderer } from 'electron';
+import { clipboard, contextBridge, ipcRenderer, webUtils } from 'electron';
 
 // One node in the vault file tree (mirrors VaultNode in src/main/vault.ts —
 // preload compiles separately, so the shape is re-declared here).
@@ -57,6 +57,7 @@ export interface SimpleNoteAPI {
       options: { path: string | null; suggestedName?: string }
     ) => Promise<{ ok: boolean; path?: string }>;
     saveImage: (dataUrl: string) => Promise<{ ok: boolean; path?: string }>;
+    getPathForFile: (file: File) => string;
   };
   vault: {
     pick: () => Promise<string | null>;
@@ -142,6 +143,7 @@ const api: SimpleNoteAPI = {
   file: {
     save: (markdown, options) => ipcRenderer.invoke('file:save', markdown, options),
     saveImage: (dataUrl) => ipcRenderer.invoke('file:saveImage', dataUrl),
+    getPathForFile: (file) => webUtils.getPathForFile(file),
   },
   vault: {
     pick: () => ipcRenderer.invoke('vault:pick'),

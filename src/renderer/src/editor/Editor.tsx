@@ -41,6 +41,7 @@ export interface EditorHandle {
 }
 
 const INITIAL_CONTENT: PartialBlock<any, any, any>[] = [{ type: 'paragraph', content: '' }];
+const SIDEBAR_PATH_MIME = 'application/x-simple-note-path';
 
 interface Props {
   onChange: () => void;
@@ -373,7 +374,8 @@ export function Editor({ onChange, handleRef, autoFocus = true, notePath = null 
     const onDrop = (e: DragEvent): void => {
       const images = imageFilesFrom(e.dataTransfer);
       const textPaths = textNoteFilesFrom(e.dataTransfer);
-      if (images.length === 0 && textPaths.length === 0) return;
+      const sidebarImagePaths = sidebarImagePathsFrom(e.dataTransfer);
+      if (images.length === 0 && textPaths.length === 0 && sidebarImagePaths.length === 0) return;
       e.preventDefault();
       e.stopPropagation();
 
@@ -385,8 +387,9 @@ export function Editor({ onChange, handleRef, autoFocus = true, notePath = null 
         });
       }
 
-      if (images.length > 0) {
+      if (images.length > 0 || sidebarImagePaths.length > 0) {
         const view = (editor as any)._tiptapEditor.view;
+        clearDropCursor(view);
         let afterId: string | null = null;
         const hit = view.posAtCoords({ left: e.clientX, top: e.clientY });
         if (hit) afterId = resolveBlockId(view.state.doc, hit.pos);
@@ -394,12 +397,21 @@ export function Editor({ onChange, handleRef, autoFocus = true, notePath = null 
           const blocks = editor.document;
           afterId = blocks.length ? blocks[blocks.length - 1].id : null;
         }
-        void insertImageFiles(editor, images, afterId, notePathRef.current);
+        if (images.length > 0) {
+          void insertImageFiles(editor, images, afterId, notePathRef.current);
+        }
+        if (sidebarImagePaths.length > 0) {
+          void insertImagePaths(editor, sidebarImagePaths, afterId, notePathRef.current);
+        }
       }
     };
 
     const onDragOver = (e: DragEvent): void => {
-      if (e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files')) {
+      if (
+        e.dataTransfer &&
+        (Array.from(e.dataTransfer.types).includes('Files') ||
+          Array.from(e.dataTransfer.types).includes(SIDEBAR_PATH_MIME))
+      ) {
         e.preventDefault();
       }
     };
@@ -516,7 +528,7 @@ export function Editor({ onChange, handleRef, autoFocus = true, notePath = null 
         emojiPicker={false}
       >
         <SideMenuController
-          sideMenu={(props) => <SimpleNoteSideMenu {...props} />}
+          sideMenu={(props: any) => <SimpleNoteSideMenu {...props} />}
         />
       </BlockNoteView>
       <ContextMenu editor={editor} containerRef={containerRef} />
@@ -550,16 +562,38 @@ function pastePlainText(editor: ReturnType<typeof useCreateBlockNote>): void {
 // image/* files; Finder drops them as files too).
 function imageFilesFrom(data: DataTransfer | null): File[] {
   if (!data) return [];
-  return Array.from(data.files).filter((f) => f.type.startsWith('image/'));
+  return Array.from(data.files).filter((f) => {
+    const path = filePathFor(f);
+    return f.type.startsWith('image/') || (path ? isImagePath(path) : false);
+  });
 }
 
 // Pull md/txt files (with their Finder paths) out of a drag payload. Electron
-// augments dropped File objects with an absolute `.path`.
+// exposes dropped file paths through webUtils, bridged from preload.
 function textNoteFilesFrom(data: DataTransfer | null): string[] {
   if (!data) return [];
   return Array.from(data.files)
-    .map((f) => (f as File & { path?: string }).path ?? '')
+    .map((f) => filePathFor(f))
     .filter((p) => Boolean(p) && /\.(md|txt)$/i.test(p));
+}
+
+function sidebarImagePathsFrom(data: DataTransfer | null): string[] {
+  if (!data) return [];
+  const path = data.getData(SIDEBAR_PATH_MIME);
+  if (!path.startsWith('/')) return [];
+  return isImagePath(path) ? [path] : [];
+}
+
+function filePathFor(file: File): string {
+  try {
+    return window.api.file.getPathForFile(file);
+  } catch {
+    return '';
+  }
+}
+
+function isImagePath(path: string): boolean {
+  return /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i.test(path);
 }
 
 function readAsDataURL(file: File): Promise<string> {
@@ -584,7 +618,7 @@ async function insertImageFiles(
   let ref = afterId ?? editor.document[editor.document.length - 1]?.id ?? null;
   for (const file of files) {
     if (!ref) return;
-    const sourcePath = (file as File & { path?: string }).path || '';
+    const sourcePath = filePathFor(file);
     let blockSrc: string | null = null;
     if (sourcePath) {
       const r = await window.api.vault.saveImageForNote({ notePath, sourcePath });
@@ -598,9 +632,77 @@ async function insertImageFiles(
       console.warn('[editor] image insert skipped:', sourcePath || '(clipboard image)');
       continue;
     }
-    const [inserted] = editor.insertBlocks([{ type: 'image', props: { src: blockSrc } }], ref, 'after');
-    ref = inserted?.id ?? ref;
+    ref = insertImageBlock(editor, ref, blockSrc) ?? ref;
   }
+}
+
+async function insertImagePaths(
+  editor: any,
+  paths: string[],
+  afterId: string | null,
+  notePath: string | null
+): Promise<void> {
+  let ref = afterId ?? editor.document[editor.document.length - 1]?.id ?? null;
+  for (const sourcePath of paths) {
+    if (!ref) return;
+    const r = await window.api.vault.saveImageForNote({ notePath, sourcePath });
+    const blockSrc = r.ok ? r.persistSrc || null : null;
+    if (!blockSrc) {
+      console.warn('[editor] image insert skipped:', sourcePath);
+      continue;
+    }
+    ref = insertImageBlock(editor, ref, blockSrc) ?? ref;
+  }
+}
+
+function insertImageBlock(editor: any, ref: string, src: string): string | null {
+  const target = findBlockById(editor.document, ref);
+  if (isEmptyParagraphBlock(target)) {
+    const result = (
+      editor.replaceBlocks as (
+        remove: string[],
+        insert: Array<{ type: string; props?: Record<string, unknown> }>
+      ) => { insertedBlocks?: Array<{ id: string; type: string }> }
+    )([target.id], [{ type: 'image', props: { src } }, { type: 'paragraph' }]);
+    const inserted = result.insertedBlocks ?? [];
+    const image = inserted.find((b) => b.type === 'image') ?? null;
+    const paragraph = inserted.find((b) => b.type === 'paragraph') ?? null;
+    if (paragraph) {
+      requestAnimationFrame(() => editor.setTextCursorPosition(paragraph.id, 'start'));
+    }
+    return image?.id ?? paragraph?.id ?? null;
+  }
+  const [inserted] = editor.insertBlocks([{ type: 'image', props: { src } }], ref, 'after');
+  return inserted?.id ?? null;
+}
+
+function clearDropCursor(view: any): void {
+  try {
+    view.dom.dispatchEvent(new DragEvent('dragend', { bubbles: true, cancelable: true }));
+  } catch {
+    // ignore; insertion still succeeds if the browser refuses synthetic drag events
+  }
+}
+
+function findBlockById(blocks: readonly any[], id: string): any | null {
+  for (const block of blocks) {
+    if (block?.id === id) return block;
+    if (Array.isArray(block?.children)) {
+      const child = findBlockById(block.children, id);
+      if (child) return child;
+    }
+  }
+  return null;
+}
+
+function isEmptyParagraphBlock(block: any): block is { id: string; type: string } {
+  return (
+    !!block &&
+    typeof block.id === 'string' &&
+    block.type === 'paragraph' &&
+    (!Array.isArray(block.children) || block.children.length === 0) &&
+    blockPlainText(block).trim() === ''
+  );
 }
 
 // Walk up from a ProseMirror position to the enclosing block's id (the
