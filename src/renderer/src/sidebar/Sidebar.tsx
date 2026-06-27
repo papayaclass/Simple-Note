@@ -140,6 +140,8 @@ function TreeItem({
       <div
         className={`tree-row${selected ? ' selected' : ''}${folderDrop ? ' drop-target' : ''}`}
         style={{ paddingLeft: 8 + depth * 14 }}
+        data-path={node.path}
+        data-type={node.type}
         draggable={draggable}
         onClick={() => {
           if (isFolder) {
@@ -247,6 +249,23 @@ export function Sidebar(): JSX.Element {
   const draggingPath = useRef<string | null>(null);
   const dropIntent = useRef<DropIntent | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const externalDestDir = useRef<string | null>(null);
+  const [externalDrop, setExternalDrop] = useState(false);
+
+  const hasExternalFiles = (e: React.DragEvent): boolean =>
+    draggingPath.current === null && Array.from(e.dataTransfer.types).includes('Files');
+
+  const importExternalFiles = useCallback(
+    async (files: FileList, destDir: string | null) => {
+      const paths = Array.from(files)
+        .map((f) => (f as File & { path?: string }).path ?? '')
+        .filter(Boolean);
+      if (paths.length === 0) return;
+      const r = await window.api.vault.importExternal(paths, destDir);
+      if (r.ok) await refreshVaultTree();
+    },
+    []
+  );
 
   // Reveal the selected file by expanding its ancestor folders (e.g. when a tab
   // switch selects a file that lives inside a collapsed folder).
@@ -719,6 +738,17 @@ export function Sidebar(): JSX.Element {
   // Top/bottom edge of the tree = "move out to vault root" zone. Handled in the
   // capture phase so it wins over row-level reorder/folder handlers.
   const onTreeDragOverCapture = (e: React.DragEvent): void => {
+    if (hasExternalFiles(e)) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = 'move';
+      const row = (e.target as HTMLElement).closest<HTMLElement>('.tree-row');
+      const destFolder = row?.dataset.type === 'folder' ? row.dataset.path ?? null : null;
+      externalDestDir.current = destFolder;
+      setDropFolder(destFolder);
+      setExternalDrop(!destFolder);
+      return;
+    }
     const dragged = draggingPath.current;
     if (!dragged || !vaultPath) return;
     const canDropToRoot = parentDir(dragged) !== vaultPath || sortMode === 'manual';
@@ -749,6 +779,15 @@ export function Sidebar(): JSX.Element {
     }
   };
   const onTreeDropCapture = (e: React.DragEvent): void => {
+    if (hasExternalFiles(e)) {
+      e.preventDefault();
+      e.stopPropagation();
+      void importExternalFiles(e.dataTransfer.files, externalDestDir.current);
+      externalDestDir.current = null;
+      setDropFolder(null);
+      setExternalDrop(false);
+      return;
+    }
     const dragged = draggingPath.current;
     const intent = dropIntent.current;
     if (dragged && intent?.type === 'root') {
@@ -825,13 +864,22 @@ export function Sidebar(): JSX.Element {
         </button>
       </div>
       <div
-        className={`sidebar-tree${rootDrop ? ` root-drop-${rootDrop}` : ''}`}
+        className={`sidebar-tree${rootDrop ? ` root-drop-${rootDrop}` : ''}${
+          externalDrop ? ' external-drop' : ''
+        }`}
         ref={containerRef}
         tabIndex={0}
         onKeyDown={onKeyDown}
         onContextMenu={openEmptyContext}
         onDragOverCapture={onTreeDragOverCapture}
         onDropCapture={onTreeDropCapture}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+            externalDestDir.current = null;
+            setExternalDrop(false);
+            setDropFolder(null);
+          }
+        }}
         onMouseDown={(e) => {
           // Click on empty area clears selection.
           if (!(e.target as HTMLElement).closest('.tree-row')) setSelectedPath(null);

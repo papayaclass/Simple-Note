@@ -64,6 +64,11 @@
   outline: none;
 }
 
+.sidebar-tree.external-drop {
+  box-shadow: inset 0 0 0 2px var(--accent);
+  border-radius: 8px;
+}
+
 .tree-item {
   position: relative;
 }
