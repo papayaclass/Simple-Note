@@ -313,5 +313,21 @@ export const ImageBlock = createReactBlockSpec(
   },
   {
     render: (props: any) => <ImageBlockView block={props.block} editor={props.editor} />,
+    // Persist only file-path images as `<img>` (→ `![](path)` in markdown).
+    // In-memory data-URL images emit nothing, so they're dropped on save
+    // (unchanged behavior).
+    toExternalHTML: (props: any) => {
+      const src: string = props.block.props.src ?? '';
+      if (!src || src.startsWith('data:')) return <span />;
+      return <img src={src} alt="" />;
+    },
+    // Loading `![](path)` markdown produces an <img>; map its src back to our
+    // block's `src` prop (the default image block uses a different prop name).
+    parse: (element: HTMLElement) => {
+      if (element.tagName !== 'IMG') return undefined;
+      const src = (element as HTMLImageElement).getAttribute('src');
+      if (!src) return undefined;
+      return { src };
+    },
   }
 );
