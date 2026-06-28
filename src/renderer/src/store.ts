@@ -20,7 +20,7 @@ export interface AISkill {
 }
 
 export type SortMode = 'manual' | 'name' | 'created' | 'modified';
-export type StartupBehavior = 'newBlank' | 'lastEdited';
+export type StartupBehavior = 'newBlank' | 'newBlankInVault' | 'lastEdited';
 
 // Column layout as the article's position on a `[left] — center — [right]` track.
 // `center` is single-column; the other two reveal an independent blank column on

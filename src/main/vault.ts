@@ -199,6 +199,24 @@ export async function createFile(dir?: string | null): Promise<{ ok: boolean; pa
   return { ok: true, path };
 }
 
+// Startup "在儲存庫內新增空白文件": open the canonical 未命名筆記.md in the vault
+// root, reusing it when it already exists and is still empty so repeated
+// launches don't pile up 未命名筆記 1.md, 2.md… Only create a fresh,
+// uniquely-named file when the canonical one is missing or already has content
+// (i.e. it became a real note).
+export async function createBlankNote(): Promise<{ ok: boolean; path?: string }> {
+  const vault = getVault();
+  if (!vault) return { ok: false };
+  const canonical = join(vault, '未命名筆記.md');
+  if (await exists(canonical)) {
+    const content = await fs.readFile(canonical, 'utf-8').catch(() => null);
+    if (content !== null && content.trim() === '') return { ok: true, path: canonical };
+  }
+  const path = await uniquePath(vault, '未命名筆記', '.md');
+  await fs.writeFile(path, '', 'utf-8');
+  return { ok: true, path };
+}
+
 export async function createFolder(dir?: string | null): Promise<{ ok: boolean; path?: string }> {
   const target = dir || getVault();
   if (!target) return { ok: false };

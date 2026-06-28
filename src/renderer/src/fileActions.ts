@@ -109,6 +109,20 @@ export async function createNewTab(): Promise<void> {
   focusTabWhenReady(tabId);
 }
 
+// Startup "在儲存庫內新增空白文件": physically create 未命名筆記.md in the vault
+// root and open it (so it auto-saves and lists in the sidebar), unlike the
+// in-memory `newBlank` starter. No-op when no vault is configured. Returns
+// whether a file was actually created + opened.
+export async function createBlankVaultNote(): Promise<boolean> {
+  const s = useStore.getState();
+  if (!s.vaultPath) return false;
+  const r = await window.api.vault.createBlankNote();
+  if (!r.ok || !r.path) return false;
+  await refreshVaultTree();
+  await openFileInTab(r.path, '', { autoFocus: true, autoName: true });
+  return true;
+}
+
 const IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.avif'];
 
 export function isImagePath(p: string): boolean {

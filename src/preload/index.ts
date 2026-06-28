@@ -66,6 +66,7 @@ export interface SimpleNoteAPI {
     list: () => Promise<VaultNode[]>;
     read: (path: string) => Promise<{ ok: boolean; content?: string }>;
     createFile: (dir?: string | null) => Promise<{ ok: boolean; path?: string }>;
+    createBlankNote: () => Promise<{ ok: boolean; path?: string }>;
     createFolder: (dir?: string | null) => Promise<{ ok: boolean; path?: string }>;
     rename: (
       path: string,
@@ -152,6 +153,7 @@ const api: SimpleNoteAPI = {
     list: () => ipcRenderer.invoke('vault:list'),
     read: (path) => ipcRenderer.invoke('vault:read', path),
     createFile: (dir) => ipcRenderer.invoke('vault:createFile', dir),
+    createBlankNote: () => ipcRenderer.invoke('vault:createBlankNote'),
     createFolder: (dir) => ipcRenderer.invoke('vault:createFolder', dir),
     rename: (path, newName) => ipcRenderer.invoke('vault:rename', path, newName),
     delete: (path) => ipcRenderer.invoke('vault:delete', path),

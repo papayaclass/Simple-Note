@@ -15,6 +15,7 @@ import {
   listVault,
   readMarkdown,
   createFile,
+  createBlankNote,
   createFolder,
   renameEntry,
   deleteEntry,
@@ -339,6 +340,7 @@ app.whenReady().then(() => {
   ipcMain.handle('vault:list', () => listVault());
   ipcMain.handle('vault:read', (_e, path: string) => readMarkdown(path));
   ipcMain.handle('vault:createFile', (_e, dir?: string | null) => createFile(dir));
+  ipcMain.handle('vault:createBlankNote', () => createBlankNote());
   ipcMain.handle('vault:createFolder', (_e, dir?: string | null) => createFolder(dir));
   ipcMain.handle('vault:rename', (_e, path: string, newName: string) => renameEntry(path, newName));
   ipcMain.handle('vault:delete', (_e, path: string) => deleteEntry(path));

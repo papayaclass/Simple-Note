@@ -8,6 +8,7 @@ import {
   openFileInTab,
   refreshVaultTree,
   createNewTab,
+  createBlankVaultNote,
   isPathInVault,
   forgetLastEditedFile,
 } from './fileActions';
@@ -117,6 +118,12 @@ export function App(): JSX.Element {
           });
           if (!opened) forgetLastEditedFile(stored.lastEditedFilePath);
         }
+      } else if (stored.startupBehavior === 'newBlankInVault') {
+        await new Promise((resolve) => window.setTimeout(resolve, 0));
+        const s = useStore.getState();
+        const stillBlank =
+          s.tabs.length === 1 && !s.tabs[0]?.filePath && !s.tabs[0]?.dirty;
+        if (stillBlank) await createBlankVaultNote();
       }
     })();
   }, [setPreferences]);

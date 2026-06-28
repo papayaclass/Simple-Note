@@ -20,7 +20,7 @@ export interface MenuDividerPref {
 export type MenuItemPref = MenuCommandPref | MenuDividerPref;
 
 export type SortMode = 'manual' | 'name' | 'created' | 'modified';
-export type StartupBehavior = 'newBlank' | 'lastEdited';
+export type StartupBehavior = 'newBlank' | 'newBlankInVault' | 'lastEdited';
 
 export interface Preferences {
   vaultPath: string;
