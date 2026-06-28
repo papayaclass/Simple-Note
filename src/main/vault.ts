@@ -194,7 +194,7 @@ async function uniquePath(dir: string, base: string, ext: string): Promise<strin
 export async function createFile(dir?: string | null): Promise<{ ok: boolean; path?: string }> {
   const target = dir || getVault();
   if (!target) return { ok: false };
-  const path = await uniquePath(target, '未命名', '.md');
+  const path = await uniquePath(target, '未命名筆記', '.md');
   await fs.writeFile(path, '', 'utf-8');
   return { ok: true, path };
 }
