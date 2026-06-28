@@ -611,7 +611,7 @@ function readAsDataURL(file: File): Promise<string> {
 }
 
 // Insert each image as an `image` block. For each file we ask main where it
-// should live: in-vault notes back the image into <vault>/assets and store a
+// should live: in-vault notes back the image into <vault>/Assets and store a
 // relative path; out-of-vault notes store an absolute path; pasted screenshots
 // without a source file fall back to an in-memory data URL when not in a vault.
 async function insertImageFiles(

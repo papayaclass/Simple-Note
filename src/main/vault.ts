@@ -429,7 +429,7 @@ export async function saveImageForNote(args: {
     if (noteInVault && vault && noteDir) {
       let assetAbs = sourcePath;
       if (!isInVault(sourcePath)) {
-        const assetsDir = join(vault, 'assets');
+        const assetsDir = join(vault, 'Assets');
         await fs.mkdir(assetsDir, { recursive: true });
         const ext = extname(sourcePath);
         assetAbs = await uniquePath(assetsDir, basename(sourcePath, ext), ext);

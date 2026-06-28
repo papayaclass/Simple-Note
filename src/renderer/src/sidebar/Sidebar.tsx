@@ -45,21 +45,31 @@ function sortChildren(
   parentPath: string,
   sortMode: SortMode,
   manualOrder: Record<string, string[]>,
-  asc = true
+  asc = true,
+  foldersOnTop = true
 ): VaultNode[] {
   const arr = [...nodes];
+  // When enabled, folders form an implicit group above files; the active sort
+  // (manual order or a key) then only orders items within each group, so files
+  // never cross into the folder group and vice versa. Returns null when the two
+  // nodes are in the same group and the normal comparator should decide.
+  const group = (a: VaultNode, b: VaultNode): number | null =>
+    foldersOnTop && a.type !== b.type ? (a.type === 'folder' ? -1 : 1) : null;
   if (sortMode === 'manual') {
     const order = manualOrder[parentPath] ?? [];
     const idx = (p: string): number => {
       const i = order.indexOf(p);
       return i === -1 ? Number.MAX_SAFE_INTEGER : i;
     };
-    arr.sort((a, b) => idx(a.path) - idx(b.path) || a.name.localeCompare(b.name, 'zh-Hant'));
+    arr.sort(
+      (a, b) =>
+        group(a, b) ?? (idx(a.path) - idx(b.path) || a.name.localeCompare(b.name, 'zh-Hant'))
+    );
     return arr;
   }
   arr.sort((a, b) => {
-    // Folders always group above files, regardless of direction.
-    if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
+    const g = group(a, b);
+    if (g !== null) return g;
     let c: number;
     if (sortMode === 'name') c = a.name.localeCompare(b.name, 'zh-Hant');
     else if (sortMode === 'created') c = a.birthtimeMs - b.birthtimeMs;
@@ -106,6 +116,7 @@ interface TreeCtx {
   renamingPath: string | null;
   sortMode: SortMode;
   sortAsc: boolean;
+  foldersOnTop: boolean;
   manualOrder: Record<string, string[]>;
   expanded: Set<string>;
   // A file row being hovered for reorder (blue before/after line).
@@ -144,7 +155,14 @@ function TreeItem({
 
   const children =
     isFolder && open
-      ? sortChildren(node.children ?? [], node.path, ctx.sortMode, ctx.manualOrder, ctx.sortAsc)
+      ? sortChildren(
+          node.children ?? [],
+          node.path,
+          ctx.sortMode,
+          ctx.manualOrder,
+          ctx.sortAsc,
+          ctx.foldersOnTop
+        )
       : [];
 
   return (
@@ -248,6 +266,7 @@ export function Sidebar(): JSX.Element {
   const selectedPath = useStore((s) => s.selectedPath);
   const setSelectedPath = useStore((s) => s.setSelectedPath);
   const manualOrder = useStore((s) => s.preferences.manualOrder);
+  const foldersOnTop = useStore((s) => s.preferences.foldersOnTop);
   const setPreferences = useStore((s) => s.setPreferences);
   const retargetTabs = useStore((s) => s.retargetTabs);
   const clearAutoName = useStore((s) => s.clearAutoName);
@@ -260,6 +279,7 @@ export function Sidebar(): JSX.Element {
   // Top/bottom drop zone for moving a file out of its folder to the vault root.
   const [rootDrop, setRootDrop] = useState<RootDrop | null>(null);
   const draggingPath = useRef<string | null>(null);
+  const draggingType = useRef<'file' | 'folder' | null>(null);
   const dropIntent = useRef<DropIntent | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const externalDestDir = useRef<string | null>(null);
@@ -367,6 +387,14 @@ export function Sidebar(): JSX.Element {
     [setSortAsc]
   );
 
+  const changeFoldersOnTop = useCallback(
+    (next: boolean) => {
+      setPreferences({ foldersOnTop: next });
+      void persistPref('foldersOnTop', next);
+    },
+    [setPreferences]
+  );
+
   const openSortMenu = useCallback(
     (x: number, y: number) => {
       const opt = (label: string, mode: SortMode): MenuItem => ({
@@ -397,10 +425,16 @@ export function Sidebar(): JSX.Element {
             disabled: manual,
             onClick: () => changeAsc(false),
           },
+          { divider: true },
+          {
+            label: '資料夾置頂',
+            checked: foldersOnTop,
+            onClick: () => changeFoldersOnTop(!foldersOnTop),
+          },
         ],
       });
     },
-    [sortMode, sortAsc, changeSort, changeAsc]
+    [sortMode, sortAsc, foldersOnTop, changeSort, changeAsc, changeFoldersOnTop]
   );
 
   const doRename = useCallback(
@@ -443,7 +477,9 @@ export function Sidebar(): JSX.Element {
         findSiblings(fileTree, parentPath, vaultPath),
         parentPath,
         'manual',
-        baseOrder
+        baseOrder,
+        true,
+        foldersOnTop
       )
         .map((n) => n.path)
         .filter((p) => p !== path);
@@ -460,7 +496,7 @@ export function Sidebar(): JSX.Element {
       nextPaths.splice(insertAt, 0, path);
       return { ...baseOrder, [parentPath]: nextPaths };
     },
-    [fileTree, vaultPath]
+    [fileTree, vaultPath, foldersOnTop]
   );
 
   const commitManualOrder = useCallback(
@@ -652,6 +688,7 @@ export function Sidebar(): JSX.Element {
     renamingPath,
     sortMode,
     sortAsc,
+    foldersOnTop,
     manualOrder,
     expanded,
     dragOver,
@@ -682,6 +719,7 @@ export function Sidebar(): JSX.Element {
       e.dataTransfer.setData('text/plain', node.path);
       e.dataTransfer.setData(SIDEBAR_PATH_MIME, node.path);
       draggingPath.current = node.path;
+      draggingType.current = node.type === 'folder' ? 'folder' : 'file';
       dropIntent.current = null;
       requestAnimationFrame(() => {
         setSelectedPath(node.path);
@@ -697,7 +735,10 @@ export function Sidebar(): JSX.Element {
         const canReorderAroundFolder =
           sortMode === 'manual' &&
           dragged !== node.path &&
-          !node.path.startsWith(dragged + '/');
+          !node.path.startsWith(dragged + '/') &&
+          // With folders grouped on top, only a folder may reorder among
+          // folders — a file dropped here would land into the folder instead.
+          (!foldersOnTop || draggingType.current === 'folder');
         if (canReorderAroundFolder && e.clientY <= rect.top + edgeZone) {
           e.preventDefault();
           e.dataTransfer.dropEffect = 'move';
@@ -731,7 +772,8 @@ export function Sidebar(): JSX.Element {
         setDragOver(null);
         setRootDrop(null);
       } else if (sortMode === 'manual') {
-        if (dragged === node.path) {
+        // With folders grouped on top, a folder can't reorder among files.
+        if (dragged === node.path || (foldersOnTop && draggingType.current === 'folder')) {
           dropIntent.current = null;
           setDragOver(null);
           setDropFolder(null);
@@ -763,6 +805,7 @@ export function Sidebar(): JSX.Element {
       setDropFolder(null);
       setRootDrop(null);
       draggingPath.current = null;
+      draggingType.current = null;
       dropIntent.current = null;
     },
     onDragEnd: () => {
@@ -770,6 +813,7 @@ export function Sidebar(): JSX.Element {
       setDropFolder(null);
       setRootDrop(null);
       draggingPath.current = null;
+      draggingType.current = null;
       dropIntent.current = null;
     },
   };
@@ -842,7 +886,7 @@ export function Sidebar(): JSX.Element {
   };
 
   const sortedRoots = vaultPath
-    ? sortChildren(fileTree, vaultPath, sortMode, manualOrder, sortAsc)
+    ? sortChildren(fileTree, vaultPath, sortMode, manualOrder, sortAsc, foldersOnTop)
     : [];
 
   // Drag the right edge to resize. The sidebar sits flush to the window's left

@@ -28,6 +28,9 @@ export interface Preferences {
   sidebarWidth: number;
   sortMode: SortMode;
   sortAsc: boolean;
+  // When true, folders form an implicit group above files in the sidebar; the
+  // chosen sort (manual or keyed) then only applies within each group.
+  foldersOnTop: boolean;
   // Per-folder manual ordering: folder path → ordered array of child paths.
   manualOrder: Record<string, string[]>;
   pageWidth: number;
@@ -76,6 +79,7 @@ const DEFAULTS: Preferences = {
   sidebarWidth: 250,
   sortMode: 'manual',
   sortAsc: true,
+  foldersOnTop: true,
   manualOrder: {},
   pageWidth: 720,
   twoColumnPageWidth: 1080,
@@ -107,6 +111,7 @@ export function getPreferences(): Preferences {
     sidebarWidth: store.get('sidebarWidth', DEFAULTS.sidebarWidth),
     sortMode: store.get('sortMode', DEFAULTS.sortMode),
     sortAsc: store.get('sortAsc', DEFAULTS.sortAsc),
+    foldersOnTop: store.get('foldersOnTop', DEFAULTS.foldersOnTop),
     manualOrder: store.get('manualOrder', DEFAULTS.manualOrder),
     pageWidth: store.get('pageWidth', DEFAULTS.pageWidth),
     twoColumnPageWidth: store.get('twoColumnPageWidth', DEFAULTS.twoColumnPageWidth),

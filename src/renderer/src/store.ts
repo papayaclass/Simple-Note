@@ -78,6 +78,7 @@ export interface Preferences {
   sidebarWidth: number;
   sortMode: SortMode;
   sortAsc: boolean;
+  foldersOnTop: boolean;
   manualOrder: Record<string, string[]>;
 }
 
@@ -106,6 +107,7 @@ export const DEFAULT_PREFS: Preferences = {
   sidebarWidth: 250,
   sortMode: 'manual',
   sortAsc: true,
+  foldersOnTop: true,
   manualOrder: {},
 };
 
