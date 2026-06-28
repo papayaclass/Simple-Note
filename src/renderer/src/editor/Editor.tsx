@@ -7,7 +7,7 @@ import {
 } from '@blocknote/react';
 import { TextSelection, AllSelection } from 'prosemirror-state';
 import { schema } from './schema';
-import { createLinkExtension } from './link';
+import { createLinkExtension, sanitizeLoadedMarkdown } from './link';
 import { createMathPlugin } from '../math/overlay';
 import { createYouTubeMentionExtension } from './youtubeMention';
 import { createCodeWrapPlugin } from './codeWrap';
@@ -259,7 +259,7 @@ export function Editor({ onChange, handleRef, autoFocus = true, notePath = null 
         }
       },
       loadMarkdown: async (md: string) => {
-        const parsed = await editor.tryParseMarkdownToBlocks(md);
+        const parsed = await editor.tryParseMarkdownToBlocks(sanitizeLoadedMarkdown(md));
         const blocks = parsed.length > 0 ? parsed : INITIAL_CONTENT;
         (editor.replaceBlocks as (a: unknown, b: unknown) => unknown)(editor.document, blocks);
       },
