@@ -5,7 +5,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 100;
+  /* Keep preferences above BlockNote side menus and app-level popovers. */
+  z-index: 10004;
   -webkit-app-region: no-drag;
 }
 
