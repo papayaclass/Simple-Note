@@ -1,5 +1,6 @@
 import { createBlockNoteExtension, defaultProps } from '@blocknote/core';
 import { createReactBlockSpec } from '@blocknote/react';
+import type { MouseEvent, PointerEvent } from 'react';
 
 // Notion-style collapsible block.
 //
@@ -13,6 +14,13 @@ import { createReactBlockSpec } from '@blocknote/react';
 // with `data-show-children` hides the child `.bn-block-group` when closed, and
 // `.bn-toggle-button` styles + rotates the chevron.
 const CHEVRON_PATH = 'M320-200v-560l440 280-440 280Z';
+
+function stopEditorPointerHandling(
+  event: MouseEvent<HTMLButtonElement> | PointerEvent<HTMLButtonElement>
+): void {
+  event.preventDefault();
+  event.stopPropagation();
+}
 
 export const Toggle = createReactBlockSpec(
   {
@@ -32,8 +40,17 @@ export const Toggle = createReactBlockSpec(
               className="bn-toggle-button"
               type="button"
               contentEditable={false}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => props.editor.updateBlock(props.block, { props: { open: !open } })}
+              aria-expanded={open}
+              aria-label={open ? '摺疊 Toggle List' : '展開 Toggle List'}
+              title={open ? '摺疊 Toggle List' : '展開 Toggle List'}
+              draggable={false}
+              onPointerDownCapture={stopEditorPointerHandling}
+              onMouseDownCapture={stopEditorPointerHandling}
+              onMouseDown={stopEditorPointerHandling}
+              onClick={(event) => {
+                stopEditorPointerHandling(event);
+                props.editor.updateBlock(props.block, { props: { open: !open } });
+              }}
             >
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentcolor">
                 <path d={CHEVRON_PATH} />

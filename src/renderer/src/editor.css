@@ -60,6 +60,46 @@
   border-left: none !important;
 }
 
+/* Toggle blocks are React node views in this app. BlockNote's bundled collapse
+   selector still targets an older `.react-renderer` wrapper, so add the current
+   `.bn-react-node-view-renderer` path to make hidden children actually collapse. */
+.bn-block:has(
+    > .bn-react-node-view-renderer
+      > .bn-block-content
+      > div
+      > .bn-toggle-wrapper[data-show-children='false']
+  )
+  > .bn-block-group {
+  display: none;
+}
+
+/* Align the chevron with the first line of a multi-line toggle title, not the
+   vertical center of the whole wrapped paragraph. */
+.bn-block-content[data-content-type='toggle'] > div {
+  width: 100%;
+}
+.bn-block-content[data-content-type='toggle'] .bn-toggle-wrapper {
+  align-items: flex-start;
+}
+.bn-block-content[data-content-type='toggle'] .bn-toggle-button {
+  --sn-toggle-button-size: 24px;
+  position: relative;
+  /* The SideMenu hover guard intentionally sits above the editor surface
+     (`z-index: 10001`) and can overlap the toggle column. Keep the chevron
+     above that transparent guard so clicks reach the actual toggle button. */
+  z-index: 10002;
+  flex: 0 0 var(--sn-toggle-button-size);
+  width: var(--sn-toggle-button-size);
+  height: var(--sn-toggle-button-size);
+  font: inherit;
+  line-height: var(--line-height);
+  margin-top: 0.125em;
+  margin-top: max(0px, calc((1lh - var(--sn-toggle-button-size)) / 2));
+  padding: 3px;
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+}
+
 /* quote — rely on BlockNote's default border-left */
 .bn-block-content[data-content-type='quote'] blockquote {
   color: inherit;
@@ -334,6 +374,10 @@ body.sn-image-dragging * {
   -webkit-app-region: no-drag;
 }
 
+.bn-container > div:has(.bn-side-menu .mantine-Menu-dropdown) {
+  z-index: 10003 !important;
+}
+
 .sn-side-menu-guard {
   position: relative;
   display: flex;
@@ -353,6 +397,10 @@ body.sn-image-dragging * {
 .bn-side-menu {
   z-index: 10001;
   -webkit-app-region: no-drag;
+}
+
+.bn-side-menu .mantine-Menu-dropdown {
+  z-index: 1;
 }
 
 .sn-drag-handle-button {
