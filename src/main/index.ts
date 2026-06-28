@@ -52,17 +52,26 @@ const windowStore = new Store<{ bounds: WindowBounds }>({
 // the process actually exits instead of lingering as a windowless background
 // app (which keeps showing in the Dock / App Switcher).
 let isQuitting = false;
+let lastActiveWindow: BrowserWindow | null = null;
 
 // Files double-clicked in Finder before the app finished launching. macOS
 // delivers them via 'open-file' (argv won't carry the path on GUI launches),
-// possibly before app.whenReady — we buffer them and open one window each once
-// the app is ready.
+// possibly before app.whenReady — we buffer them and open them as tabs once the
+// app is ready.
 const coldStartPaths: string[] = [];
 
-// A file path waiting to be loaded into a specific window, keyed by that
+// File paths waiting to be loaded into a specific window, keyed by that
 // window's webContents id. We can't push the content until the renderer has
 // mounted its listeners; it flushes when the renderer sends 'renderer:ready'.
-const pendingOpenByWebContents = new Map<number, string>();
+const pendingOpenByWebContents = new Map<number, string[]>();
+const readyWebContents = new Set<number>();
+
+function queuePathForWindow(win: BrowserWindow, path: string): void {
+  const wcId = win.webContents.id;
+  const pending = pendingOpenByWebContents.get(wcId) ?? [];
+  pending.push(path);
+  pendingOpenByWebContents.set(wcId, pending);
+}
 
 async function deliverPathToWindow(win: BrowserWindow | null, path: string): Promise<void> {
   if (!win || win.isDestroyed()) return;
@@ -70,23 +79,55 @@ async function deliverPathToWindow(win: BrowserWindow | null, path: string): Pro
     const content = await readFile(path, 'utf-8');
     win.setRepresentedFilename(path);
     win.setTitle(path.split('/').pop() ?? 'Simple Note');
-    win.setDocumentEdited(false);
-    win.webContents.send('file:externalOpen', { path, content });
+    win.webContents.send('file:openInTab', { path, content });
   } catch (err) {
     console.error('Failed to read external file:', path, err);
   }
 }
 
+async function flushPendingPaths(win: BrowserWindow | null): Promise<void> {
+  if (!win || win.isDestroyed()) return;
+  const wcId = win.webContents.id;
+  const paths = pendingOpenByWebContents.get(wcId) ?? [];
+  pendingOpenByWebContents.delete(wcId);
+  for (const path of paths) {
+    await deliverPathToWindow(win, path);
+  }
+}
+
+function bringWindowForward(win: BrowserWindow): void {
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+
+function openPathInExistingWindow(path: string): void {
+  const windows = BrowserWindow.getAllWindows().filter((win) => !win.isDestroyed());
+  const lastActive =
+    lastActiveWindow && !lastActiveWindow.isDestroyed() ? lastActiveWindow : null;
+  const target = BrowserWindow.getFocusedWindow() ?? lastActive ?? windows.at(-1) ?? null;
+  if (!target) {
+    createWindow(path);
+    return;
+  }
+  bringWindowForward(target);
+  if (!readyWebContents.has(target.webContents.id)) {
+    queuePathForWindow(target, path);
+    return;
+  }
+  void deliverPathToWindow(target, path);
+}
+
 // macOS delivers paths via 'open-file' (and only this — argv won't carry the
 // file path on macOS GUI launches). Register inside will-finish-launching so we
 // catch the very first event even when launched cold by double-clicking a file.
-// Each opened file becomes its own window so it never replaces what's already
-// being edited.
+// Once the app is running, each opened file becomes a new tab in the existing
+// window so it never replaces what's already being edited.
 app.on('will-finish-launching', () => {
   app.on('open-file', (event, path) => {
     event.preventDefault();
     if (app.isReady()) {
-      createWindow(path);
+      openPathInExistingWindow(path);
     } else {
       coldStartPaths.push(path);
     }
@@ -155,14 +196,20 @@ function createWindow(openPath?: string): BrowserWindow {
   });
 
   const wcId = win.webContents.id;
-  if (openPath) pendingOpenByWebContents.set(wcId, openPath);
+  if (openPath) queuePathForWindow(win, openPath);
 
   win.on('ready-to-show', () => {
     win.show();
   });
 
+  win.on('focus', () => {
+    lastActiveWindow = win;
+  });
+
   win.on('closed', () => {
+    if (lastActiveWindow === win) lastActiveWindow = null;
     pendingOpenByWebContents.delete(wcId);
+    readyWebContents.delete(wcId);
   });
 
   let saveTimer: NodeJS.Timeout | null = null;
@@ -446,17 +493,16 @@ app.whenReady().then(() => {
   // A window's renderer signals it has mounted listeners; flush the file (if
   // any) that was queued for that specific window.
   ipcMain.on('renderer:ready', (e) => {
-    const path = pendingOpenByWebContents.get(e.sender.id);
-    if (path) {
-      pendingOpenByWebContents.delete(e.sender.id);
-      void deliverPathToWindow(BrowserWindow.fromWebContents(e.sender), path);
-    }
+    readyWebContents.add(e.sender.id);
+    void flushPendingPaths(BrowserWindow.fromWebContents(e.sender));
   });
 
-  // Open one window per file double-clicked before launch; otherwise a single
-  // blank window.
+  // Open files double-clicked before launch as tabs in a single window;
+  // otherwise start with a single blank window.
   if (coldStartPaths.length > 0) {
-    for (const p of coldStartPaths) createWindow(p);
+    const [firstPath, ...restPaths] = coldStartPaths;
+    const win = createWindow(firstPath);
+    for (const path of restPaths) queuePathForWindow(win, path);
     coldStartPaths.length = 0;
   } else {
     createWindow();

@@ -12,6 +12,7 @@ import { createMathPlugin } from '../math/overlay';
 import { createYouTubeMentionExtension } from './youtubeMention';
 import { createCodeWrapPlugin } from './codeWrap';
 import { createCodeBlockSelectPlugin } from './codeBlockSelect';
+import { createSelectionClampPlugin } from './selectionClamp';
 import { deleteSelectedBlocks, deleteForwardEmptyBlock } from './blockDelete';
 import { createToggleKeyboardExtension } from './toggle';
 import { SimpleNoteSideMenu } from './sideMenu';
@@ -68,6 +69,10 @@ export function Editor({ onChange, handleRef, autoFocus = true, notePath = null 
     createBlockNoteExtension({
       key: 'simple-note-codeblock-select',
       plugins: [createCodeBlockSelectPlugin()],
+    }),
+    createBlockNoteExtension({
+      key: 'simple-note-selection-clamp',
+      plugins: [createSelectionClampPlugin()],
     }),
     createBlockNoteExtension({
       key: 'simple-note-code-wrap',
