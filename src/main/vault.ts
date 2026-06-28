@@ -338,9 +338,11 @@ export async function moveToVault(
   return { ok: true, path: r.filePath };
 }
 
-// Move external files into the vault (drag from Finder onto the sidebar). Only
-// md/txt/image files are accepted; others are skipped. Cross-device renames
-// fall back to copy + unlink. Name collisions resolve with uniquePath.
+// Move external items into the vault (drag from Finder onto the sidebar).
+// Folders are moved whole (every file type, recursively); loose files are only
+// accepted when md/txt/image. Cross-device renames fall back to copy + remove
+// so the result is always a move, not a copy. Name collisions resolve with
+// uniquePath.
 export async function importExternal(
   paths: string[],
   destDir: string | null
@@ -351,6 +353,42 @@ export async function importExternal(
     destDir && (destDir === vault || destDir.startsWith(vault + '/')) ? destDir : vault;
   const moved: string[] = [];
   for (const src of paths) {
+    const stat = await fs.stat(src).catch(() => null);
+    if (!stat) continue;
+
+    if (stat.isDirectory()) {
+      // Refuse to move the vault into itself, an ancestor of the vault into the
+      // vault, or a folder into its own subtree — any of which would recurse.
+      if (
+        src === vault ||
+        vault.startsWith(src + '/') ||
+        dir === src ||
+        dir.startsWith(src + '/')
+      ) {
+        continue;
+      }
+      const dest = await uniquePath(dir, basename(src), '');
+      try {
+        await fs.rename(src, dest);
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException)?.code === 'EXDEV') {
+          // Cross-device: copy the whole tree, then delete the original.
+          try {
+            await fs.cp(src, dest, { recursive: true });
+            await fs.rm(src, { recursive: true, force: true });
+          } catch (copyErr) {
+            console.error('[vault] import folder failed:', src, copyErr);
+            continue;
+          }
+        } else {
+          console.error('[vault] import folder failed:', src, err);
+          continue;
+        }
+      }
+      moved.push(dest);
+      continue;
+    }
+
     const ext = extname(src).toLowerCase();
     if (!IMPORT_EXTS.has(ext)) continue;
     const dest = await uniquePath(dir, basename(src, ext), ext);

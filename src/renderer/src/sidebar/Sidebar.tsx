@@ -275,9 +275,21 @@ export function Sidebar(): JSX.Element {
         .filter(Boolean);
       if (paths.length === 0) return;
       const r = await window.api.vault.importExternal(paths, destDir);
-      if (r.ok) await refreshVaultTree();
+      if (!r.ok) return;
+      await refreshVaultTree();
+      // Reveal what just landed: select the first item and expand any imported
+      // folders (plus the drop destination) so the structure shows immediately.
+      if (r.moved.length > 0) {
+        setSelectedPath(r.moved[0]);
+        setExpanded((prev) => {
+          const next = new Set(prev);
+          if (destDir) next.add(destDir);
+          for (const p of r.moved) next.add(p);
+          return next;
+        });
+      }
     },
-    []
+    [setSelectedPath]
   );
 
   // Reveal the selected file by expanding its ancestor folders (e.g. when a tab
