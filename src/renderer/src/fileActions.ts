@@ -36,6 +36,19 @@ export function forgetLastEditedFile(path: string): void {
   void window.api.prefs.set('lastEditedFilePath', '');
 }
 
+export async function stageTabForPaneMove(tabId: string): Promise<void> {
+  const s = useStore.getState();
+  const tab = s.tabs.find((t) => t.id === tabId);
+  if (!tab || tab.kind !== 'editor') return;
+  const view = getDocumentView(tabId);
+  if (!view) return;
+  const markdown = await view.buildMarkdown();
+  useStore.getState().updateTab(tabId, {
+    initialMarkdown: markdown,
+    restoreDirtyAfterLoad: tab.dirty,
+  });
+}
+
 // Open a file path as a tab: if it's already open, just activate that tab;
 // otherwise read its Markdown (unless already supplied) and add a new tab.
 // `autoFocus` controls whether the new tab grabs editor focus (sidebar opens

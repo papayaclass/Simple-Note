@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore, useActiveTab } from './store';
 import { DocumentView, getDocumentView } from './DocumentView';
 import { ImageView } from './ImageView';
@@ -11,6 +11,7 @@ import {
   createBlankVaultNote,
   isPathInVault,
   forgetLastEditedFile,
+  stageTabForPaneMove,
 } from './fileActions';
 import { PreferencesPanel } from './preferences/Panel';
 import { ImageLightbox } from './ImageLightbox';
@@ -22,8 +23,14 @@ import './preferences/panel.css';
 
 export function App(): JSX.Element {
   const tabs = useStore((s) => s.tabs);
+  const panes = useStore((s) => s.panes);
   const activeTabId = useStore((s) => s.activeTabId);
+  const activePaneId = useStore((s) => s.activePaneId);
   const activeTab = useActiveTab();
+  const splitRatio = useStore((s) => s.splitRatio);
+  const setSplitRatio = useStore((s) => s.setSplitRatio);
+  const setActiveTab = useStore((s) => s.setActiveTab);
+  const splitTabToSide = useStore((s) => s.splitTabToSide);
   const mathMode = useStore((s) => s.mathMode);
   const toggleMathMode = useStore((s) => s.toggleMathMode);
   const preferences = useStore((s) => s.preferences);
@@ -42,6 +49,12 @@ export function App(): JSX.Element {
   const [ringing, setRinging] = useState(false);
   // A 1-second tick that drives the countdown display and fires notifications.
   const [now, setNow] = useState(() => Date.now());
+  const [draggedTabId, setDraggedTabId] = useState<string | null>(null);
+  const [activeDropPaneId, setActiveDropPaneId] = useState<string | null>(null);
+  const [splitDropSide, setSplitDropSide] = useState<'left' | 'right' | null>(null);
+  const workspaceRef = useRef<HTMLDivElement | null>(null);
+
+  const tabById = useMemo(() => new Map(tabs.map((tab) => [tab.id, tab])), [tabs]);
 
   // Register the Shift+Cmd+P pronunciation-replay shortcut once for the app.
   useEffect(() => {
@@ -80,6 +93,117 @@ export function App(): JSX.Element {
     stopAlarm();
     setRinging(false);
   }, []);
+
+  const canDropTabToSide = useCallback((tabId: string, side: 'left' | 'right'): boolean => {
+    const s = useStore.getState();
+    if (s.panes.length === 1) {
+      const pane = s.panes[0];
+      return pane.tabIds.includes(tabId) && pane.tabIds.length > 1;
+    }
+    const targetPane = side === 'left' ? s.panes[0] : s.panes[s.panes.length - 1];
+    const sourcePane = s.panes.find((p) => p.tabIds.includes(tabId));
+    return !!targetPane && !!sourcePane && targetPane.id !== sourcePane.id;
+  }, []);
+
+  const splitSideForPoint = useCallback(
+    (clientX: number, tabId: string | null): 'left' | 'right' | null => {
+      const workspace = workspaceRef.current;
+      if (!workspace || !tabId) return null;
+      const rect = workspace.getBoundingClientRect();
+      const edgeWidth = Math.min(240, Math.max(120, rect.width * 0.24));
+      const side =
+        clientX <= rect.left + edgeWidth
+          ? 'left'
+          : clientX >= rect.right - edgeWidth
+            ? 'right'
+            : null;
+      return side && canDropTabToSide(tabId, side) ? side : null;
+    },
+    [canDropTabToSide]
+  );
+
+  const handleWorkspaceDragOver = useCallback(
+    (e: React.DragEvent<HTMLDivElement>) => {
+      if (!draggedTabId) {
+        setSplitDropSide(null);
+        return;
+      }
+      const side = splitSideForPoint(e.clientX, draggedTabId);
+      setSplitDropSide(side);
+      if (side) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+      }
+    },
+    [draggedTabId, splitSideForPoint]
+  );
+
+  const handleWorkspaceDrop = useCallback(
+    (e: React.DragEvent<HTMLDivElement>) => {
+      if (!draggedTabId) return;
+      const side = splitDropSide ?? splitSideForPoint(e.clientX, draggedTabId);
+      if (!side) return;
+      e.preventDefault();
+      e.stopPropagation();
+      void (async () => {
+        await stageTabForPaneMove(draggedTabId);
+        splitTabToSide(draggedTabId, side);
+      })();
+      setDraggedTabId(null);
+      setActiveDropPaneId(null);
+      setSplitDropSide(null);
+    },
+    [draggedTabId, splitDropSide, splitSideForPoint, splitTabToSide]
+  );
+
+  const handleWorkspaceDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    const next = e.relatedTarget;
+    if (!next || !(next instanceof Node) || !e.currentTarget.contains(next)) {
+      setSplitDropSide(null);
+    }
+  }, []);
+
+  const handleSplitDividerPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.button !== 0) return;
+      const workspace = workspaceRef.current;
+      if (!workspace) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const divider = e.currentTarget;
+      divider.setPointerCapture(e.pointerId);
+      workspace.classList.add('resizing-split');
+      document.body.style.cursor = 'col-resize';
+
+      const onMove = (ev: PointerEvent): void => {
+        const rect = workspace.getBoundingClientRect();
+        if (rect.width <= 0) return;
+        setSplitRatio((ev.clientX - rect.left) / rect.width);
+      };
+      const onUp = (): void => {
+        window.removeEventListener('pointermove', onMove, true);
+        window.removeEventListener('pointerup', onUp, true);
+        workspace.classList.remove('resizing-split');
+        document.body.style.cursor = '';
+        try {
+          divider.releasePointerCapture(e.pointerId);
+        } catch {
+          // ignore — capture may already be released
+        }
+      };
+      window.addEventListener('pointermove', onMove, true);
+      window.addEventListener('pointerup', onUp, true);
+    },
+    [setSplitRatio]
+  );
+
+  const activatePane = useCallback(
+    (paneId: string) => {
+      const pane = useStore.getState().panes.find((p) => p.id === paneId);
+      if (pane) setActiveTab(pane.activeTabId);
+    },
+    [setActiveTab]
+  );
 
   // Apply CSS variables from preferences.
   useEffect(() => {
@@ -242,15 +366,67 @@ export function App(): JSX.Element {
         <Sidebar />
       </div>
       <div className="main-area">
-        <TabBar onToggleSidebar={handleToggleSidebar} />
-        <div className="tab-content">
-          {tabs.map((t) =>
-            t.kind === 'image' ? (
-              <ImageView key={t.id} tabId={t.id} active={t.id === activeTabId} />
-            ) : (
-              <DocumentView key={t.id} tabId={t.id} active={t.id === activeTabId} />
-            )
-          )}
+        <div
+          className={`workspace-shell${panes.length > 1 ? ' split' : ''}`}
+          ref={workspaceRef}
+          onDragOverCapture={handleWorkspaceDragOver}
+          onDropCapture={handleWorkspaceDrop}
+          onDragLeave={handleWorkspaceDragLeave}
+        >
+          {panes.map((pane, index) => (
+            <Fragment key={pane.id}>
+              {index > 0 && (
+                <div
+                  className="split-divider"
+                  role="separator"
+                  aria-orientation="vertical"
+                  onPointerDown={handleSplitDividerPointerDown}
+                />
+              )}
+              <section
+                className={`editor-pane${pane.id === activePaneId ? ' active-pane' : ''}`}
+                style={
+                  panes.length > 1
+                    ? { flexGrow: index === 0 ? splitRatio : 1 - splitRatio, flexBasis: 0 }
+                    : undefined
+                }
+              >
+                <TabBar
+                  paneId={pane.id}
+                  onToggleSidebar={handleToggleSidebar}
+                  showSidebarToggle={index === 0}
+                  draggingTabId={draggedTabId}
+                  activeDropPaneId={activeDropPaneId}
+                  onTabDragStart={(tabId) => {
+                    setDraggedTabId(tabId);
+                    setActiveDropPaneId(pane.id);
+                  }}
+                  onTabDragOverPane={setActiveDropPaneId}
+                  onTabDragEnd={() => {
+                    setDraggedTabId(null);
+                    setActiveDropPaneId(null);
+                    setSplitDropSide(null);
+                  }}
+                />
+                <div
+                  className="tab-content"
+                  onPointerDownCapture={() => activatePane(pane.id)}
+                  onFocusCapture={() => activatePane(pane.id)}
+                >
+                  {pane.tabIds.map((tabId) => {
+                    const t = tabById.get(tabId);
+                    if (!t) return null;
+                    return t.kind === 'image' ? (
+                      <ImageView key={t.id} tabId={t.id} active={t.id === pane.activeTabId} />
+                    ) : (
+                      <DocumentView key={t.id} tabId={t.id} active={t.id === pane.activeTabId} />
+                    );
+                  })}
+                </div>
+              </section>
+            </Fragment>
+          ))}
+          {splitDropSide && <div className={`split-drop-overlay ${splitDropSide}`} />}
         </div>
       </div>
 

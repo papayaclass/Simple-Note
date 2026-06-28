@@ -139,6 +139,75 @@ body,
   flex-direction: column;
 }
 
+.workspace-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.editor-pane {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.workspace-shell.split .editor-pane {
+  min-width: 220px;
+}
+
+.split-divider {
+  flex: 0 0 1px;
+  align-self: stretch;
+  position: relative;
+  z-index: 4;
+  background: var(--column-divider);
+  cursor: col-resize;
+  -webkit-app-region: no-drag;
+}
+
+.split-divider::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -5px;
+  right: -5px;
+  cursor: col-resize;
+}
+
+.workspace-shell.resizing-split,
+.workspace-shell.resizing-split * {
+  user-select: none;
+}
+
+.split-drop-overlay {
+  position: absolute;
+  top: 46px;
+  bottom: 24px;
+  width: calc(50% - 12px);
+  z-index: 10001;
+  pointer-events: none;
+  border: 2px solid rgba(37, 99, 235, 0.72);
+  border-radius: 10px;
+  background: rgba(37, 99, 235, 0.2);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+}
+
+.split-drop-overlay.left {
+  left: 8px;
+}
+
+.split-drop-overlay.right {
+  right: 8px;
+}
+
 /* Holds every tab's DocumentView; only the active one is shown. */
 .tab-content {
   flex: 1 1 auto;

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useStore, Tab } from '../store';
 import { getDocumentView } from '../DocumentView';
 import {
@@ -6,23 +6,61 @@ import {
   createNewTab,
   rememberLastEditedFile,
   forgetLastEditedFile,
+  stageTabForPaneMove,
 } from '../fileActions';
 import { PopMenu, PopMenuState } from '../ui/PopMenu';
 import './tabs.css';
 
-export function TabBar({ onToggleSidebar }: { onToggleSidebar: () => void }): JSX.Element {
-  const tabs = useStore((s) => s.tabs);
-  const activeTabId = useStore((s) => s.activeTabId);
+interface TabBarProps {
+  paneId: string;
+  onToggleSidebar: () => void;
+  showSidebarToggle?: boolean;
+  draggingTabId?: string | null;
+  activeDropPaneId?: string | null;
+  onTabDragStart?: (tabId: string) => void;
+  onTabDragOverPane?: (paneId: string) => void;
+  onTabDragEnd?: () => void;
+}
+
+export const TAB_DRAG_TYPE = 'application/x-simple-note-tab';
+
+export function TabBar({
+  paneId,
+  onToggleSidebar,
+  showSidebarToggle = true,
+  draggingTabId,
+  activeDropPaneId,
+  onTabDragStart,
+  onTabDragOverPane,
+  onTabDragEnd,
+}: TabBarProps): JSX.Element {
+  const tabs = useStore((s) => {
+    const pane = s.panes.find((p) => p.id === paneId);
+    if (!pane) return [];
+    return pane.tabIds
+      .map((id) => s.tabs.find((t) => t.id === id))
+      .filter((t): t is Tab => !!t);
+  });
+  const activeTabId = useStore(
+    (s) => s.panes.find((p) => p.id === paneId)?.activeTabId ?? s.activeTabId
+  );
   const setActiveTab = useStore((s) => s.setActiveTab);
+  const setActivePane = useStore((s) => s.setActivePane);
   const closeTab = useStore((s) => s.closeTab);
   const addTab = useStore((s) => s.addTab);
-  const reorderTabs = useStore((s) => s.reorderTabs);
+  const moveTabToPane = useStore((s) => s.moveTabToPane);
   const setTabFile = useStore((s) => s.setTabFile);
   const vaultPath = useStore((s) => s.vaultPath);
 
   const [menu, setMenu] = useState<PopMenuState | null>(null);
   const [dropGap, setDropGap] = useState<number | null>(null);
   const dragIndex = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (draggingTabId) return;
+    setDropGap(null);
+    dragIndex.current = null;
+  }, [draggingTabId]);
 
   const isInVault = useCallback(
     (path: string | null): boolean =>
@@ -36,13 +74,13 @@ export function TabBar({ onToggleSidebar }: { onToggleSidebar: () => void }): JS
       if (r.ok && r.path) {
         await refreshVaultTree();
         const md = (await window.api.vault.read(r.path)).content ?? '';
-        addTab({ filePath: r.path, initialMarkdown: md });
+        addTab({ filePath: r.path, initialMarkdown: md }, paneId);
       }
     } else {
       const md = (await getDocumentView(tab.id)?.buildMarkdown()) ?? '';
-      addTab({ initialMarkdown: md });
+      addTab({ initialMarkdown: md }, paneId);
     }
-  }, [addTab]);
+  }, [addTab, paneId]);
 
   const deleteDocument = useCallback(
     async (tab: Tab) => {
@@ -114,29 +152,51 @@ export function TabBar({ onToggleSidebar }: { onToggleSidebar: () => void }): JS
   );
 
   const onDragOver = useCallback((e: React.DragEvent, index: number) => {
-    if (dragIndex.current === null) return;
+    if (!e.dataTransfer.types.includes(TAB_DRAG_TYPE) && dragIndex.current === null) return;
     e.preventDefault();
+    e.stopPropagation();
+    onTabDragOverPane?.(paneId);
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const gap = e.clientX < rect.left + rect.width / 2 ? index : index + 1;
     setDropGap(gap);
-  }, []);
+  }, [onTabDragOverPane, paneId]);
 
-  const onDrop = useCallback(() => {
-    const from = dragIndex.current;
-    if (from !== null && dropGap !== null) reorderTabs(from, dropGap);
+  const onStripDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    if (!e.dataTransfer.types.includes(TAB_DRAG_TYPE) && dragIndex.current === null) return;
+    e.preventDefault();
+    e.stopPropagation();
+    onTabDragOverPane?.(paneId);
+    setDropGap(tabs.length);
+  }, [onTabDragOverPane, paneId, tabs.length]);
+
+  const onDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const tabId = e.dataTransfer.getData(TAB_DRAG_TYPE);
     setDropGap(null);
     dragIndex.current = null;
-  }, [dropGap, reorderTabs]);
+    onTabDragEnd?.();
+    if (tabId) {
+      void (async () => {
+        await stageTabForPaneMove(tabId);
+        moveTabToPane(tabId, paneId, dropGap ?? tabs.length);
+      })();
+    }
+  }, [dropGap, moveTabToPane, onTabDragEnd, paneId, tabs.length]);
+
+  const showDropLine = draggingTabId && activeDropPaneId === paneId;
 
   return (
-    <div className="tab-bar">
-      <button className="sidebar-toggle" title="切換側邊欄 (⇧⌘F)" onClick={onToggleSidebar}>
-        <PanelLeftIcon />
-      </button>
-      <div className="tab-strip">
+    <div className={`tab-bar${showSidebarToggle ? ' with-sidebar-control' : ''}`}>
+      {showSidebarToggle && (
+        <button className="sidebar-toggle" title="切換側邊欄 (⇧⌘F)" onClick={onToggleSidebar}>
+          <PanelLeftIcon />
+        </button>
+      )}
+      <div className="tab-strip" onDragOver={onStripDragOver} onDrop={onDrop}>
         {tabs.map((tab, i) => (
           <div className="tab-slot" key={tab.id}>
-            {dropGap === i && <div className="tab-drop-line" />}
+            {showDropLine && dropGap === i && <div className="tab-drop-line" />}
             <div
               className={`tab${tab.id === activeTabId ? ' active' : ''}`}
               draggable
@@ -145,14 +205,19 @@ export function TabBar({ onToggleSidebar }: { onToggleSidebar: () => void }): JS
                 if (e.button === 1) closeTab(tab.id);
               }}
               onContextMenu={(e) => openContext(e, tab)}
-              onDragStart={() => {
+              onDragStart={(e) => {
                 dragIndex.current = i;
+                setActiveTab(tab.id);
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData(TAB_DRAG_TYPE, tab.id);
+                onTabDragStart?.(tab.id);
               }}
               onDragOver={(e) => onDragOver(e, i)}
               onDrop={onDrop}
               onDragEnd={() => {
                 setDropGap(null);
                 dragIndex.current = null;
+                onTabDragEnd?.();
               }}
               title={tab.filePath ?? tab.fileName}
             >
@@ -169,12 +234,19 @@ export function TabBar({ onToggleSidebar }: { onToggleSidebar: () => void }): JS
                 <CloseIcon />
               </button>
             </div>
-            {dropGap === tabs.length && i === tabs.length - 1 && (
+            {showDropLine && dropGap === tabs.length && i === tabs.length - 1 && (
               <div className="tab-drop-line" />
             )}
           </div>
         ))}
-        <button className="tab-new" title="新分頁" onClick={() => void createNewTab()}>
+        <button
+          className="tab-new"
+          title="新分頁"
+          onClick={() => {
+            setActivePane(paneId);
+            void createNewTab();
+          }}
+        >
           <PlusIcon />
         </button>
       </div>

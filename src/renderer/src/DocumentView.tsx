@@ -402,7 +402,12 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
     const tab = useStore.getState().tabs.find((t) => t.id === tabId);
     if (!tab) return;
     const finish = (): void => {
-      setTabDirty(tabId, false);
+      const loadedTab = useStore.getState().tabs.find((t) => t.id === tabId);
+      const restoreDirty = loadedTab?.restoreDirtyAfterLoad;
+      setTabDirty(tabId, restoreDirty ?? false);
+      if (restoreDirty !== undefined) {
+        updateTab(tabId, { restoreDirtyAfterLoad: undefined });
+      }
       if (initialAutoFocus.current) {
         requestAnimationFrame(() => midHandleRef.current?.focusLastBlock());
       }
