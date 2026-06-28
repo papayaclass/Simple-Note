@@ -48,7 +48,8 @@
   flex: 1 1 auto;
   padding: 0 6px;
   overflow-x: auto;
-  -webkit-app-region: no-drag;
+  /* The strip stays draggable so its empty area (right of the tabs) can move
+     the window; only the interactive children below opt out via no-drag. */
 }
 .tab-strip::-webkit-scrollbar {
   height: 0;
@@ -73,6 +74,7 @@
   color: var(--fg-muted);
   cursor: default;
   white-space: nowrap;
+  -webkit-app-region: no-drag;
 }
 .tab:hover {
   background: var(--hover-bg, rgba(127, 127, 127, 0.1));
@@ -123,6 +125,7 @@
   color: var(--fg-muted);
   cursor: pointer;
   flex: 0 0 auto;
+  -webkit-app-region: no-drag;
 }
 .tab-new:hover {
   background: var(--hover-bg, rgba(127, 127, 127, 0.12));
