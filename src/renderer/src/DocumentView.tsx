@@ -12,6 +12,7 @@ export interface DocumentViewHandle {
   buildMarkdown: () => Promise<string>;
   hasContent: () => boolean;
   cancelPendingAutoSave: () => void;
+  replaceWithMarkdown: (md: string, opts?: { focus?: boolean }) => Promise<void>;
   pastePlainText: () => void;
   focusLastBlock: () => void;
   focus: () => void;
@@ -376,12 +377,34 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
     return false;
   }, [currentLayout]);
 
+  const replaceWithMarkdown = useCallback(
+    async (md: string, opts: { focus?: boolean } = {}): Promise<void> => {
+      cancelPendingAutoSave();
+      loadingRef.current = true;
+      try {
+        await Promise.all([
+          leftHandleRef.current?.loadMarkdown(''),
+          rightHandleRef.current?.loadMarkdown(''),
+        ]);
+        await midHandleRef.current?.loadMarkdown(md);
+        setTabDirty(tabId, false);
+        if (opts.focus) requestAnimationFrame(() => midHandleRef.current?.focusLastBlock());
+      } finally {
+        window.setTimeout(() => {
+          loadingRef.current = false;
+        }, 0);
+      }
+    },
+    [cancelPendingAutoSave, setTabDirty, tabId]
+  );
+
   // Register this view's imperative API (stable object, mutated each render).
   const viewApiRef = useRef<DocumentViewHandle>({
     save: async () => false,
     buildMarkdown: async () => '',
     hasContent: () => false,
     cancelPendingAutoSave: () => {},
+    replaceWithMarkdown: async () => {},
     pastePlainText: () => {},
     focusLastBlock: () => {},
     focus: () => {},
@@ -390,6 +413,7 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
   viewApiRef.current.buildMarkdown = buildMarkdown;
   viewApiRef.current.hasContent = hasContent;
   viewApiRef.current.cancelPendingAutoSave = cancelPendingAutoSave;
+  viewApiRef.current.replaceWithMarkdown = replaceWithMarkdown;
   viewApiRef.current.pastePlainText = () => focusedHandle()?.pastePlainText();
   viewApiRef.current.focusLastBlock = () => midHandleRef.current?.focusLastBlock();
   viewApiRef.current.focus = () => midHandleRef.current?.focus();

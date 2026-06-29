@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore, VaultNode, SortMode } from '../store';
 import {
   openFileInTab,
+  openFileInCurrentTab,
   openImageTab,
   isImagePath,
   isTextNotePath,
@@ -167,6 +168,7 @@ interface TreeCtx {
   dropFolder: string | null;
   onSelect: (node: VaultNode, event: React.MouseEvent) => void;
   onOpen: (node: VaultNode, event: React.MouseEvent) => void;
+  onOpenInNewTab: (node: VaultNode, event: React.MouseEvent) => void;
   onToggleFolder: (path: string) => void;
   onContext: (e: React.MouseEvent, node: VaultNode) => void;
   onRenameCommit: (node: VaultNode, name: string) => void;
@@ -223,6 +225,9 @@ function TreeItem({
           } else {
             ctx.onOpen(node, e);
           }
+        }}
+        onDoubleClick={(e) => {
+          if (!isFolder && e.button === 0) ctx.onOpenInNewTab(node, e);
         }}
         onContextMenu={(e) => ctx.onContext(e, node)}
         onDragStart={(e) => ctx.onDragStart(e, node)}
@@ -328,9 +333,18 @@ export function Sidebar(): JSX.Element {
   const externalDestDir = useRef<string | null>(null);
   const [externalDrop, setExternalDrop] = useState(false);
   const lastSelectedPath = useRef<string | null>(null);
+  const singleOpenTimer = useRef<number | null>(null);
 
   const hasExternalFiles = (e: React.DragEvent): boolean =>
     draggingPath.current === null && Array.from(e.dataTransfer.types).includes('Files');
+
+  const clearPendingSingleOpen = useCallback(() => {
+    if (singleOpenTimer.current == null) return;
+    window.clearTimeout(singleOpenTimer.current);
+    singleOpenTimer.current = null;
+  }, []);
+
+  useEffect(() => clearPendingSingleOpen, [clearPendingSingleOpen]);
 
   useEffect(() => {
     if (!selectedPath) {
@@ -805,6 +819,44 @@ export function Sidebar(): JSX.Element {
     [selectRange, selectSingle, toggleSelection]
   );
 
+  const openNodeInCurrentTab = useCallback(
+    (node: VaultNode) => {
+      if (isImagePath(node.path)) {
+        void openImageTab(node.path).finally(focusSidebarSoon);
+      } else if (isTextNotePath(node.path)) {
+        void openFileInCurrentTab(node.path, undefined, { autoFocus: false }).finally(
+          focusSidebarSoon
+        );
+      }
+    },
+    [focusSidebarSoon]
+  );
+
+  const openNodeInNewTab = useCallback(
+    (node: VaultNode) => {
+      if (isImagePath(node.path)) {
+        void openImageTab(node.path, { forceNew: true }).finally(focusSidebarSoon);
+      } else if (isTextNotePath(node.path)) {
+        void openFileInTab(node.path, undefined, {
+          autoFocus: false,
+          forceNew: true,
+        }).finally(focusSidebarSoon);
+      }
+    },
+    [focusSidebarSoon]
+  );
+
+  const scheduleSingleOpen = useCallback(
+    (node: VaultNode) => {
+      clearPendingSingleOpen();
+      singleOpenTimer.current = window.setTimeout(() => {
+        singleOpenTimer.current = null;
+        openNodeInCurrentTab(node);
+      }, 260);
+    },
+    [clearPendingSingleOpen, openNodeInCurrentTab]
+  );
+
   const openContext = useCallback(
     (e: React.MouseEvent, node: VaultNode) => {
       e.preventDefault();
@@ -839,9 +891,9 @@ export function Sidebar(): JSX.Element {
           label: '在新分頁開啟',
           onClick: () =>
             isImagePath(node.path)
-              ? void openImageTab(node.path)
+              ? void openImageTab(node.path, { forceNew: true })
               : isTextNotePath(node.path)
-                ? void openFileInTab(node.path)
+                ? void openFileInTab(node.path, undefined, { forceNew: true })
                 : undefined,
         },
         { label: '重新命名', onClick: () => setRenamingPath(node.path) },
@@ -920,12 +972,15 @@ export function Sidebar(): JSX.Element {
     onOpen: (node, event) => {
       const mode = selectFromClick(node, event);
       if (mode !== 'single') return;
-      if (isImagePath(node.path)) {
-        void openImageTab(node.path).finally(focusSidebarSoon);
-      } else if (isTextNotePath(node.path)) {
-        void openFileInTab(node.path, undefined, { autoFocus: false }).finally(focusSidebarSoon);
-      }
+      if (isImagePath(node.path) || isTextNotePath(node.path)) scheduleSingleOpen(node);
       // Other file types: select only, no open.
+    },
+    onOpenInNewTab: (node, event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      clearPendingSingleOpen();
+      selectSingle(node.path);
+      openNodeInNewTab(node);
     },
     onToggleFolder: (path) =>
       setExpanded((prev) => {

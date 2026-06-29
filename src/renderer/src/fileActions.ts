@@ -1,8 +1,23 @@
 import { BlankFirstLineFormat, useStore } from './store';
 import { getDocumentView } from './DocumentView';
 
+interface OpenFileOptions {
+  autoFocus?: boolean;
+  autoName?: boolean;
+  blankFirstLineFormat?: BlankFirstLineFormat;
+  forceNew?: boolean;
+}
+
 function currentBlankFirstLineFormat(): BlankFirstLineFormat {
   return useStore.getState().preferences.blankNoteFirstLineFormat;
+}
+
+function fileNameFromPath(path: string): string {
+  return path.split('/').pop()!.replace(/\.md$/i, '');
+}
+
+function nextAnimationFrame(): Promise<void> {
+  return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
 }
 
 function focusTabWhenReady(tabId: string): void {
@@ -60,10 +75,10 @@ export async function stageTabForPaneMove(tabId: string): Promise<void> {
 export async function openFileInTab(
   path: string,
   content?: string,
-  opts: { autoFocus?: boolean; autoName?: boolean; blankFirstLineFormat?: BlankFirstLineFormat } = {}
+  opts: OpenFileOptions = {}
 ): Promise<string | null> {
   const s = useStore.getState();
-  const existing = s.tabs.find((t) => t.filePath === path);
+  const existing = opts.forceNew ? undefined : s.tabs.find((t) => t.filePath === path);
   if (existing) {
     s.setActiveTab(existing.id);
     if (opts.autoFocus) focusTabWhenReady(existing.id);
@@ -91,6 +106,63 @@ export async function openFileInTab(
     if (!dv || !dv.hasContent()) useStore.getState().closeTab(prev.id);
   }
   return tabId;
+}
+
+export async function openFileInCurrentTab(
+  path: string,
+  content?: string,
+  opts: OpenFileOptions = {}
+): Promise<string | null> {
+  const s = useStore.getState();
+  const activeTab = s.tabs.find((t) => t.id === s.activeTabId);
+  if (!activeTab) return openFileInTab(path, content, opts);
+
+  if (activeTab.kind === 'editor' && activeTab.filePath === path) {
+    if (opts.autoFocus) focusTabWhenReady(activeTab.id);
+    return activeTab.id;
+  }
+
+  const activeView = activeTab.kind === 'editor' ? getDocumentView(activeTab.id) : undefined;
+  if (activeView) {
+    const shouldFlushVaultFile = !!activeTab.filePath && isPathInVault(activeTab.filePath);
+    const shouldSaveDirtyFile = activeTab.dirty && activeView.hasContent();
+    if (shouldFlushVaultFile || shouldSaveDirtyFile) {
+      const saved = await activeView.save();
+      if (!saved) return null;
+    }
+  }
+
+  let md = content;
+  if (md == null) {
+    const r = await window.api.vault.read(path);
+    if (!r.ok) return null;
+    md = r.content ?? '';
+  }
+
+  const willReloadMountedEditor = activeTab.kind === 'editor' && !!activeView;
+  useStore.getState().updateTab(activeTab.id, {
+    filePath: path,
+    fileName: fileNameFromPath(path),
+    dirty: false,
+    columnLayout: 'center',
+    columnSplit: 0.5,
+    initialMarkdown: willReloadMountedEditor ? undefined : md,
+    autoFocus: opts.autoFocus ?? false,
+    autoName: opts.autoName ?? false,
+    blankFirstLineFormat: opts.blankFirstLineFormat ?? activeTab.blankFirstLineFormat,
+    restoreDirtyAfterLoad: undefined,
+    kind: 'editor',
+  });
+  useStore.getState().setActiveTab(activeTab.id);
+
+  if (willReloadMountedEditor) {
+    await nextAnimationFrame();
+    await getDocumentView(activeTab.id)?.replaceWithMarkdown(md, { focus: opts.autoFocus });
+  } else if (opts.autoFocus) {
+    focusTabWhenReady(activeTab.id);
+  }
+
+  return activeTab.id;
 }
 
 // Refresh the vault file tree into the store.
@@ -163,9 +235,14 @@ export function isTextNotePath(p: string): boolean {
 
 // Open an image file in a read-only preview tab (sidebar single-click on an
 // image). Re-activates an existing preview tab for the same image if present.
-export async function openImageTab(path: string): Promise<void> {
+export async function openImageTab(
+  path: string,
+  opts: { forceNew?: boolean } = {}
+): Promise<void> {
   const s = useStore.getState();
-  const existing = s.tabs.find((t) => t.filePath === path && t.kind === 'image');
+  const existing = opts.forceNew
+    ? undefined
+    : s.tabs.find((t) => t.filePath === path && t.kind === 'image');
   if (existing) {
     s.setActiveTab(existing.id);
     return;
