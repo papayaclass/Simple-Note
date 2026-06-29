@@ -228,6 +228,16 @@ export function App(): JSX.Element {
       useStore.getState().setSidebarOpen(stored.sidebarOpen ?? true);
       useStore.getState().setSortMode(stored.sortMode ?? 'manual');
       useStore.getState().setSortAsc(stored.sortAsc ?? true);
+      if (stored.blankNoteFirstLineFormat) {
+        const s = useStore.getState();
+        const stillBlank =
+          s.tabs.length === 1 && !s.tabs[0]?.filePath && !s.tabs[0]?.dirty;
+        if (stillBlank) {
+          s.updateTab(s.tabs[0].id, {
+            blankFirstLineFormat: stored.blankNoteFirstLineFormat,
+          });
+        }
+      }
       const vp = await window.api.vault.get();
       useStore.getState().setVaultPath(vp);
       if (vp) await refreshVaultTree();

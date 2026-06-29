@@ -21,6 +21,7 @@ export interface AISkill {
 
 export type SortMode = 'manual' | 'name' | 'created' | 'modified';
 export type StartupBehavior = 'newBlank' | 'newBlankInVault' | 'lastEdited';
+export type BlankFirstLineFormat = 'heading1' | 'heading2' | 'heading3' | 'paragraph';
 
 // Column layout as the article's position on a `[left] — center — [right]` track.
 // `center` is single-column; the other two reveal an independent blank column on
@@ -53,6 +54,7 @@ export interface Tab {
   // True for freshly-created untitled files: the filename auto-follows the
   // document's first heading until the user manually renames it.
   autoName: boolean;
+  blankFirstLineFormat: BlankFirstLineFormat;
   // Used when a tab is moved between split panes. React remounts the document
   // under its new pane, so the current editor Markdown is staged here once and
   // the previous dirty state is restored after that load.
@@ -81,6 +83,7 @@ export interface Preferences {
   aiSkills: AISkill[];
   menuCommands: MenuItemPref[];
   startupBehavior: StartupBehavior;
+  blankNoteFirstLineFormat: BlankFirstLineFormat;
   lastEditedFilePath: string;
   // File-management prefs (mirrored in src/main/preferences.ts).
   vaultPath: string;
@@ -111,6 +114,7 @@ export const DEFAULT_PREFS: Preferences = {
   aiSkills: [],
   menuCommands: DEFAULT_MENU_COMMANDS,
   startupBehavior: 'newBlank',
+  blankNoteFirstLineFormat: 'paragraph',
   lastEditedFilePath: '',
   vaultPath: '',
   sidebarOpen: true,
@@ -142,6 +146,7 @@ export interface NewTabOptions {
   initialMarkdown?: string;
   autoFocus?: boolean;
   autoName?: boolean;
+  blankFirstLineFormat?: BlankFirstLineFormat;
   kind?: 'editor' | 'image';
 }
 
@@ -157,6 +162,7 @@ export function makeTab(opts: NewTabOptions = {}): Tab {
     initialMarkdown: opts.initialMarkdown,
     autoFocus: opts.autoFocus ?? true,
     autoName: opts.autoName ?? false,
+    blankFirstLineFormat: opts.blankFirstLineFormat ?? DEFAULT_PREFS.blankNoteFirstLineFormat,
     kind: opts.kind ?? 'editor',
   };
 }
@@ -314,7 +320,7 @@ export const useStore = create<AppState>((set) => ({
       const tabs = s.tabs.filter((t) => t.id !== id);
       // Always keep at least one tab open.
       if (tabs.length === 0) {
-        const fresh = makeTab();
+        const fresh = makeTab({ blankFirstLineFormat: s.preferences.blankNoteFirstLineFormat });
         const pane = makePane(fresh.id);
         return { tabs: [fresh], panes: [pane], activePaneId: pane.id, activeTabId: fresh.id };
       }

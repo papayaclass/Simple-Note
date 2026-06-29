@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore, VaultNode, SortMode } from '../store';
 import {
   openFileInTab,
@@ -26,6 +26,21 @@ function parentDir(p: string): string {
 function replacePathPrefix(path: string, oldPath: string, newPath: string): string {
   if (path === oldPath) return newPath;
   return path.startsWith(oldPath + '/') ? newPath + path.slice(oldPath.length) : path;
+}
+
+function isDescendantPath(path: string, ancestor: string): boolean {
+  return path.startsWith(ancestor + '/');
+}
+
+function withoutDescendantSelections(paths: string[]): string[] {
+  const sorted = [...new Set(paths)].sort((a, b) => a.length - b.length);
+  const roots: string[] = [];
+  for (const path of sorted) {
+    if (!roots.some((root) => path !== root && isDescendantPath(path, root))) {
+      roots.push(path);
+    }
+  }
+  return roots;
 }
 
 function displayName(node: VaultNode): string {
@@ -92,6 +107,32 @@ function findSiblings(tree: VaultNode[], parentPath: string, vaultPath: string):
   return [];
 }
 
+function flattenVisibleNodes(
+  nodes: VaultNode[],
+  expanded: Set<string>,
+  sortMode: SortMode,
+  manualOrder: Record<string, string[]>,
+  sortAsc: boolean,
+  foldersOnTop: boolean
+): VaultNode[] {
+  const out: VaultNode[] = [];
+  const visit = (items: VaultNode[], parentPath: string): void => {
+    for (const node of sortChildren(items, parentPath, sortMode, manualOrder, sortAsc, foldersOnTop)) {
+      out.push(node);
+      if (node.type === 'folder' && expanded.has(node.path)) {
+        visit(node.children ?? [], node.path);
+      }
+    }
+  };
+  for (const node of nodes) {
+    out.push(node);
+    if (node.type === 'folder' && expanded.has(node.path)) {
+      visit(node.children ?? [], node.path);
+    }
+  }
+  return out;
+}
+
 async function persistPref(key: string, value: unknown): Promise<void> {
   await window.api.prefs.set(key, value);
 }
@@ -113,6 +154,7 @@ type ManualPlacement =
 // ---------------------------------------------------------------------------
 interface TreeCtx {
   selectedPath: string | null;
+  selectedPaths: Set<string>;
   renamingPath: string | null;
   sortMode: SortMode;
   sortAsc: boolean;
@@ -123,8 +165,8 @@ interface TreeCtx {
   dragOver: DropLine | null;
   // A folder being hovered as a drop target (blue overlay).
   dropFolder: string | null;
-  onSelect: (node: VaultNode) => void;
-  onOpen: (node: VaultNode) => void;
+  onSelect: (node: VaultNode, event: React.MouseEvent) => void;
+  onOpen: (node: VaultNode, event: React.MouseEvent) => void;
   onToggleFolder: (path: string) => void;
   onContext: (e: React.MouseEvent, node: VaultNode) => void;
   onRenameCommit: (node: VaultNode, name: string) => void;
@@ -144,7 +186,7 @@ function TreeItem({
   depth: number;
   ctx: TreeCtx;
 }): JSX.Element {
-  const selected = ctx.selectedPath === node.path;
+  const selected = ctx.selectedPaths.has(node.path) || ctx.selectedPath === node.path;
   const renaming = ctx.renamingPath === node.path;
   const isFolder = node.type === 'folder';
   const open = ctx.expanded.has(node.path);
@@ -174,12 +216,12 @@ function TreeItem({
         data-path={node.path}
         data-type={node.type}
         draggable={draggable}
-        onClick={() => {
+        onClick={(e) => {
           if (isFolder) {
-            ctx.onSelect(node);
-            ctx.onToggleFolder(node.path);
+            ctx.onSelect(node, e);
+            if (!e.metaKey && !e.shiftKey) ctx.onToggleFolder(node.path);
           } else {
-            ctx.onOpen(node);
+            ctx.onOpen(node, e);
           }
         }}
         onContextMenu={(e) => ctx.onContext(e, node)}
@@ -272,6 +314,7 @@ export function Sidebar(): JSX.Element {
   const clearAutoName = useStore((s) => s.clearAutoName);
 
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [dragOver, setDragOver] = useState<DropLine | null>(null);
@@ -284,9 +327,23 @@ export function Sidebar(): JSX.Element {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const externalDestDir = useRef<string | null>(null);
   const [externalDrop, setExternalDrop] = useState(false);
+  const lastSelectedPath = useRef<string | null>(null);
 
   const hasExternalFiles = (e: React.DragEvent): boolean =>
     draggingPath.current === null && Array.from(e.dataTransfer.types).includes('Files');
+
+  useEffect(() => {
+    if (!selectedPath) {
+      setSelectedPaths(new Set());
+      lastSelectedPath.current = null;
+      return;
+    }
+    setSelectedPaths((prev) => {
+      if (prev.has(selectedPath)) return prev;
+      return new Set([selectedPath]);
+    });
+    lastSelectedPath.current = selectedPath;
+  }, [selectedPath]);
 
   const importExternalFiles = useCallback(
     async (files: FileList, destDir: string | null) => {
@@ -357,7 +414,11 @@ export function Sidebar(): JSX.Element {
       await refreshVaultTree();
       setSelectedPath(r.path);
       // Focus the editor so typing a heading auto-names the file.
-      void openFileInTab(r.path, '', { autoFocus: true, autoName: true });
+      void openFileInTab(r.path, '', {
+        autoFocus: true,
+        autoName: true,
+        blankFirstLineFormat: useStore.getState().preferences.blankNoteFirstLineFormat,
+      });
     }
   }, [targetDir, setSelectedPath]);
 
@@ -541,39 +602,82 @@ export function Sidebar(): JSX.Element {
     [sortMode, manualOrderWithPlacement, commitManualOrder, setSelectedPath, retargetTabs]
   );
 
-  const doDelete = useCallback(
-    async (path: string) => {
-      const tabsToClose = useStore
-        .getState()
-        .tabs.filter((t) => t.filePath === path || t.filePath?.startsWith(path + '/'))
-        .map((t) => t.id);
-      for (const id of tabsToClose) {
-        getDocumentView(id)?.cancelPendingAutoSave();
+  const doDeleteMany = useCallback(
+    async (paths: string[]) => {
+      const roots = withoutDescendantSelections(paths);
+      const deletedRoots: string[] = [];
+      const closeIds = new Set<string>();
+
+      for (const path of roots) {
+        const tabsForPath = useStore
+          .getState()
+          .tabs.filter((t) => t.filePath === path || t.filePath?.startsWith(path + '/'))
+          .map((t) => t.id);
+
+        for (const id of tabsForPath) {
+          getDocumentView(id)?.cancelPendingAutoSave();
+        }
+
+        const r = await window.api.vault.delete(path);
+        if (!r.ok) {
+          for (const id of tabsForPath) {
+            void getDocumentView(id)?.save();
+          }
+          continue;
+        }
+
+        deletedRoots.push(path);
+        for (const id of tabsForPath) closeIds.add(id);
+        forgetLastEditedFile(path);
       }
 
-      const r = await window.api.vault.delete(path);
-      if (!r.ok) {
-        for (const id of tabsToClose) {
-          void getDocumentView(id)?.save();
-        }
-        return;
-      }
+      if (deletedRoots.length === 0) return;
+
+      const wasDeleted = (path: string): boolean =>
+        deletedRoots.some((root) => path === root || isDescendantPath(path, root));
 
       const s = useStore.getState();
-      forgetLastEditedFile(path);
-      if (selectedPath === path || selectedPath?.startsWith(path + '/')) setSelectedPath(null);
-      for (const id of tabsToClose) {
+      for (const id of closeIds) {
         s.closeTab(id);
       }
+      setSelectedPaths((prev) => new Set([...prev].filter((path) => !wasDeleted(path))));
+      if (selectedPath && wasDeleted(selectedPath)) setSelectedPath(null);
       await refreshVaultTree();
     },
     [selectedPath, setSelectedPath]
   );
 
-  const doDuplicate = useCallback(async (path: string) => {
-    const r = await window.api.vault.duplicate(path);
-    if (r.ok) await refreshVaultTree();
-  }, []);
+  const doDelete = useCallback(
+    async (path: string) => {
+      await doDeleteMany([path]);
+    },
+    [doDeleteMany]
+  );
+
+  const doDuplicateMany = useCallback(
+    async (paths: string[]) => {
+      const roots = withoutDescendantSelections(paths);
+      const duplicated: string[] = [];
+      for (const path of roots) {
+        const r = await window.api.vault.duplicate(path);
+        if (r.ok && r.path) duplicated.push(r.path);
+      }
+      await refreshVaultTree();
+      if (duplicated.length > 0) {
+        setSelectedPath(duplicated[0]);
+        setSelectedPaths(new Set(duplicated));
+        lastSelectedPath.current = duplicated[0];
+      }
+    },
+    [setSelectedPath]
+  );
+
+  const doDuplicate = useCallback(
+    async (path: string) => {
+      await doDuplicateMany([path]);
+    },
+    [doDuplicateMany]
+  );
 
   // Manual-order reordering on drop. Same-parent drops only rewrite order;
   // cross-parent before/after drops move the file to the target's parent first.
@@ -614,11 +718,122 @@ export function Sidebar(): JSX.Element {
     [vaultPath, sortMode, manualOrder, manualOrderWithPlacement, commitManualOrder, doMove]
   );
 
+  const sortedRoots = useMemo(
+    () =>
+      vaultPath
+        ? sortChildren(fileTree, vaultPath, sortMode, manualOrder, sortAsc, foldersOnTop)
+        : [],
+    [fileTree, vaultPath, sortMode, manualOrder, sortAsc, foldersOnTop]
+  );
+
+  const visibleNodes = useMemo(
+    () =>
+      flattenVisibleNodes(
+        sortedRoots,
+        expanded,
+        sortMode,
+        manualOrder,
+        sortAsc,
+        foldersOnTop
+      ),
+    [sortedRoots, expanded, sortMode, manualOrder, sortAsc, foldersOnTop]
+  );
+
+  const visiblePaths = useMemo(() => visibleNodes.map((node) => node.path), [visibleNodes]);
+
+  const focusSidebarSoon = useCallback(() => {
+    const focus = (): void => containerRef.current?.focus();
+    focus();
+    requestAnimationFrame(focus);
+    window.setTimeout(focus, 32);
+  }, []);
+
+  const selectSingle = useCallback(
+    (path: string) => {
+      setSelectedPaths(new Set([path]));
+      setSelectedPath(path);
+      lastSelectedPath.current = path;
+      focusSidebarSoon();
+    },
+    [focusSidebarSoon, setSelectedPath]
+  );
+
+  const selectRange = useCallback(
+    (path: string) => {
+      const anchor = lastSelectedPath.current ?? selectedPath ?? path;
+      const from = visiblePaths.indexOf(anchor);
+      const to = visiblePaths.indexOf(path);
+      if (from === -1 || to === -1) {
+        selectSingle(path);
+        return;
+      }
+      const [start, end] = from < to ? [from, to] : [to, from];
+      setSelectedPaths(new Set(visiblePaths.slice(start, end + 1)));
+      setSelectedPath(path);
+      focusSidebarSoon();
+    },
+    [focusSidebarSoon, selectSingle, selectedPath, setSelectedPath, visiblePaths]
+  );
+
+  const toggleSelection = useCallback(
+    (path: string) => {
+      const next = new Set(selectedPaths);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      const fallback = next.has(path) ? path : next.values().next().value ?? null;
+      setSelectedPaths(next);
+      setSelectedPath(fallback);
+      lastSelectedPath.current = path;
+      focusSidebarSoon();
+    },
+    [focusSidebarSoon, selectedPaths, setSelectedPath]
+  );
+
+  const selectFromClick = useCallback(
+    (node: VaultNode, event: React.MouseEvent): 'single' | 'range' | 'toggle' => {
+      if (event.shiftKey) {
+        selectRange(node.path);
+        return 'range';
+      }
+      if (event.metaKey) {
+        toggleSelection(node.path);
+        return 'toggle';
+      }
+      selectSingle(node.path);
+      return 'single';
+    },
+    [selectRange, selectSingle, toggleSelection]
+  );
+
   const openContext = useCallback(
     (e: React.MouseEvent, node: VaultNode) => {
       e.preventDefault();
       e.stopPropagation();
+      const paths = selectedPaths.has(node.path) ? [...selectedPaths] : [node.path];
+      const roots = withoutDescendantSelections(paths);
+      const multiple = roots.length > 1;
+      if (!selectedPaths.has(node.path)) {
+        setSelectedPaths(new Set([node.path]));
+        lastSelectedPath.current = node.path;
+      }
       setSelectedPath(node.path);
+
+      if (multiple) {
+        setMenu({
+          x: e.clientX,
+          y: e.clientY,
+          items: [
+            { label: `複製 ${roots.length} 個項目`, onClick: () => void doDuplicateMany(roots) },
+            {
+              label: `刪除 ${roots.length} 個項目`,
+              danger: true,
+              onClick: () => void doDeleteMany(roots),
+            },
+          ],
+        });
+        return;
+      }
+
       const items: MenuItem[] = [
         {
           label: '在新分頁開啟',
@@ -640,7 +855,7 @@ export function Sidebar(): JSX.Element {
       }
       setMenu({ x: e.clientX, y: e.clientY, items });
     },
-    [setSelectedPath, doDuplicate, doDelete]
+    [selectedPaths, setSelectedPath, doDuplicate, doDuplicateMany, doDelete, doDeleteMany]
   );
 
   const openEmptyContext = useCallback(
@@ -671,20 +886,26 @@ export function Sidebar(): JSX.Element {
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (renamingPath) return;
-      if (!selectedPath) return;
-      if (e.key === 'Enter') {
+      const paths = selectedPaths.size > 0 ? [...selectedPaths] : selectedPath ? [selectedPath] : [];
+      if (paths.length === 0) return;
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.code === 'KeyD') {
+        e.preventDefault();
+        void doDuplicateMany(paths);
+      } else if (e.key === 'Enter') {
+        if (paths.length !== 1 || !selectedPath) return;
         e.preventDefault();
         setRenamingPath(selectedPath);
       } else if (e.key === 'Backspace' || e.key === 'Delete') {
         e.preventDefault();
-        void doDelete(selectedPath);
+        void doDeleteMany(paths);
       }
     },
-    [renamingPath, selectedPath, doDelete]
+    [renamingPath, selectedPath, selectedPaths, doDeleteMany, doDuplicateMany]
   );
 
   const ctx: TreeCtx = {
     selectedPath,
+    selectedPaths,
     renamingPath,
     sortMode,
     sortAsc,
@@ -693,16 +914,18 @@ export function Sidebar(): JSX.Element {
     expanded,
     dragOver,
     dropFolder,
-    onSelect: (node) => {
-      setSelectedPath(node.path);
-      containerRef.current?.focus();
+    onSelect: (node, event) => {
+      selectFromClick(node, event);
     },
-    onOpen: (node) => {
-      setSelectedPath(node.path);
-      if (isImagePath(node.path)) void openImageTab(node.path);
-      else if (isTextNotePath(node.path)) void openFileInTab(node.path, undefined, { autoFocus: false });
+    onOpen: (node, event) => {
+      const mode = selectFromClick(node, event);
+      if (mode !== 'single') return;
+      if (isImagePath(node.path)) {
+        void openImageTab(node.path).finally(focusSidebarSoon);
+      } else if (isTextNotePath(node.path)) {
+        void openFileInTab(node.path, undefined, { autoFocus: false }).finally(focusSidebarSoon);
+      }
       // Other file types: select only, no open.
-      containerRef.current?.focus();
     },
     onToggleFolder: (path) =>
       setExpanded((prev) => {
@@ -722,7 +945,9 @@ export function Sidebar(): JSX.Element {
       draggingType.current = node.type === 'folder' ? 'folder' : 'file';
       dropIntent.current = null;
       requestAnimationFrame(() => {
+        setSelectedPaths(new Set([node.path]));
         setSelectedPath(node.path);
+        lastSelectedPath.current = node.path;
         containerRef.current?.focus();
       });
     },
@@ -885,10 +1110,6 @@ export function Sidebar(): JSX.Element {
     }
   };
 
-  const sortedRoots = vaultPath
-    ? sortChildren(fileTree, vaultPath, sortMode, manualOrder, sortAsc, foldersOnTop)
-    : [];
-
   // Drag the right edge to resize. The sidebar sits flush to the window's left
   // edge, so the pointer's clientX is the new width (clamped). Written straight
   // to the CSS var for instant tracking, committed to prefs on release.
@@ -965,7 +1186,11 @@ export function Sidebar(): JSX.Element {
         }}
         onMouseDown={(e) => {
           // Click on empty area clears selection.
-          if (!(e.target as HTMLElement).closest('.tree-row')) setSelectedPath(null);
+          if (!(e.target as HTMLElement).closest('.tree-row')) {
+            setSelectedPath(null);
+            setSelectedPaths(new Set());
+            lastSelectedPath.current = null;
+          }
         }}
       >
         {!vaultPath ? (

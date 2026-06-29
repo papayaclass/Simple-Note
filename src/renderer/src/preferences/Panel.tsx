@@ -202,6 +202,24 @@ export function PreferencesPanel(): JSX.Element | null {
                     <option value="lastEdited">開啟上次編輯的文件</option>
                   </select>
                 </div>
+
+                <div className="prefs-field">
+                  <label>新增空白筆記的第一行格式</label>
+                  <select
+                    value={draft.blankNoteFirstLineFormat}
+                    onChange={(e) =>
+                      update({
+                        blankNoteFirstLineFormat: e.target
+                          .value as Preferences['blankNoteFirstLineFormat'],
+                      })
+                    }
+                  >
+                    <option value="heading1">標題 1</option>
+                    <option value="heading2">標題 2</option>
+                    <option value="heading3">標題 3</option>
+                    <option value="paragraph">內文</option>
+                  </select>
+                </div>
               </>
             )}
 

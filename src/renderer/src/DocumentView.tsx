@@ -41,6 +41,9 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
   );
   const columnSplit = useStore((s) => s.tabs.find((t) => t.id === tabId)?.columnSplit ?? 0.5);
   const filePath = useStore((s) => s.tabs.find((t) => t.id === tabId)?.filePath ?? null);
+  const blankFirstLineFormat = useStore(
+    (s) => s.tabs.find((t) => t.id === tabId)?.blankFirstLineFormat ?? 'paragraph'
+  );
   const setTabDirty = useStore((s) => s.setTabDirty);
   const setTabFile = useStore((s) => s.setTabFile);
   const setTabColumnSplit = useStore((s) => s.setTabColumnSplit);
@@ -397,6 +400,14 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
     };
   }, [tabId]);
 
+  useEffect(() => {
+    const tab = useStore.getState().tabs.find((t) => t.id === tabId);
+    if (!tab || tab.filePath || tab.initialMarkdown != null) return;
+    const editor = midHandleRef.current;
+    if (!editor) return;
+    if (active) requestAnimationFrame(() => midHandleRef.current?.focusLastBlock());
+  }, [active, blankFirstLineFormat, tabId]);
+
   // Load the tab's initial content once on mount.
   useEffect(() => {
     const tab = useStore.getState().tabs.find((t) => t.id === tabId);
@@ -472,7 +483,14 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
         </div>
         <div className="column-divider divider-left" onPointerDown={onDividerPointerDown} />
         <div className="column column-middle" ref={midColRef}>
-          <Editor onChange={onEditorChange} handleRef={midHandleRef} autoFocus={initialAutoFocus.current} notePath={filePath} />
+          <Editor
+            key={blankFirstLineFormat}
+            onChange={onEditorChange}
+            handleRef={midHandleRef}
+            autoFocus={initialAutoFocus.current}
+            notePath={filePath}
+            blankFirstLineFormat={blankFirstLineFormat}
+          />
         </div>
         <div className="column-divider divider-right" onPointerDown={onDividerPointerDown} />
         <div className="column column-right" ref={rightColRef}>

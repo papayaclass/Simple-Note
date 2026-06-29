@@ -16,7 +16,7 @@ import { createSelectionClampPlugin } from './selectionClamp';
 import { deleteSelectedBlocks, deleteForwardEmptyBlock } from './blockDelete';
 import { createToggleKeyboardExtension } from './toggle';
 import { SimpleNoteSideMenu } from './sideMenu';
-import { useStore } from '../store';
+import { BlankFirstLineFormat, useStore } from '../store';
 import { setEditorNoteDir, dirOf } from './noteDir';
 import { openFileInTab } from '../fileActions';
 import { ContextMenu } from '../context-menu/ContextMenu';
@@ -41,22 +41,57 @@ export interface EditorHandle {
   editor: ReturnType<typeof useCreateBlockNote>;
 }
 
-const INITIAL_CONTENT: PartialBlock<any, any, any>[] = [{ type: 'paragraph', content: '' }];
 const SIDEBAR_PATH_MIME = 'application/x-simple-note-path';
+
+function blankContentForFormat(format: BlankFirstLineFormat): PartialBlock<any, any, any>[] {
+  switch (format) {
+    case 'heading1':
+      return [{ type: 'heading', props: { level: 1 }, content: '' }];
+    case 'heading2':
+      return [{ type: 'heading', props: { level: 2 }, content: '' }];
+    case 'heading3':
+      return [{ type: 'heading', props: { level: 3 }, content: '' }];
+    case 'paragraph':
+    default:
+      return [{ type: 'paragraph', content: '' }];
+  }
+}
+
+function placeholderForFormat(format: BlankFirstLineFormat): string {
+  switch (format) {
+    case 'heading1':
+      return '標題 1';
+    case 'heading2':
+      return '標題 2';
+    case 'heading3':
+      return '標題 3';
+    case 'paragraph':
+    default:
+      return '';
+  }
+}
 
 interface Props {
   onChange: () => void;
   handleRef: React.MutableRefObject<EditorHandle | null>;
   autoFocus?: boolean;
   notePath?: string | null;
+  blankFirstLineFormat?: BlankFirstLineFormat;
 }
 
-export function Editor({ onChange, handleRef, autoFocus = true, notePath = null }: Props): JSX.Element {
+export function Editor({
+  onChange,
+  handleRef,
+  autoFocus = true,
+  notePath = null,
+  blankFirstLineFormat = 'paragraph',
+}: Props): JSX.Element {
   const mathMode = useStore((s) => s.mathMode);
   const codeWrap = useStore((s) => s.preferences.codeWrap);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const notePathRef = useRef<string | null>(notePath);
   notePathRef.current = notePath;
+  const initialContent = useRef(blankContentForFormat(blankFirstLineFormat)).current;
 
   // Custom ProseMirror extensions (math overlay + two-stage Cmd-A) registered via BlockNote's extension API
   const customExtensions = useRef([
@@ -228,12 +263,14 @@ export function Editor({ onChange, handleRef, autoFocus = true, notePath = null 
 
   const editor = useCreateBlockNote({
     schema,
-    initialContent: INITIAL_CONTENT,
+    initialContent,
     extensions: customExtensions,
     _tiptapOptions: tiptapOptions,
     placeholders: {
       default: '',
-      emptyDocument: '',
+      emptyDocument: placeholderForFormat(blankFirstLineFormat),
+      paragraph: '',
+      heading: placeholderForFormat(blankFirstLineFormat),
     },
   });
 
@@ -259,23 +296,26 @@ export function Editor({ onChange, handleRef, autoFocus = true, notePath = null 
         }
       },
       loadMarkdown: async (md: string) => {
+        if (md.trim() === '') {
+          (editor.replaceBlocks as (a: unknown, b: unknown) => unknown)(
+            editor.document,
+            blankContentForFormat(blankFirstLineFormat)
+          );
+          return;
+        }
         const parsed = await editor.tryParseMarkdownToBlocks(sanitizeLoadedMarkdown(md));
-        const blocks = parsed.length > 0 ? parsed : INITIAL_CONTENT;
+        const blocks = parsed.length > 0 ? parsed : blankContentForFormat(blankFirstLineFormat);
         (editor.replaceBlocks as (a: unknown, b: unknown) => unknown)(editor.document, blocks);
       },
       asMarkdown: async () => editor.blocksToMarkdownLossy(editor.document),
       focusLastBlock: () => {
-        const blocks = editor.document;
-        if (blocks.length === 0) return;
-        const last = blocks[blocks.length - 1];
-        editor.setTextCursorPosition(last.id, 'end');
-        editor.focus();
+        focusLastBlock(editor);
       },
       focus: () => editor.focus(),
       pastePlainText: () => pastePlainText(editor),
       hasFocus: () => editorHasFocus(editor),
     };
-  }, [editor, handleRef]);
+  }, [blankFirstLineFormat, editor, handleRef]);
 
   // Auto-focus on mount so the caret is visible without an initial click.
   // Skipped for the secondary (right) column so switching to two-column mode
@@ -561,6 +601,18 @@ function pastePlainText(editor: ReturnType<typeof useCreateBlockNote>): void {
   if (!text) return;
   editor.focus();
   editor.pasteText(text);
+}
+
+function focusLastBlock(editor: ReturnType<typeof useCreateBlockNote>): void {
+  const focus = (): void => {
+    const blocks = editor.document;
+    if (blocks.length === 0) return;
+    const last = blocks[blocks.length - 1];
+    editor.setTextCursorPosition(last.id, 'end');
+    editor.focus();
+  };
+  focus();
+  requestAnimationFrame(focus);
 }
 
 // Pull image files out of a clipboard/drag payload (screenshots paste as

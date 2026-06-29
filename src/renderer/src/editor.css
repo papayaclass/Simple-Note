@@ -362,10 +362,13 @@ body.sn-image-dragging * {
   width: 100%;
 }
 
-/* hide BlockNote's default placeholder colors to keep minimal */
+/* Keep BlockNote placeholders quiet and upright. */
 .bn-block-content[data-is-empty-and-focused='true']::before {
   color: var(--fg-faint) !important;
   opacity: 0.6;
+}
+.bn-block-content .bn-inline-content:has(> .ProseMirror-trailingBreak:only-child)::before {
+  font-style: normal !important;
 }
 
 /* SideMenu — keep drag handle only (custom render in Editor.tsx) */
@@ -388,9 +391,9 @@ body.sn-image-dragging * {
   content: '';
   position: absolute;
   top: -8px;
-  right: -32px;
+  right: 0;
   bottom: -8px;
-  width: 40px;
+  width: 100%;
   pointer-events: auto;
 }
 

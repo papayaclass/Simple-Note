@@ -21,6 +21,7 @@ export type MenuItemPref = MenuCommandPref | MenuDividerPref;
 
 export type SortMode = 'manual' | 'name' | 'created' | 'modified';
 export type StartupBehavior = 'newBlank' | 'newBlankInVault' | 'lastEdited';
+export type BlankFirstLineFormat = 'heading1' | 'heading2' | 'heading3' | 'paragraph';
 
 export interface Preferences {
   vaultPath: string;
@@ -51,6 +52,7 @@ export interface Preferences {
   aiSkills: AISkill[];
   menuCommands: MenuItemPref[];
   startupBehavior: StartupBehavior;
+  blankNoteFirstLineFormat: BlankFirstLineFormat;
   lastEditedFilePath: string;
 }
 
@@ -99,6 +101,7 @@ const DEFAULTS: Preferences = {
   aiSkills: [],
   menuCommands: DEFAULT_MENU_COMMANDS,
   startupBehavior: 'newBlank',
+  blankNoteFirstLineFormat: 'paragraph',
   lastEditedFilePath: '',
 };
 
@@ -131,6 +134,10 @@ export function getPreferences(): Preferences {
     aiSkills: store.get('aiSkills', DEFAULTS.aiSkills),
     menuCommands: store.get('menuCommands', DEFAULTS.menuCommands),
     startupBehavior: store.get('startupBehavior', DEFAULTS.startupBehavior),
+    blankNoteFirstLineFormat: store.get(
+      'blankNoteFirstLineFormat',
+      DEFAULTS.blankNoteFirstLineFormat
+    ),
     lastEditedFilePath: store.get('lastEditedFilePath', DEFAULTS.lastEditedFilePath),
   };
 }

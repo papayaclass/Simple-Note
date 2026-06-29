@@ -36,7 +36,7 @@ export function SimpleNoteSideMenu(props: SideMenuProps<any, any, any>): JSX.Ele
       const rect = guard.getBoundingClientRect();
       const insideGuard =
         event.clientX >= rect.left - 4 &&
-        event.clientX <= rect.right + 40 &&
+        event.clientX <= rect.right + 4 &&
         event.clientY >= rect.top - 8 &&
         event.clientY <= rect.bottom + 8;
 

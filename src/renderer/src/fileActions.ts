@@ -1,5 +1,9 @@
-import { useStore } from './store';
+import { BlankFirstLineFormat, useStore } from './store';
 import { getDocumentView } from './DocumentView';
+
+function currentBlankFirstLineFormat(): BlankFirstLineFormat {
+  return useStore.getState().preferences.blankNoteFirstLineFormat;
+}
 
 function focusTabWhenReady(tabId: string): void {
   let tries = 0;
@@ -56,7 +60,7 @@ export async function stageTabForPaneMove(tabId: string): Promise<void> {
 export async function openFileInTab(
   path: string,
   content?: string,
-  opts: { autoFocus?: boolean; autoName?: boolean } = {}
+  opts: { autoFocus?: boolean; autoName?: boolean; blankFirstLineFormat?: BlankFirstLineFormat } = {}
 ): Promise<string | null> {
   const s = useStore.getState();
   const existing = s.tabs.find((t) => t.filePath === path);
@@ -79,6 +83,7 @@ export async function openFileInTab(
     initialMarkdown: md,
     autoFocus: opts.autoFocus,
     autoName: opts.autoName,
+    blankFirstLineFormat: opts.blankFirstLineFormat,
   });
   if (opts.autoFocus) focusTabWhenReady(tabId);
   if (prev && !prev.filePath && !prev.dirty) {
@@ -110,15 +115,20 @@ export function isPathInVault(path: string | null): boolean {
 // in-memory tab. Used by Cmd+N and the tab bar's + button.
 export async function createNewTab(): Promise<void> {
   const s = useStore.getState();
+  const blankFirstLineFormat = currentBlankFirstLineFormat();
   if (s.vaultPath) {
     const r = await window.api.vault.createFile(null);
     if (r.ok && r.path) {
       await refreshVaultTree();
-      await openFileInTab(r.path, '', { autoFocus: true, autoName: true });
+      await openFileInTab(r.path, '', {
+        autoFocus: true,
+        autoName: true,
+        blankFirstLineFormat,
+      });
       return;
     }
   }
-  const tabId = s.addTab();
+  const tabId = s.addTab({ blankFirstLineFormat });
   focusTabWhenReady(tabId);
 }
 
@@ -132,7 +142,11 @@ export async function createBlankVaultNote(): Promise<boolean> {
   const r = await window.api.vault.createBlankNote();
   if (!r.ok || !r.path) return false;
   await refreshVaultTree();
-  await openFileInTab(r.path, '', { autoFocus: true, autoName: true });
+  await openFileInTab(r.path, '', {
+    autoFocus: true,
+    autoName: true,
+    blankFirstLineFormat: currentBlankFirstLineFormat(),
+  });
   return true;
 }
 
