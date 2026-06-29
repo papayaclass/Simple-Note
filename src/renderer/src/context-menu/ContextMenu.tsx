@@ -6,6 +6,7 @@ import {
   toBoshiamy,
   BoshiamyEntry,
   LOREM_IPSUM,
+  stripCitationMarkers,
   wordCount,
 } from './transforms';
 import { useStore } from '../store';
@@ -181,6 +182,32 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
     tipTap.chain().focus().unsetAllMarks().run();
   };
 
+  const stripLinksAndCitationMarkers = () => {
+    const tipTap = editor._tiptapEditor;
+    const { state, view } = tipTap;
+    const linkMark = state.schema.marks.link;
+    let tr = state.tr;
+    if (linkMark) tr = tr.removeMark(0, state.doc.content.size, linkMark);
+
+    const edits: { start: number; end: number; text: string; marks: unknown[] }[] = [];
+    state.doc.descendants((node: any, pos: number) => {
+      if (!node.isText || typeof node.text !== 'string') return;
+      const replaced = stripCitationMarkers(node.text);
+      if (replaced === node.text) return;
+      const marks = linkMark
+        ? node.marks.filter((mark: any) => mark.type !== linkMark)
+        : node.marks;
+      edits.push({ start: pos, end: pos + node.nodeSize, text: replaced, marks });
+    });
+
+    for (let i = edits.length - 1; i >= 0; i--) {
+      const e = edits[i];
+      if (e.text) tr = tr.replaceWith(e.start, e.end, state.schema.text(e.text, e.marks as any));
+      else tr = tr.delete(e.start, e.end);
+    }
+    if (tr.docChanged) view.dispatch(tr.scrollIntoView());
+  };
+
   // BlockNote turns "\n" inside a text node into a hardBreak when rendering
   // (see BlockNoteSchema: text.split(/(\n)/g) → hardBreak). So merging multiple
   // selected blocks into one block with "\n" between them gives the user a
@@ -286,6 +313,10 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
     },
     clearFormat: () => {
       clearFormatting();
+      close();
+    },
+    stripLinksAndCitations: () => {
+      stripLinksAndCitationMarkers();
       close();
     },
     mergeBreaks: () => {

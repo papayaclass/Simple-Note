@@ -13,6 +13,7 @@ export const MENU_COMMANDS: MenuCommandDef[] = [
   { key: 's2t', label: '簡體轉繁體', requiresSelection: true },
   { key: 'half2full', label: '半形標點轉全形', requiresSelection: true },
   { key: 'clearFormat', label: '清除所有格式', requiresSelection: true },
+  { key: 'stripLinksAndCitations', label: '移除超連結與注釋標記', requiresSelection: false },
   { key: 'mergeBreaks', label: '分段符號轉分行符號', requiresSelection: true },
   { key: 'lorem', label: '插入 Lorem Ipsum', requiresSelection: false },
   { key: 'sortYoutube', label: '依觀看數排序 YouTube', requiresSelection: false },

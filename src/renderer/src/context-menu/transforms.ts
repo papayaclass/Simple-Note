@@ -104,6 +104,22 @@ export function halfToFullPunctuation(text: string): string {
   return text.replace(/[,.:;!?()[\]<>"'~@#$%&*]/g, (m) => HALF_TO_FULL[m] ?? m);
 }
 
+const CITATION_MARK_RE =
+  /[ \t\u00a0]*[\[［]\s*[0-9０-９]+(?:\s*(?:[,，、-]|–|—)\s*[0-9０-９]+)*\s*[\]］][ \t\u00a0]*/g;
+const CJK_OR_CJK_PUNCT_RE = /[\u3400-\u9fff。，、：；！？）」』】》]/;
+const CLOSING_PUNCT_RE = /[.,，。!?！？:：;；、)\]）］}』」》]/;
+
+export function stripCitationMarkers(text: string): string {
+  return text.replace(CITATION_MARK_RE, (match, offset, full) => {
+    const prev = full[offset - 1] ?? '';
+    const next = full[offset + match.length] ?? '';
+    if (!prev || !next) return '';
+    if (CLOSING_PUNCT_RE.test(next)) return '';
+    if (CJK_OR_CJK_PUNCT_RE.test(prev) && CJK_OR_CJK_PUNCT_RE.test(next)) return '';
+    return ' ';
+  });
+}
+
 // ~100 words of standard Lorem Ipsum
 export const LOREM_IPSUM =
   'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ' +
