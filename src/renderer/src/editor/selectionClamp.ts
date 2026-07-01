@@ -3,6 +3,8 @@ import { Plugin, PluginKey, Selection, TextSelection } from 'prosemirror-state';
 const KEY = new PluginKey('simple-note-selection-clamp');
 const DRAG_THRESHOLD = 4;
 const EDGE_TOLERANCE = 2;
+const EDGE_ZONE = 56;
+const MAX_SCROLL_SPEED = 24;
 
 interface EditorViewLike {
   state: any;
@@ -19,7 +21,13 @@ interface DragState {
   anchor: number;
   startX: number;
   startY: number;
+  latestX: number;
+  latestY: number;
   dragging: boolean;
+  scrollRoot: HTMLElement;
+  scrollVel: number;
+  rafId: number;
+  lastHead: number;
 }
 
 function blockContentRange(doc: any, id: string): { from: number; to: number } | null {
@@ -52,7 +60,10 @@ function pointerIsStillInBlockContent(drag: DragState, clientY: number): boolean
 
 function posAtPointer(drag: DragState, clientX: number, clientY: number): number {
   const hit = drag.view.posAtCoords({ left: clientX, top: clientY });
-  let pos = hit?.pos ?? drag.anchor;
+  if (hit) {
+    drag.lastHead = hit.pos;
+  }
+  let pos = hit?.pos ?? drag.lastHead;
 
   const range = blockContentRange(drag.view.state.doc, drag.id);
   if (range && pointerIsStillInBlockContent(drag, clientY)) {
@@ -74,6 +85,14 @@ function dispatchCaret(view: EditorViewLike, pos: number): void {
   view.dispatch(view.state.tr.setSelection(Selection.near(doc.resolve(pos))));
 }
 
+function scrollRootFor(view: EditorViewLike): HTMLElement {
+  return (
+    (view.dom.closest('.document-view') as HTMLElement | null) ??
+    (document.scrollingElement as HTMLElement | null) ??
+    document.documentElement
+  );
+}
+
 function shouldSkipTarget(target: HTMLElement): boolean {
   return Boolean(
     target.closest(
@@ -93,10 +112,58 @@ export function createSelectionClampPlugin(): Plugin {
   let drag: DragState | null = null;
 
   const clearDrag = (): void => {
+    if (drag?.rafId) cancelAnimationFrame(drag.rafId);
     drag = null;
     window.removeEventListener('mousemove', onWindowMouseMove, true);
     window.removeEventListener('mouseup', onWindowMouseUp, true);
   };
+
+  function updateAutoScroll(current: DragState): void {
+    const root = current.scrollRoot;
+    const rect = root.getBoundingClientRect();
+    const canScroll = root.scrollHeight > root.clientHeight;
+    let velocity = 0;
+
+    if (canScroll) {
+      if (current.latestY > rect.bottom - EDGE_ZONE) {
+        const intensity = Math.min((current.latestY - (rect.bottom - EDGE_ZONE)) / EDGE_ZONE, 1);
+        velocity = intensity * MAX_SCROLL_SPEED;
+      } else if (current.latestY < rect.top + EDGE_ZONE) {
+        const intensity = Math.min((rect.top + EDGE_ZONE - current.latestY) / EDGE_ZONE, 1);
+        velocity = -intensity * MAX_SCROLL_SPEED;
+      }
+    }
+
+    current.scrollVel = velocity;
+    if (velocity !== 0 && !current.rafId) {
+      current.rafId = requestAnimationFrame(() => autoScrollTick(current));
+    }
+  }
+
+  function autoScrollTick(current: DragState): void {
+    current.rafId = 0;
+    if (drag !== current || !current.dragging || current.scrollVel === 0) return;
+
+    const root = current.scrollRoot;
+    const before = root.scrollTop;
+    root.scrollTop = before + current.scrollVel;
+    const delta = root.scrollTop - before;
+
+    if (delta !== 0) {
+      try {
+        dispatchSelection(
+          current.view,
+          current.anchor,
+          posAtPointer(current, current.latestX, current.latestY)
+        );
+      } catch {
+        // Position may temporarily be at a block gap; keep scrolling.
+      }
+      current.rafId = requestAnimationFrame(() => autoScrollTick(current));
+    } else {
+      current.scrollVel = 0;
+    }
+  }
 
   function onWindowMouseMove(e: MouseEvent): void {
     if (!drag) return;
@@ -105,24 +172,38 @@ export function createSelectionClampPlugin(): Plugin {
       return;
     }
 
+    drag.latestX = e.clientX;
+    drag.latestY = e.clientY;
+
     const dx = Math.abs(e.clientX - drag.startX);
     const dy = Math.abs(e.clientY - drag.startY);
     if (!drag.dragging && dx < DRAG_THRESHOLD && dy < DRAG_THRESHOLD) return;
 
     drag.dragging = true;
     e.preventDefault();
-    dispatchSelection(drag.view, drag.anchor, posAtPointer(drag, e.clientX, e.clientY));
+    try {
+      dispatchSelection(drag.view, drag.anchor, posAtPointer(drag, e.clientX, e.clientY));
+    } catch {
+      // Position may be at a block gap; keep going so auto-scroll still works.
+    }
+    updateAutoScroll(drag);
   }
 
   function onWindowMouseUp(e: MouseEvent): void {
     if (!drag) return;
 
     const current = drag;
+    current.latestX = e.clientX;
+    current.latestY = e.clientY;
     clearDrag();
     e.preventDefault();
 
     if (current.dragging) {
-      dispatchSelection(current.view, current.anchor, posAtPointer(current, e.clientX, e.clientY));
+      try {
+        dispatchSelection(current.view, current.anchor, posAtPointer(current, e.clientX, e.clientY));
+      } catch {
+        // ignore — leave the selection as-is on mouseup
+      }
     } else {
       dispatchCaret(current.view, current.anchor);
     }
@@ -162,7 +243,13 @@ export function createSelectionClampPlugin(): Plugin {
             anchor: clamp(hit.pos, range.from, range.to),
             startX: event.clientX,
             startY: event.clientY,
+            latestX: event.clientX,
+            latestY: event.clientY,
             dragging: false,
+            scrollRoot: scrollRootFor(view),
+            scrollVel: 0,
+            rafId: 0,
+            lastHead: clamp(hit.pos, range.from, range.to),
           };
           window.addEventListener('mousemove', onWindowMouseMove, true);
           window.addEventListener('mouseup', onWindowMouseUp, true);

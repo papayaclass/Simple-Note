@@ -216,6 +216,10 @@ export function App(): JSX.Element {
     r.setProperty('--heading-1-size', `${preferences.heading1Scale}em`);
     r.setProperty('--heading-2-size', `${preferences.heading2Scale}em`);
     r.setProperty('--heading-3-size', `${preferences.heading3Scale}em`);
+    r.setProperty('--side-menu-block-height', `${preferences.lineHeight}em`);
+    r.setProperty('--side-menu-heading-1-height', `${preferences.heading1Scale * 1.25}em`);
+    r.setProperty('--side-menu-heading-2-height', `${preferences.heading2Scale * 1.3}em`);
+    r.setProperty('--side-menu-heading-3-height', `${preferences.heading3Scale * 1.35}em`);
     r.setProperty('--sidebar-width', `${preferences.sidebarWidth}px`);
     document.documentElement.setAttribute('data-code-wrap', preferences.codeWrap ? 'true' : 'false');
   }, [preferences]);

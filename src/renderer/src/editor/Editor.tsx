@@ -1,10 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { createBlockNoteExtension, PartialBlock } from '@blocknote/core';
 import { BlockNoteView } from '@blocknote/mantine';
-import {
-  SideMenuController,
-  useCreateBlockNote,
-} from '@blocknote/react';
+import { useCreateBlockNote } from '@blocknote/react';
 import { TextSelection, AllSelection } from 'prosemirror-state';
 import { schema } from './schema';
 import { createLinkExtension, sanitizeLoadedMarkdown } from './link';
@@ -15,7 +12,7 @@ import { createCodeBlockSelectPlugin } from './codeBlockSelect';
 import { createSelectionClampPlugin } from './selectionClamp';
 import { deleteSelectedBlocks, deleteForwardEmptyBlock } from './blockDelete';
 import { createToggleKeyboardExtension } from './toggle';
-import { SimpleNoteSideMenu } from './sideMenu';
+import { SimpleNoteSideMenuController } from './sideMenu';
 import { BlankFirstLineFormat, useStore } from '../store';
 import { setEditorNoteDir, dirOf } from './noteDir';
 import { openFileInTab } from '../fileActions';
@@ -75,6 +72,7 @@ interface Props {
   onChange: () => void;
   handleRef: React.MutableRefObject<EditorHandle | null>;
   autoFocus?: boolean;
+  interactive?: boolean;
   notePath?: string | null;
   blankFirstLineFormat?: BlankFirstLineFormat;
 }
@@ -83,6 +81,7 @@ export function Editor({
   onChange,
   handleRef,
   autoFocus = true,
+  interactive = true,
   notePath = null,
   blankFirstLineFormat = 'paragraph',
 }: Props): JSX.Element {
@@ -562,9 +561,14 @@ export function Editor({
   }, [editor]);
 
   return (
-    <div ref={containerRef} className="editor-host">
+    <div
+      ref={containerRef}
+      className="editor-host"
+      data-interactive={interactive ? 'true' : 'false'}
+    >
       <BlockNoteView
         editor={editor}
+        editable={interactive}
         slashMenu={false}
         formattingToolbar={false}
         sideMenu={false}
@@ -572,9 +576,7 @@ export function Editor({
         tableHandles={false}
         emojiPicker={false}
       >
-        <SideMenuController
-          sideMenu={(props: any) => <SimpleNoteSideMenu {...props} />}
-        />
+        {interactive && <SimpleNoteSideMenuController editor={editor} containerRef={containerRef} />}
       </BlockNoteView>
       <ContextMenu editor={editor} containerRef={containerRef} />
     </div>

@@ -503,7 +503,13 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
     >
       <div className={`page${pageLayoutClass}`} ref={pageRef}>
         <div className="column column-left" ref={leftColRef}>
-          <Editor onChange={onEditorChange} handleRef={leftHandleRef} autoFocus={false} notePath={filePath} />
+          <Editor
+            onChange={onEditorChange}
+            handleRef={leftHandleRef}
+            autoFocus={false}
+            interactive={columnLayout === 'article-right'}
+            notePath={filePath}
+          />
         </div>
         <div className="column-divider divider-left" onPointerDown={onDividerPointerDown} />
         <div className="column column-middle" ref={midColRef}>
@@ -518,7 +524,13 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
         </div>
         <div className="column-divider divider-right" onPointerDown={onDividerPointerDown} />
         <div className="column column-right" ref={rightColRef}>
-          <Editor onChange={onEditorChange} handleRef={rightHandleRef} autoFocus={false} notePath={filePath} />
+          <Editor
+            onChange={onEditorChange}
+            handleRef={rightHandleRef}
+            autoFocus={false}
+            interactive={columnLayout === 'article-left'}
+            notePath={filePath}
+          />
         </div>
       </div>
     </div>
