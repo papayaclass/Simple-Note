@@ -68,6 +68,160 @@ function placeholderForFormat(format: BlankFirstLineFormat): string {
   }
 }
 
+const BLANK_LINE_MARKER = '<!-- simple-note:blank-line -->';
+
+type LooseBlock = PartialBlock<any, any, any> & {
+  type?: string;
+  content?: unknown;
+  children?: LooseBlock[];
+};
+
+function inlineContentIsEmpty(content: unknown): boolean {
+  if (content == null) return true;
+  if (typeof content === 'string') return content.length === 0;
+  if (!Array.isArray(content)) return false;
+  return content.every((span) => {
+    if (!span || typeof span !== 'object') return true;
+    const text = (span as { text?: string }).text;
+    return typeof text !== 'string' || text.length === 0;
+  });
+}
+
+function isSerializableBlankParagraph(block: LooseBlock): boolean {
+  return (
+    block.type === 'paragraph' &&
+    inlineContentIsEmpty(block.content) &&
+    (!block.children || block.children.length === 0)
+  );
+}
+
+function markdownWithBlankLines(editor: ReturnType<typeof useCreateBlockNote>): string {
+  const blocks = editor.document as LooseBlock[];
+  const firstContentIndex = blocks.findIndex((block) => !isSerializableBlankParagraph(block));
+  if (firstContentIndex === -1) return '';
+
+  let lastContentIndex = firstContentIndex;
+  for (let i = blocks.length - 1; i > firstContentIndex; i -= 1) {
+    if (!isSerializableBlankParagraph(blocks[i])) {
+      lastContentIndex = i;
+      break;
+    }
+  }
+
+  const parts: string[] = [];
+  let run: LooseBlock[] = [];
+  const flushRun = (): void => {
+    if (run.length === 0) return;
+    const markdown = editor.blocksToMarkdownLossy(run);
+    if (markdown.trim().length > 0) parts.push(markdown);
+    run = [];
+  };
+
+  blocks.forEach((block, index) => {
+    if (
+      index > firstContentIndex &&
+      index < lastContentIndex &&
+      isSerializableBlankParagraph(block)
+    ) {
+      flushRun();
+      parts.push(BLANK_LINE_MARKER);
+      return;
+    }
+    run.push(block);
+  });
+  flushRun();
+
+  return parts.join('\n\n');
+}
+
+function markdownFenceMarker(line: string): { char: '`' | '~'; length: number } | null {
+  const match = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+  if (!match) return null;
+  const marker = match[1]!;
+  return { char: marker[0] as '`' | '~', length: marker.length };
+}
+
+function markdownLineClosesFence(
+  line: string,
+  fence: { char: '`' | '~'; length: number }
+): boolean {
+  const marker = markdownFenceMarker(line);
+  return !!marker && marker.char === fence.char && marker.length >= fence.length;
+}
+
+function preserveMarkdownBlankLineRuns(markdown: string): string {
+  const lines = markdown.replace(/\r\n/g, '\n').split('\n');
+  const out: string[] = [];
+  let blankCount = 0;
+  let fence: { char: '`' | '~'; length: number } | null = null;
+
+  const flushBlankLines = (): void => {
+    if (blankCount === 0) return;
+    if (fence || blankCount === 1) {
+      for (let i = 0; i < blankCount; i += 1) out.push('');
+    } else {
+      out.push('');
+      for (let i = 1; i < blankCount; i += 1) {
+        out.push(BLANK_LINE_MARKER, '');
+      }
+    }
+    blankCount = 0;
+  };
+
+  for (const line of lines) {
+    if (line.trim() === '') {
+      blankCount += 1;
+      continue;
+    }
+
+    flushBlankLines();
+    out.push(line);
+
+    if (fence) {
+      if (markdownLineClosesFence(line, fence)) fence = null;
+    } else {
+      fence = markdownFenceMarker(line);
+    }
+  }
+  flushBlankLines();
+
+  return out.join('\n');
+}
+
+async function parseMarkdownWithBlankLines(
+  editor: ReturnType<typeof useCreateBlockNote>,
+  markdown: string,
+  blankFirstLineFormat: BlankFirstLineFormat
+): Promise<PartialBlock<any, any, any>[]> {
+  const sanitized = preserveMarkdownBlankLineRuns(sanitizeLoadedMarkdown(markdown));
+  if (!sanitized.includes(BLANK_LINE_MARKER)) {
+    const parsed = await editor.tryParseMarkdownToBlocks(sanitized);
+    return parsed.length > 0 ? parsed : blankContentForFormat(blankFirstLineFormat);
+  }
+
+  const blocks: PartialBlock<any, any, any>[] = [];
+  let segment: string[] = [];
+  const flushSegment = async (): Promise<void> => {
+    const text = segment.join('\n').trim();
+    segment = [];
+    if (!text) return;
+    const parsed = await editor.tryParseMarkdownToBlocks(text);
+    blocks.push(...parsed);
+  };
+
+  for (const line of sanitized.split(/\r?\n/)) {
+    if (line.trim() === BLANK_LINE_MARKER) {
+      await flushSegment();
+      blocks.push({ type: 'paragraph', content: '' });
+    } else {
+      segment.push(line);
+    }
+  }
+  await flushSegment();
+
+  return blocks.length > 0 ? blocks : blankContentForFormat(blankFirstLineFormat);
+}
+
 interface Props {
   onChange: () => void;
   handleRef: React.MutableRefObject<EditorHandle | null>;
@@ -302,11 +456,10 @@ export function Editor({
           );
           return;
         }
-        const parsed = await editor.tryParseMarkdownToBlocks(sanitizeLoadedMarkdown(md));
-        const blocks = parsed.length > 0 ? parsed : blankContentForFormat(blankFirstLineFormat);
+        const blocks = await parseMarkdownWithBlankLines(editor, md, blankFirstLineFormat);
         (editor.replaceBlocks as (a: unknown, b: unknown) => unknown)(editor.document, blocks);
       },
-      asMarkdown: async () => editor.blocksToMarkdownLossy(editor.document),
+      asMarkdown: async () => markdownWithBlankLines(editor),
       focusLastBlock: () => {
         focusLastBlock(editor);
       },

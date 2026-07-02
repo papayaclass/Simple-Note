@@ -20,7 +20,7 @@ export interface AISkill {
 }
 
 export type SortMode = 'manual' | 'name' | 'created' | 'modified';
-export type StartupBehavior = 'newBlank' | 'newBlankInVault' | 'lastEdited';
+export type StartupBehavior = 'newBlankInVault' | 'lastEdited';
 export type BlankFirstLineFormat = 'heading1' | 'heading2' | 'heading3' | 'paragraph';
 
 // Column layout as the article's position on a `[left] — center — [right]` track.
@@ -113,7 +113,7 @@ export const DEFAULT_PREFS: Preferences = {
   aiGlobalInstruction: '',
   aiSkills: [],
   menuCommands: DEFAULT_MENU_COMMANDS,
-  startupBehavior: 'newBlank',
+  startupBehavior: 'newBlankInVault',
   blankNoteFirstLineFormat: 'paragraph',
   lastEditedFilePath: '',
   vaultPath: '',

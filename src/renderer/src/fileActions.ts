@@ -206,7 +206,7 @@ export async function createNewTab(): Promise<void> {
 
 // Startup "在儲存庫內新增空白文件": physically create 未命名筆記.md in the vault
 // root and open it (so it auto-saves and lists in the sidebar), unlike the
-// in-memory `newBlank` starter. No-op when no vault is configured. Returns
+// in-memory starter. No-op when no vault is configured. Returns
 // whether a file was actually created + opened.
 export async function createBlankVaultNote(): Promise<boolean> {
   const s = useStore.getState();

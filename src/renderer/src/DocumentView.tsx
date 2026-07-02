@@ -335,13 +335,16 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
     const tab = useStore.getState().tabs.find((t) => t.id === tabId);
     if (!tab || !isPathInVault(tab.filePath) || !tab.filePath) return;
     if (tab.autoName) {
-      const heading = sanitizeFileName(firstHeadingText(midHandleRef.current?.editor.document ?? []));
-      if (heading && heading !== tab.fileName) {
+      const heading = sanitizeFileName(
+        firstHeadingText(midHandleRef.current?.editor.document ?? [])
+      );
+      const nextName = heading || '未命名筆記';
+      if (nextName !== tab.fileName) {
         await save(); // flush current content before moving the file
-        const r = await window.api.vault.rename(tab.filePath, heading);
-        if (r.ok && r.path) {
-          useStore.getState().retargetTabs(tab.filePath, r.path);
-          rememberLastEditedFile(r.path);
+        const path = await renameAutoNamedFile(tab.filePath, tab.fileName, nextName);
+        if (path && path !== tab.filePath) {
+          useStore.getState().retargetTabs(tab.filePath, path);
+          rememberLastEditedFile(path);
           await refreshVaultTree();
         }
         return;
@@ -591,6 +594,21 @@ function sanitizeFileName(s: string): string {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 100);
+}
+
+async function renameAutoNamedFile(
+  path: string,
+  currentName: string,
+  baseName: string
+): Promise<string | null> {
+  for (let i = 0; i < 100; i += 1) {
+    const name = i === 0 ? baseName : `${baseName} ${i}`;
+    if (name === currentName) return path;
+    const r = await window.api.vault.rename(path, name);
+    if (r.ok && r.path) return r.path;
+    if (r.reason !== 'exists') return null;
+  }
+  return null;
 }
 
 // BlockNote always carries at least one paragraph; "empty" means no meaningful

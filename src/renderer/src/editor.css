@@ -367,10 +367,44 @@ body.sn-image-dragging * {
 }
 
 /* Keep BlockNote placeholders quiet and upright. */
-.bn-block-content[data-is-empty-and-focused='true']::before {
+.bn-block-content[data-is-empty-and-focused='true']
+  .bn-inline-content:has(> .ProseMirror-trailingBreak:only-child)::before,
+.bn-block-content[data-is-only-empty-block='true']
+  .bn-inline-content:has(> .ProseMirror-trailingBreak:only-child)::before {
   color: var(--fg-faint) !important;
   opacity: 0.6;
+  font-style: normal !important;
 }
+
+.bn-block-content[data-content-type='heading']:is(
+    [data-is-empty-and-focused='true'],
+    [data-is-only-empty-block='true']
+  ):not([data-level])
+  .bn-inline-content:has(> .ProseMirror-trailingBreak:only-child)::before,
+.bn-block-content[data-content-type='heading']:is(
+    [data-is-empty-and-focused='true'],
+    [data-is-only-empty-block='true']
+  )[data-level='1']
+  .bn-inline-content:has(> .ProseMirror-trailingBreak:only-child)::before {
+  content: '標題 1' !important;
+}
+
+.bn-block-content[data-content-type='heading']:is(
+    [data-is-empty-and-focused='true'],
+    [data-is-only-empty-block='true']
+  )[data-level='2']
+  .bn-inline-content:has(> .ProseMirror-trailingBreak:only-child)::before {
+  content: '標題 2' !important;
+}
+
+.bn-block-content[data-content-type='heading']:is(
+    [data-is-empty-and-focused='true'],
+    [data-is-only-empty-block='true']
+  )[data-level='3']
+  .bn-inline-content:has(> .ProseMirror-trailingBreak:only-child)::before {
+  content: '標題 3' !important;
+}
+
 .bn-block-content .bn-inline-content:has(> .ProseMirror-trailingBreak:only-child)::before {
   font-style: normal !important;
 }

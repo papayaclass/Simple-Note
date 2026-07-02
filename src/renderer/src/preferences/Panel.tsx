@@ -197,7 +197,6 @@ export function PreferencesPanel(): JSX.Element | null {
                       })
                     }
                   >
-                    <option value="newBlank">新增空白文件</option>
                     <option value="newBlankInVault">在儲存庫內新增空白文件</option>
                     <option value="lastEdited">開啟上次編輯的文件</option>
                   </select>

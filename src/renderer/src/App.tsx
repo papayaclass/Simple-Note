@@ -245,23 +245,28 @@ export function App(): JSX.Element {
       const vp = await window.api.vault.get();
       useStore.getState().setVaultPath(vp);
       if (vp) await refreshVaultTree();
-      if (stored.startupBehavior === 'lastEdited' && stored.lastEditedFilePath) {
-        await new Promise((resolve) => window.setTimeout(resolve, 0));
-        const s = useStore.getState();
-        const stillBlank =
-          s.tabs.length === 1 && !s.tabs[0]?.filePath && !s.tabs[0]?.dirty;
-        if (stillBlank) {
-          const opened = await openFileInTab(stored.lastEditedFilePath, undefined, {
-            autoFocus: true,
-          });
-          if (!opened) forgetLastEditedFile(stored.lastEditedFilePath);
-        }
-      } else if (stored.startupBehavior === 'newBlankInVault') {
+      const createStartupBlankVaultNote = async (): Promise<void> => {
         await new Promise((resolve) => window.setTimeout(resolve, 0));
         const s = useStore.getState();
         const stillBlank =
           s.tabs.length === 1 && !s.tabs[0]?.filePath && !s.tabs[0]?.dirty;
         if (stillBlank) await createBlankVaultNote();
+      };
+      if (stored.startupBehavior === 'lastEdited') {
+        await new Promise((resolve) => window.setTimeout(resolve, 0));
+        const s = useStore.getState();
+        const stillBlank =
+          s.tabs.length === 1 && !s.tabs[0]?.filePath && !s.tabs[0]?.dirty;
+        if (stillBlank && stored.lastEditedFilePath) {
+          const opened = await openFileInTab(stored.lastEditedFilePath, undefined, {
+            autoFocus: true,
+          });
+          if (opened) return;
+          forgetLastEditedFile(stored.lastEditedFilePath);
+        }
+        await createStartupBlankVaultNote();
+      } else {
+        await createStartupBlankVaultNote();
       }
     })();
   }, [setPreferences]);

@@ -20,7 +20,7 @@ export interface MenuDividerPref {
 export type MenuItemPref = MenuCommandPref | MenuDividerPref;
 
 export type SortMode = 'manual' | 'name' | 'created' | 'modified';
-export type StartupBehavior = 'newBlank' | 'newBlankInVault' | 'lastEdited';
+export type StartupBehavior = 'newBlankInVault' | 'lastEdited';
 export type BlankFirstLineFormat = 'heading1' | 'heading2' | 'heading3' | 'paragraph';
 
 export interface Preferences {
@@ -102,12 +102,16 @@ const DEFAULTS: Preferences = {
   aiGlobalInstruction: '',
   aiSkills: [],
   menuCommands: DEFAULT_MENU_COMMANDS,
-  startupBehavior: 'newBlank',
+  startupBehavior: 'newBlankInVault',
   blankNoteFirstLineFormat: 'paragraph',
   lastEditedFilePath: '',
 };
 
 const store = new Store<Preferences>({ name: 'preferences', defaults: DEFAULTS });
+
+function normalizeStartupBehavior(value: unknown): StartupBehavior {
+  return value === 'lastEdited' ? 'lastEdited' : 'newBlankInVault';
+}
 
 export function getPreferences(): Preferences {
   return {
@@ -135,7 +139,9 @@ export function getPreferences(): Preferences {
     aiGlobalInstruction: store.get('aiGlobalInstruction', DEFAULTS.aiGlobalInstruction),
     aiSkills: store.get('aiSkills', DEFAULTS.aiSkills),
     menuCommands: store.get('menuCommands', DEFAULTS.menuCommands),
-    startupBehavior: store.get('startupBehavior', DEFAULTS.startupBehavior),
+    startupBehavior: normalizeStartupBehavior(
+      store.get('startupBehavior', DEFAULTS.startupBehavior)
+    ),
     blankNoteFirstLineFormat: store.get(
       'blankNoteFirstLineFormat',
       DEFAULTS.blankNoteFirstLineFormat
