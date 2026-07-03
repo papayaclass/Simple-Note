@@ -13,6 +13,7 @@ import { createSelectionClampPlugin } from './selectionClamp';
 import { deleteSelectedBlocks, deleteForwardEmptyBlock } from './blockDelete';
 import { createToggleKeyboardExtension } from './toggle';
 import { SimpleNoteSideMenuController } from './sideMenu';
+import { SimpleNoteSlashMenu } from './slashMenu';
 import { BlankFirstLineFormat, useStore } from '../store';
 import { setEditorNoteDir, dirOf } from './noteDir';
 import { openFileInTab } from '../fileActions';
@@ -726,10 +727,10 @@ export function Editor({
         formattingToolbar={false}
         sideMenu={false}
         filePanel={false}
-        tableHandles={false}
         emojiPicker={false}
       >
         {interactive && <SimpleNoteSideMenuController editor={editor} containerRef={containerRef} />}
+        {interactive && <SimpleNoteSlashMenu editor={editor} />}
       </BlockNoteView>
       <ContextMenu editor={editor} containerRef={containerRef} />
     </div>

@@ -693,3 +693,17 @@ body.sn-image-dragging * {
   user-select: none;
   white-space: nowrap;
 }
+
+/* Slash menu: tighter rows (1.5 line-height instead of the 52px default) and a
+   half-height panel — overflow scrolls. Same-specificity overrides win because
+   editor.css loads after @blocknote/mantine/style.css. */
+.bn-mantine .bn-suggestion-menu {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.bn-mantine .bn-suggestion-menu-item {
+  height: fit-content;
+  line-height: 1.5;
+  padding: 5px 12px;
+}

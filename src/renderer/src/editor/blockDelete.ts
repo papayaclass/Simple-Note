@@ -12,7 +12,11 @@
 type AnyEditor = {
   _tiptapEditor: { state: any };
   removeBlocks: (ids: string[]) => void;
-  replaceBlocks: (remove: string[], insert: Array<{ type: string }>) => void;
+  replaceBlocks: (
+    remove: string[],
+    insert: Array<{ type: string }>
+  ) => { insertedBlocks?: Array<{ id: string }> };
+  setTextCursorPosition: (block: string | { id: string }, placement?: 'start' | 'end') => void;
 };
 
 type ForwardDeleteEditor = {
@@ -101,8 +105,14 @@ export function deleteSelectedBlocks(editor: AnyEditor): boolean {
 
   if (coveredIds.length >= group.childCount) {
     // Removing every block would leave an invalid empty document; reset to one
-    // empty paragraph instead.
-    editor.replaceBlocks(coveredIds, [{ type: 'paragraph' }]);
+    // empty paragraph instead. Replacing under an AllSelection (Cmd+A ×2) keeps
+    // the mapped selection as a block-spanning AllSelection, and the next typed
+    // character then arrives as a range replacement (from ≠ to) — which breaks
+    // anything keyed on collapsed text input, e.g. the slash-menu trigger. Reset
+    // to a collapsed caret in the fresh paragraph.
+    const res = editor.replaceBlocks(coveredIds, [{ type: 'paragraph' }]);
+    const fresh = res?.insertedBlocks?.[0];
+    if (fresh) editor.setTextCursorPosition(fresh, 'start');
   } else {
     editor.removeBlocks(coveredIds);
   }
