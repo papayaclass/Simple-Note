@@ -49,7 +49,11 @@
     ],
     "mac": {
       "category": "public.app-category.productivity",
-      "icon": "build/icons/icon.icns"
+      "icon": "build/icons/icon.icns",
+      "hardenedRuntime": true,
+      "notarize": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.inherit.plist"
     },
     "fileAssociations": [
       {

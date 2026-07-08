@@ -126,6 +126,14 @@ function firstLineCenterY(blockEl: HTMLElement): number {
   return rect.top + firstLineHeight / 2;
 }
 
+function sideMenuTop(blockEl: HTMLElement, handleSize: number): number {
+  const contentEl = blockEl.querySelector('.bn-block-content') as HTMLElement | null;
+  if (contentEl?.dataset.contentType === 'codeBlock') {
+    return contentEl.getBoundingClientRect().top;
+  }
+  return firstLineCenterY(blockEl) - handleSize / 2;
+}
+
 function blockPosition(editor: any, blockEl: HTMLElement): MenuPosition & { hoverZone: HoverZone } {
   const viewDom = (editor as { _tiptapEditor?: { view?: { dom?: HTMLElement } } })._tiptapEditor
     ?.view?.dom;
@@ -133,7 +141,7 @@ function blockPosition(editor: any, blockEl: HTMLElement): MenuPosition & { hove
   const groupRect = (blockGroup ?? blockEl).getBoundingClientRect();
   const handleSize = 24;
   const gap = 8;
-  const top = firstLineCenterY(blockEl) - handleSize / 2;
+  const top = sideMenuTop(blockEl, handleSize);
   const left = groupRect.left - handleSize - gap;
   const clampedTop = Math.min(window.innerHeight - handleSize - 4, Math.max(4, top));
 

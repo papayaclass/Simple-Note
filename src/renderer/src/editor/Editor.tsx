@@ -7,6 +7,7 @@ import { schema } from './schema';
 import { createLinkExtension, sanitizeLoadedMarkdown } from './link';
 import { createMathPlugin } from '../math/overlay';
 import { createYouTubeMentionExtension } from './youtubeMention';
+import { createCodeHighlightPlugin } from './codeHighlight';
 import { createCodeWrapPlugin } from './codeWrap';
 import { createCodeBlockSelectPlugin } from './codeBlockSelect';
 import { createSelectionClampPlugin } from './selectionClamp';
@@ -258,6 +259,10 @@ export function Editor({
     createBlockNoteExtension({
       key: 'simple-note-codeblock-select',
       plugins: [createCodeBlockSelectPlugin()],
+    }),
+    createBlockNoteExtension({
+      key: 'simple-note-code-highlight',
+      plugins: [createCodeHighlightPlugin()],
     }),
     createBlockNoteExtension({
       key: 'simple-note-selection-clamp',
