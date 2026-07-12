@@ -647,7 +647,7 @@ export function Editor({
       // Cmd+1 (no shift, no alt) → paragraph
       if (!e.altKey && !e.shiftKey && code === 'Digit1') {
         e.preventDefault();
-        transformCurrentBlock(editor, 'paragraph');
+        transformSelectedBlocks(editor, 'paragraph');
         return;
       }
       // Cmd+2 → toggle list (collapsible). Uses our custom `toggle` block (see
@@ -655,31 +655,31 @@ export function Editor({
       // a chevron in this setup.
       if (!e.altKey && !e.shiftKey && code === 'Digit2') {
         e.preventDefault();
-        transformCurrentBlock(editor, 'toggle');
+        transformSelectedBlocks(editor, 'toggle');
         return;
       }
       // Cmd+3 → bulleted list
       if (!e.altKey && !e.shiftKey && code === 'Digit3') {
         e.preventDefault();
-        transformCurrentBlock(editor, 'bulletListItem');
+        transformSelectedBlocks(editor, 'bulletListItem');
         return;
       }
       // Cmd+4 → code block
       if (!e.altKey && !e.shiftKey && code === 'Digit4') {
         e.preventDefault();
-        transformCurrentBlock(editor, 'codeBlock');
+        transformSelectedBlocks(editor, 'codeBlock');
         return;
       }
       // Cmd+5 → checkbox
       if (!e.altKey && !e.shiftKey && code === 'Digit5') {
         e.preventDefault();
-        transformCurrentBlock(editor, 'checkListItem');
+        transformSelectedBlocks(editor, 'checkListItem');
         return;
       }
       // Shift+Cmd+L → quote
       if (e.shiftKey && !e.altKey && code === 'KeyL') {
         e.preventDefault();
-        transformCurrentBlock(editor, 'quote');
+        transformSelectedBlocks(editor, 'quote');
         return;
       }
       // Shift+Cmd+S → strikethrough
@@ -705,7 +705,7 @@ export function Editor({
       if (e.altKey && !e.shiftKey && (code === 'Digit1' || code === 'Digit2' || code === 'Digit3')) {
         e.preventDefault();
         const level = Number(code.slice(-1)) as 1 | 2 | 3;
-        transformCurrentBlock(editor, 'heading', { level });
+        transformSelectedBlocks(editor, 'heading', { level });
         return;
       }
       // Option+Cmd+V → red text toggle
@@ -742,13 +742,20 @@ export function Editor({
   );
 }
 
-function transformCurrentBlock(
+function transformSelectedBlocks(
   editor: ReturnType<typeof useCreateBlockNote>,
   type: string,
   props?: Record<string, unknown>
 ): void {
-  const block = editor.getTextCursorPosition().block;
-  editor.updateBlock(block, { type, props } as never);
+  const blocks = editor.getSelection()?.blocks ?? [editor.getTextCursorPosition().block];
+
+  // Keep a multi-block format change as one undo step. BlockNote nests the
+  // updateBlock transactions into this outer transaction automatically.
+  editor.transact(() => {
+    for (const block of blocks) {
+      editor.updateBlock(block, { type, props } as never);
+    }
+  });
 }
 
 function editorHasFocus(editor: ReturnType<typeof useCreateBlockNote>): boolean {
