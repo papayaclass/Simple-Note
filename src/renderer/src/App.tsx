@@ -19,6 +19,7 @@ import { YouTubePreviewHover } from './editor/youtubePreview';
 import { formatRemaining, formatAlarmLabel } from './timer/parse';
 import { playAlarm, stopAlarm } from './timer/sound';
 import { installSpeechShortcut } from './context-menu/speech';
+import { reconcileMenuCommands } from './context-menu/commands';
 import './preferences/panel.css';
 
 export function App(): JSX.Element {
@@ -228,7 +229,14 @@ export function App(): JSX.Element {
   useEffect(() => {
     (async () => {
       const stored = (await window.api.prefs.get()) as Partial<typeof preferences>;
-      setPreferences(stored);
+      const menuCommands = reconcileMenuCommands(stored.menuCommands);
+      const menuCommandsChanged =
+        JSON.stringify(menuCommands) !== JSON.stringify(stored.menuCommands ?? []);
+      const normalized = { ...stored, menuCommands };
+      setPreferences(normalized);
+      // Persist registry additions immediately so they become real rows in the
+      // customizable preferences list, not temporary context-menu-only items.
+      if (menuCommandsChanged) await window.api.prefs.set('menuCommands', menuCommands);
       useStore.getState().setSidebarOpen(stored.sidebarOpen ?? true);
       useStore.getState().setSortMode(stored.sortMode ?? 'manual');
       useStore.getState().setSortAsc(stored.sortAsc ?? true);
@@ -366,6 +374,9 @@ export function App(): JSX.Element {
           break;
         case 'paste-plain':
           getDocumentView(id)?.pastePlainText();
+          break;
+        case 'remove-paragraph-breaks':
+          getDocumentView(id)?.removeParagraphBreaks();
           break;
         case 's2t':
         case 'half2full':

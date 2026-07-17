@@ -76,6 +76,10 @@ export function buildMenu(h: MenuHandlers): void {
           click: () => h.onCommand('clear-format'),
         },
         {
+          label: '移除段落符號',
+          click: () => h.onCommand('remove-paragraph-breaks'),
+        },
+        {
           label: '插入 Lorem Ipsum',
           click: () => h.onCommand('lorem'),
         },

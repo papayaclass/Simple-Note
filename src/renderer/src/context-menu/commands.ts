@@ -15,6 +15,7 @@ export const MENU_COMMANDS: MenuCommandDef[] = [
   { key: 'clearFormat', label: '清除所有格式', requiresSelection: true },
   { key: 'stripLinksAndCitations', label: '移除超連結與注釋標記', requiresSelection: false },
   { key: 'mergeBreaks', label: '分段符號轉分行符號', requiresSelection: true },
+  { key: 'removeParagraphBreaks', label: '移除段落符號', requiresSelection: true },
   { key: 'lorem', label: '插入 Lorem Ipsum', requiresSelection: false },
   { key: 'sortYoutube', label: '依觀看數排序 YouTube', requiresSelection: false },
   { key: 'wordCount', label: '字數統計', requiresSelection: true },
@@ -51,10 +52,11 @@ export const DEFAULT_MENU_COMMANDS: MenuItemPref[] = MENU_COMMANDS.map((c) => ({
   visible: true,
 }));
 
-// Reconcile stored prefs against the current registry: keep stored order for
-// known keys, append any registry keys missing from storage (e.g. newly added
-// commands like `pinyin` in older saves) with default visibility, and drop keys
-// no longer in the registry. Dividers are kept as-is, in place.
+// Reconcile stored prefs against the current registry: keep the user's order
+// for known keys, insert newly added commands beside their nearest canonical
+// predecessor, and drop keys no longer in the registry. Inserting beside the
+// predecessor (instead of appending at the very end) also keeps a new command
+// inside the same user-defined divider group. Dividers are otherwise untouched.
 export function reconcileMenuCommands(stored: MenuItemPref[] | undefined): MenuItemPref[] {
   const known = new Set(MENU_COMMANDS.map((c) => c.key));
   const seen = new Set<string>();
@@ -67,8 +69,24 @@ export function reconcileMenuCommands(stored: MenuItemPref[] | undefined): MenuI
       seen.add(item.key);
     }
   }
-  for (const def of MENU_COMMANDS) {
-    if (!seen.has(def.key)) result.push({ key: def.key, visible: true });
+  for (let i = 0; i < MENU_COMMANDS.length; i += 1) {
+    const def = MENU_COMMANDS[i];
+    if (seen.has(def.key)) continue;
+
+    let insertAt = result.length;
+    for (let j = i - 1; j >= 0; j -= 1) {
+      const previousKey = MENU_COMMANDS[j].key;
+      const previousIndex = result.findIndex(
+        (item) => !isDivider(item) && item.key === previousKey
+      );
+      if (previousIndex !== -1) {
+        insertAt = previousIndex + 1;
+        break;
+      }
+    }
+
+    result.splice(insertAt, 0, { key: def.key, visible: true });
+    seen.add(def.key);
   }
   return result;
 }

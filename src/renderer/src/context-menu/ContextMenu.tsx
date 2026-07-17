@@ -17,6 +17,7 @@ import { MENU_COMMANDS, reconcileMenuCommands, isDivider } from './commands';
 import { speak } from './speech';
 import { parseYouTubeId } from '../editor/youtubePreview';
 import { getCachedViewCount } from '../editor/youtubeMention';
+import { removeParagraphBreaks } from './removeParagraphBreaks';
 
 type MenuItem = { divider: true } | { label: string; disabled: boolean; onClick: () => void };
 
@@ -321,6 +322,10 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
     },
     mergeBreaks: () => {
       mergeParagraphBreaks();
+      close();
+    },
+    removeParagraphBreaks: () => {
+      removeParagraphBreaks(editor);
       close();
     },
     lorem: () => {

@@ -65,6 +65,7 @@ const DEFAULT_MENU_COMMANDS: MenuCommandPref[] = [
   'clearFormat',
   'stripLinksAndCitations',
   'mergeBreaks',
+  'removeParagraphBreaks',
   'lorem',
   'sortYoutube',
   'wordCount',

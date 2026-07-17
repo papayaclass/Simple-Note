@@ -14,6 +14,7 @@ export interface DocumentViewHandle {
   cancelPendingAutoSave: () => void;
   replaceWithMarkdown: (md: string, opts?: { focus?: boolean }) => Promise<void>;
   pastePlainText: () => void;
+  removeParagraphBreaks: () => void;
   focusLastBlock: () => void;
   focus: () => void;
 }
@@ -409,6 +410,7 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
     cancelPendingAutoSave: () => {},
     replaceWithMarkdown: async () => {},
     pastePlainText: () => {},
+    removeParagraphBreaks: () => {},
     focusLastBlock: () => {},
     focus: () => {},
   });
@@ -418,6 +420,7 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
   viewApiRef.current.cancelPendingAutoSave = cancelPendingAutoSave;
   viewApiRef.current.replaceWithMarkdown = replaceWithMarkdown;
   viewApiRef.current.pastePlainText = () => focusedHandle()?.pastePlainText();
+  viewApiRef.current.removeParagraphBreaks = () => focusedHandle()?.removeParagraphBreaks();
   viewApiRef.current.focusLastBlock = () => midHandleRef.current?.focusLastBlock();
   viewApiRef.current.focus = () => midHandleRef.current?.focus();
   useEffect(() => {

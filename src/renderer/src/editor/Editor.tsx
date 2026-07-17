@@ -19,6 +19,7 @@ import { BlankFirstLineFormat, useStore } from '../store';
 import { setEditorNoteDir, dirOf } from './noteDir';
 import { openFileInTab } from '../fileActions';
 import { ContextMenu } from '../context-menu/ContextMenu';
+import { removeParagraphBreaks } from '../context-menu/removeParagraphBreaks';
 import {
   TIMER_RE,
   ALARM_RE,
@@ -36,6 +37,7 @@ export interface EditorHandle {
   focusLastBlock: () => void;
   focus: () => void;
   pastePlainText: () => void;
+  removeParagraphBreaks: () => void;
   hasFocus: () => boolean;
   editor: ReturnType<typeof useCreateBlockNote>;
 }
@@ -471,6 +473,9 @@ export function Editor({
       },
       focus: () => editor.focus(),
       pastePlainText: () => pastePlainText(editor),
+      removeParagraphBreaks: () => {
+        removeParagraphBreaks(editor);
+      },
       hasFocus: () => editorHasFocus(editor),
     };
   }, [blankFirstLineFormat, editor, handleRef]);
