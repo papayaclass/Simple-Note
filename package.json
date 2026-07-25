@@ -1,6 +1,6 @@
 {
   "name": "simple-note",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "極簡 Block 式筆記工具",
   "main": "out/main/index.js",
   "author": "papayaclass",
@@ -56,7 +56,7 @@
       "category": "public.app-category.productivity",
       "icon": "build/icons/icon.icns",
       "hardenedRuntime": true,
-      "notarize": true,
+      "notarize": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.inherit.plist",
       "target": [
