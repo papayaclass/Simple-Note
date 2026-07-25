@@ -3,7 +3,12 @@
   "version": "0.1.0",
   "description": "極簡 Block 式筆記工具",
   "main": "out/main/index.js",
-  "author": "papayastudio",
+  "author": "papayaclass",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/papayaclass/Simple-Note.git"
+  },
   "private": true,
   "scripts": {
     "dev": "electron-vite dev",
@@ -53,7 +58,13 @@
       "hardenedRuntime": true,
       "notarize": true,
       "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.inherit.plist"
+      "entitlementsInherit": "build/entitlements.mac.inherit.plist",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["universal"]
+        }
+      ]
     },
     "fileAssociations": [
       {

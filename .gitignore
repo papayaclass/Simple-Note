@@ -11,3 +11,13 @@ npm-debug.log*
 .vscode/
 .idea/
 .claude/
+.superpowers/
+
+# 憑證、金鑰與環境變數（簽署相關檔案絕對不入版控）
+*.p12
+*.cer
+*.pem
+*.key
+*.mobileprovision
+.env
+.env.*
