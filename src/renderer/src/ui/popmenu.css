@@ -30,7 +30,9 @@
   color: var(--fg-faint);
   cursor: default;
 }
-.pop-menu-item.danger {
+/* Disabled wins over danger: a greyed-out row must never stay red, or it reads
+   as an armed destructive command. */
+.pop-menu-item.danger:not(:disabled) {
   color: var(--red);
 }
 .pop-menu-item .check {
