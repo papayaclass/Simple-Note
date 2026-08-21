@@ -56,6 +56,10 @@ export interface SimpleNoteAPI {
       markdown: string,
       options: { path: string | null; suggestedName?: string }
     ) => Promise<{ ok: boolean; path?: string }>;
+    saveAs: (
+      markdown: string,
+      suggestedName?: string
+    ) => Promise<{ ok: boolean; path?: string }>;
     saveImage: (dataUrl: string) => Promise<{ ok: boolean; path?: string }>;
     getPathForFile: (file: File) => string;
   };
@@ -143,6 +147,8 @@ const api: SimpleNoteAPI = {
   },
   file: {
     save: (markdown, options) => ipcRenderer.invoke('file:save', markdown, options),
+    saveAs: (markdown, suggestedName) =>
+      ipcRenderer.invoke('file:saveAs', markdown, suggestedName),
     saveImage: (dataUrl) => ipcRenderer.invoke('file:saveImage', dataUrl),
     getPathForFile: (file) => webUtils.getPathForFile(file),
   },

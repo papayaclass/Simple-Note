@@ -9,6 +9,8 @@ import {
   refreshVaultTree,
   retargetLastEditedFile,
   forgetLastEditedFile,
+  isProtectedUnnamedNote,
+  ensureVaultHasNote,
 } from '../fileActions';
 import { getDocumentView } from '../DocumentView';
 import { PopMenu, PopMenuItem, PopMenuState } from '../ui/PopMenu';
@@ -618,7 +620,11 @@ export function Sidebar(): JSX.Element {
 
   const doDeleteMany = useCallback(
     async (paths: string[]) => {
-      const roots = withoutDescendantSelections(paths);
+      // The last remaining 未命名筆記 is the app's guaranteed document; skip it
+      // even inside a multi-selection.
+      const roots = withoutDescendantSelections(paths).filter(
+        (path) => !isProtectedUnnamedNote(path)
+      );
       const deletedRoots: string[] = [];
       const closeIds = new Set<string>();
 
@@ -657,6 +663,7 @@ export function Sidebar(): JSX.Element {
       setSelectedPaths((prev) => new Set([...prev].filter((path) => !wasDeleted(path))));
       if (selectedPath && wasDeleted(selectedPath)) setSelectedPath(null);
       await refreshVaultTree();
+      await ensureVaultHasNote();
     },
     [selectedPath, setSelectedPath]
   );
@@ -879,6 +886,7 @@ export function Sidebar(): JSX.Element {
             {
               label: `刪除 ${roots.length} 個項目`,
               danger: true,
+              disabled: roots.every((path) => isProtectedUnnamedNote(path)),
               onClick: () => void doDeleteMany(roots),
             },
           ],
@@ -899,7 +907,12 @@ export function Sidebar(): JSX.Element {
         { label: '重新命名', onClick: () => setRenamingPath(node.path) },
         { label: '複製', onClick: () => void doDuplicate(node.path) },
         { label: '顯示在 Finder', onClick: () => void window.api.vault.reveal(node.path) },
-        { label: '刪除', danger: true, onClick: () => void doDelete(node.path) },
+        {
+          label: '刪除',
+          danger: true,
+          disabled: isProtectedUnnamedNote(node.path),
+          onClick: () => void doDelete(node.path),
+        },
       ];
       // Folders can't be opened in a tab, and neither can non-image/non-text files.
       if (node.type === 'folder' || (!isImagePath(node.path) && !isTextNotePath(node.path))) {

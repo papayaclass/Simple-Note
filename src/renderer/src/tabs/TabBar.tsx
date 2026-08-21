@@ -7,6 +7,8 @@ import {
   rememberLastEditedFile,
   forgetLastEditedFile,
   stageTabForPaneMove,
+  isProtectedUnnamedNote,
+  ensureVaultHasNote,
 } from '../fileActions';
 import { PopMenu, PopMenuState } from '../ui/PopMenu';
 import './tabs.css';
@@ -85,6 +87,7 @@ export function TabBar({
   const deleteDocument = useCallback(
     async (tab: Tab) => {
       if (!tab.filePath || !isInVault(tab.filePath)) return;
+      if (isProtectedUnnamedNote(tab.filePath)) return;
       const path = tab.filePath;
       getDocumentView(tab.id)?.cancelPendingAutoSave();
       const r = await window.api.vault.delete(path);
@@ -101,9 +104,17 @@ export function TabBar({
         useStore.getState().closeTab(id);
       }
       await refreshVaultTree();
+      await ensureVaultHasNote();
     },
     [isInVault]
   );
+
+  // "另存新檔": export a copy (defaults to the Downloads folder). The tab keeps
+  // pointing at its original file, so later Cmd+S still saves to the vault.
+  const saveAsCopy = useCallback(async (tab: Tab) => {
+    const md = (await getDocumentView(tab.id)?.buildMarkdown()) ?? '';
+    await window.api.file.saveAs(md, `${tab.fileName}.md`);
+  }, []);
 
   const saveToVault = useCallback(
     async (tab: Tab) => {
@@ -133,6 +144,7 @@ export function TabBar({
             disabled: !tab.filePath,
             onClick: () => tab.filePath && window.api.window.openInNewWindow(tab.filePath),
           },
+          { label: '另存新檔…', onClick: () => void saveAsCopy(tab) },
           {
             label: '另存到儲存庫',
             disabled: !outsideVault,
@@ -142,13 +154,13 @@ export function TabBar({
           {
             label: '刪除文件',
             danger: true,
-            disabled: outsideVault,
+            disabled: outsideVault || isProtectedUnnamedNote(tab.filePath),
             onClick: () => void deleteDocument(tab),
           },
         ],
       });
     },
-    [isInVault, duplicateTab, closeTab, saveToVault, deleteDocument]
+    [isInVault, duplicateTab, closeTab, saveAsCopy, saveToVault, deleteDocument]
   );
 
   const onDragOver = useCallback((e: React.DragEvent, index: number) => {

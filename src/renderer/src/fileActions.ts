@@ -1,4 +1,4 @@
-import { BlankFirstLineFormat, useStore } from './store';
+import { BlankFirstLineFormat, useStore, VaultNode } from './store';
 import { getDocumentView } from './DocumentView';
 
 interface OpenFileOptions {
@@ -220,6 +220,49 @@ export async function createBlankVaultNote(): Promise<boolean> {
     blankFirstLineFormat: currentBlankFirstLineFormat(),
   });
   return true;
+}
+
+// The vault's placeholder note(s): 未命名筆記.md, 未命名筆記 1.md, …
+const UNNAMED_NOTE_NAME = /^未命名筆記( \d+)?$/;
+
+function walkFiles(nodes: VaultNode[], visit: (node: VaultNode) => void): void {
+  for (const node of nodes) {
+    if (node.type === 'folder') walkFiles(node.children ?? [], visit);
+    else visit(node);
+  }
+}
+
+function noteNameOf(path: string): string {
+  return path.split('/').pop()!.replace(/\.(md|txt)$/i, '');
+}
+
+export function isUnnamedNotePath(path: string): boolean {
+  return isTextNotePath(path) && UNNAMED_NOTE_NAME.test(noteNameOf(path));
+}
+
+// The app must always keep at least one document, so the vault's *last*
+// remaining 未命名筆記 can't be deleted. Renaming it (or creating another
+// unnamed note) lifts the lock; surplus unnamed notes stay deletable.
+export function isProtectedUnnamedNote(path: string | null): boolean {
+  if (!path || !isUnnamedNotePath(path)) return false;
+  let count = 0;
+  walkFiles(useStore.getState().fileTree, (node) => {
+    if (isUnnamedNotePath(node.path)) count += 1;
+  });
+  return count <= 1;
+}
+
+// After a delete: if the vault ended up without a single note, put the
+// placeholder 未命名筆記 back so the sidebar is never empty.
+export async function ensureVaultHasNote(): Promise<void> {
+  const s = useStore.getState();
+  if (!s.vaultPath) return;
+  let hasNote = false;
+  walkFiles(s.fileTree, (node) => {
+    if (isTextNotePath(node.path)) hasNote = true;
+  });
+  if (hasNote) return;
+  await createBlankVaultNote();
 }
 
 const IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.avif'];

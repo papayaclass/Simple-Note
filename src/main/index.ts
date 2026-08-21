@@ -455,6 +455,24 @@ app.whenReady().then(() => {
     }
   );
 
+  // "另存新檔": export a copy of the note to an arbitrary location, defaulting to
+  // the Downloads folder. Unlike file:save this never rebinds the tab (the
+  // renderer keeps its own path), so the window's represented file is untouched.
+  ipcMain.handle('file:saveAs', async (e, markdown: string, suggestedName?: string) => {
+    const win = BrowserWindow.fromWebContents(e.sender);
+    const name = suggestedName ?? '未命名筆記.md';
+    const saveOptions = {
+      defaultPath: join(app.getPath('downloads'), name),
+      filters: [{ name: 'Markdown', extensions: ['md'] }],
+    };
+    const r = win
+      ? await dialog.showSaveDialog(win, saveOptions)
+      : await dialog.showSaveDialog(saveOptions);
+    if (r.canceled || !r.filePath) return { ok: false };
+    await writeFile(r.filePath, markdown, 'utf-8');
+    return { ok: true, path: r.filePath };
+  });
+
   // Save an in-editor image (a data URL) to disk. Images are never persisted in
   // the .md, so this is the only way to keep one — invoked from the preview
   // lightbox's "另存新檔…" command.
