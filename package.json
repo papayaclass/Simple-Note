@@ -68,6 +68,12 @@
     },
     "fileAssociations": [
       {
+        "ext": "snote",
+        "name": "Simple Note Document",
+        "role": "Editor",
+        "icon": "build/icons/icon.icns"
+      },
+      {
         "ext": "md",
         "name": "Markdown Document",
         "role": "Editor",

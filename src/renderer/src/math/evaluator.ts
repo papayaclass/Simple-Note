@@ -1,13 +1,11 @@
 import { evalNode, Parser, tokenize } from './parser';
 
-const CURRENCY_RE = /^\s*(-?\d+(?:\.\d+)?)\s+([A-Za-z]{3})\s*$/;
 const ASSIGN_RE = /^\s*([\p{L}_][\p{L}\p{N}_]*)\s*=\s*(.+?)\s*$/u;
 const QUERY_RE = /^\s*(.+?)\s*=\s*$/;
 
 export type LineResult =
   | { kind: 'assign'; name: string; value: number }
   | { kind: 'query'; display: string }
-  | { kind: 'query-currency'; currency: string; amount: number }
   | { kind: 'error'; message: string }
   | { kind: 'none' };
 
@@ -40,11 +38,6 @@ export function evaluateLine(
   const queryMatch = QUERY_RE.exec(line);
   if (queryMatch) {
     const expr = queryMatch[1]!;
-    // currency? "<number> <CCY>"
-    const ccy = CURRENCY_RE.exec(expr);
-    if (ccy) {
-      return { kind: 'query-currency', amount: parseFloat(ccy[1]!), currency: ccy[2]!.toUpperCase() };
-    }
     try {
       const tokens = tokenize(expr);
       const value = evalNode(new Parser(tokens).parseExpr(), vars);

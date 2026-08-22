@@ -12,13 +12,12 @@ import {
   isPathInVault,
   forgetLastEditedFile,
   stageTabForPaneMove,
+  closeTabWithChecks,
+  convertLossyMarkdownTabs,
 } from './fileActions';
 import { PreferencesPanel } from './preferences/Panel';
 import { ImageLightbox } from './ImageLightbox';
 import { YouTubePreviewHover } from './editor/youtubePreview';
-import { formatRemaining, formatAlarmLabel } from './timer/parse';
-import { playAlarm, stopAlarm } from './timer/sound';
-import { installSpeechShortcut } from './context-menu/speech';
 import { reconcileMenuCommands } from './context-menu/commands';
 import './preferences/panel.css';
 
@@ -41,59 +40,12 @@ export function App(): JSX.Element {
   const vaultPath = useStore((s) => s.vaultPath);
   const wordCountPopover = useStore((s) => s.wordCountPopover);
   const setWordCountPopover = useStore((s) => s.setWordCountPopover);
-  const timer = useStore((s) => s.timer);
-  const setTimer = useStore((s) => s.setTimer);
-  const alarms = useStore((s) => s.alarms);
-  const removeAlarm = useStore((s) => s.removeAlarm);
-
-  // True while the alarm sound is ringing; shows a dismiss chip.
-  const [ringing, setRinging] = useState(false);
-  // A 1-second tick that drives the countdown display and fires notifications.
-  const [now, setNow] = useState(() => Date.now());
   const [draggedTabId, setDraggedTabId] = useState<string | null>(null);
   const [activeDropPaneId, setActiveDropPaneId] = useState<string | null>(null);
   const [splitDropSide, setSplitDropSide] = useState<'left' | 'right' | null>(null);
   const workspaceRef = useRef<HTMLDivElement | null>(null);
 
   const tabById = useMemo(() => new Map(tabs.map((tab) => [tab.id, tab])), [tabs]);
-
-  // Register the Shift+Cmd+P pronunciation-replay shortcut once for the app.
-  useEffect(() => {
-    installSpeechShortcut();
-  }, []);
-
-  useEffect(() => {
-    if (!timer && alarms.length === 0) return;
-    setNow(Date.now());
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [timer, alarms.length]);
-
-  useEffect(() => {
-    const t = Date.now();
-    let fired = false;
-    if (timer && t >= timer.endsAt) {
-      window.api.notify.show('計時器', '時間到');
-      setTimer(null);
-      fired = true;
-    }
-    for (const a of alarms) {
-      if (t >= a.at) {
-        window.api.notify.show('鬧鐘', formatAlarmLabel(a.at));
-        removeAlarm(a.id);
-        fired = true;
-      }
-    }
-    if (fired) {
-      playAlarm(10, () => setRinging(false));
-      setRinging(true);
-    }
-  }, [now, timer, alarms, setTimer, removeAlarm]);
-
-  const stopRinging = useCallback(() => {
-    stopAlarm();
-    setRinging(false);
-  }, []);
 
   const canDropTabToSide = useCallback((tabId: string, side: 'left' | 'right'): boolean => {
     const s = useStore.getState();
@@ -295,6 +247,12 @@ export function App(): JSX.Element {
 
   // Expose dirty/save for native close confirmation, across all tabs.
   useEffect(() => {
+    // Runs before main's dirty check: offers to convert any Markdown note that
+    // picked up formatting Markdown can't store.
+    window.__simpleNote_beforeClose = async () => {
+      await convertLossyMarkdownTabs();
+      return true;
+    };
     window.__simpleNote_isDirty = () =>
       useStore.getState().tabs.some(
         (t) => t.dirty && (getDocumentView(t.id)?.hasContent() ?? false)
@@ -310,6 +268,7 @@ export function App(): JSX.Element {
       return allOk;
     };
     return () => {
+      delete window.__simpleNote_beforeClose;
       delete window.__simpleNote_isDirty;
       delete window.__simpleNote_save;
     };
@@ -352,7 +311,7 @@ export function App(): JSX.Element {
           void createNewTab();
           break;
         case 'close-tab-or-window':
-          if (s.tabs.length > 1) s.closeTab(id);
+          if (s.tabs.length > 1) void closeTabWithChecks(id);
           else window.api.window.close();
           break;
         case 'toggle-sidebar':
@@ -462,26 +421,6 @@ export function App(): JSX.Element {
 
       <div className="status-bar">
         {mathMode && <div className="math-badge">數學模式</div>}
-        {timer && (
-          <div className="status-chip timer-chip">
-            {formatRemaining((timer.endsAt - Math.max(now, Date.now())) / 1000)}
-          </div>
-        )}
-        {alarms.map((a) => (
-          <button
-            key={a.id}
-            className="status-chip alarm-chip"
-            title="點擊刪除鬧鐘"
-            onClick={() => removeAlarm(a.id)}
-          >
-            {formatAlarmLabel(a.at)}
-          </button>
-        ))}
-        {ringing && (
-          <button className="status-chip ringing-chip" title="點擊停止鈴聲" onClick={stopRinging}>
-            響鈴中・點擊停止
-          </button>
-        )}
       </div>
 
       <PreferencesPanel />

@@ -431,8 +431,7 @@ body,
   vertical-align: middle;
 }
 
-.math-badge,
-.status-chip {
+.math-badge {
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -441,51 +440,7 @@ body,
   background: var(--math-tag-bg);
   color: var(--math-tag-fg);
   user-select: none;
-}
-
-.math-badge,
-.timer-chip {
   pointer-events: none;
-}
-
-/* Reset button defaults so the alarm chip matches the badge visuals. */
-.alarm-chip {
-  border: none;
-  font-family: inherit;
-  pointer-events: auto;
-  cursor: pointer;
-}
-
-.alarm-chip:hover {
-  background: var(--red);
-  color: #fff;
-}
-
-/* The ringing-dismiss chip stands out (it's an active alarm) and pulses. */
-.ringing-chip {
-  border: none;
-  font-family: inherit;
-  pointer-events: auto;
-  cursor: pointer;
-  background: var(--red);
-  color: #fff;
-  animation: ringing-pulse 1s ease-in-out infinite;
-}
-
-@keyframes ringing-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.55;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .ringing-chip {
-    animation: none;
-  }
 }
 
 /* image preview lightbox (double-click an image block). Sits above the title-bar

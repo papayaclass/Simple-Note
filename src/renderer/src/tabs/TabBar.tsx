@@ -9,7 +9,9 @@ import {
   stageTabForPaneMove,
   isProtectedUnnamedNote,
   ensureVaultHasNote,
+  closeTabWithChecks,
 } from '../fileActions';
+import { isSnotePath, withMarkdownExt, withSnoteExt } from '../noteFormat';
 import { PopMenu, PopMenuState } from '../ui/PopMenu';
 import './tabs.css';
 
@@ -48,7 +50,6 @@ export function TabBar({
   );
   const setActiveTab = useStore((s) => s.setActiveTab);
   const setActivePane = useStore((s) => s.setActivePane);
-  const closeTab = useStore((s) => s.closeTab);
   const addTab = useStore((s) => s.addTab);
   const moveTabToPane = useStore((s) => s.moveTabToPane);
   const setTabFile = useStore((s) => s.setTabFile);
@@ -79,8 +80,8 @@ export function TabBar({
         addTab({ filePath: r.path, initialMarkdown: md }, paneId);
       }
     } else {
-      const md = (await getDocumentView(tab.id)?.buildMarkdown()) ?? '';
-      addTab({ initialMarkdown: md }, paneId);
+      const content = (await getDocumentView(tab.id)?.buildSnote()) ?? '';
+      addTab({ initialMarkdown: content }, paneId);
     }
   }, [addTab, paneId]);
 
@@ -109,24 +110,52 @@ export function TabBar({
     [isInVault]
   );
 
-  // "另存新檔": export a copy (defaults to the Downloads folder). The tab keeps
-  // pointing at its original file, so later Cmd+S still saves to the vault.
-  const saveAsCopy = useCallback(async (tab: Tab) => {
-    const md = (await getDocumentView(tab.id)?.buildMarkdown()) ?? '';
-    await window.api.file.saveAs(md, `${tab.fileName}.md`);
+  // Both serializations of a tab's document; the chosen file extension decides
+  // which one is written.
+  const contentsOf = useCallback(async (tab: Tab) => {
+    const view = getDocumentView(tab.id);
+    return {
+      markdown: (await view?.buildMarkdown()) ?? '',
+      snote: (await view?.buildSnote()) ?? '',
+    };
+  }, []);
+
+  // "另存新檔": export a copy (defaults to the Downloads folder, in the app's own
+  // format). The tab keeps pointing at its original file, so later Cmd+S still
+  // saves to the vault.
+  const saveAsCopy = useCallback(
+    async (tab: Tab) => {
+      await window.api.file.saveAs(await contentsOf(tab), withSnoteExt(tab.fileName));
+    },
+    [contentsOf]
+  );
+
+  // "匯出成 MD 文件": a Markdown copy in the Downloads folder. Warns first when
+  // the note uses formatting Markdown can't carry.
+  const exportMarkdown = useCallback(async (tab: Tab) => {
+    const view = getDocumentView(tab.id);
+    if (!view) return;
+    const features = view.lossyFeatures();
+    if (features.length > 0) {
+      const ok = await window.api.file.confirmLossy('export', tab.fileName, features);
+      if (!ok) return;
+    }
+    await window.api.file.exportMarkdown(await view.buildMarkdown(), withMarkdownExt(tab.fileName));
   }, []);
 
   const saveToVault = useCallback(
     async (tab: Tab) => {
-      const md = (await getDocumentView(tab.id)?.buildMarkdown()) ?? '';
-      const r = await window.api.vault.moveToVault(md, `${tab.fileName}.md`);
+      const r = await window.api.vault.moveToVault(
+        await contentsOf(tab),
+        withSnoteExt(tab.fileName)
+      );
       if (r.ok && r.path) {
         setTabFile(tab.id, r.path);
         rememberLastEditedFile(r.path);
         await refreshVaultTree();
       }
     },
-    [setTabFile]
+    [contentsOf, setTabFile]
   );
 
   const openContext = useCallback(
@@ -138,7 +167,7 @@ export function TabBar({
         y: e.clientY,
         items: [
           { label: '複製分頁', onClick: () => void duplicateTab(tab) },
-          { label: '關閉分頁', onClick: () => closeTab(tab.id) },
+          { label: '關閉分頁', onClick: () => void closeTabWithChecks(tab.id) },
           {
             label: '開啟在新視窗',
             disabled: !tab.filePath,
@@ -150,6 +179,11 @@ export function TabBar({
             disabled: !outsideVault,
             onClick: () => void saveToVault(tab),
           },
+          {
+            label: '匯出成 MD 文件…',
+            disabled: !isSnotePath(tab.filePath),
+            onClick: () => void exportMarkdown(tab),
+          },
           { divider: true },
           {
             label: '刪除文件',
@@ -160,7 +194,7 @@ export function TabBar({
         ],
       });
     },
-    [isInVault, duplicateTab, closeTab, saveAsCopy, saveToVault, deleteDocument]
+    [isInVault, duplicateTab, saveAsCopy, exportMarkdown, saveToVault, deleteDocument]
   );
 
   const onDragOver = useCallback((e: React.DragEvent, index: number) => {
@@ -214,7 +248,7 @@ export function TabBar({
               draggable
               onClick={() => setActiveTab(tab.id)}
               onAuxClick={(e) => {
-                if (e.button === 1) closeTab(tab.id);
+                if (e.button === 1) void closeTabWithChecks(tab.id);
               }}
               onContextMenu={(e) => openContext(e, tab)}
               onDragStart={(e) => {
@@ -240,7 +274,7 @@ export function TabBar({
                 title="關閉分頁"
                 onClick={(e) => {
                   e.stopPropagation();
-                  closeTab(tab.id);
+                  void closeTabWithChecks(tab.id);
                 }}
               >
                 <CloseIcon />

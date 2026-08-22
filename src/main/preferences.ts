@@ -42,12 +42,9 @@ export interface Preferences {
   heading1Scale: number;
   heading2Scale: number;
   heading3Scale: number;
-  exchangeRateApiKey: string;
   codeWrap: boolean;
   openRouterApiKey: string;
   openRouterModel: string;
-  geminiApiKey: string;
-  geminiTtsModel: string;
   aiGlobalInstruction: string;
   aiSkills: AISkill[];
   menuCommands: MenuItemPref[];
@@ -75,7 +72,6 @@ const DEFAULT_MENU_COMMANDS: MenuCommandPref[] = [
   'googleMaps',
   'youtube',
   'cambridge',
-  'speak',
 ].map((key) => ({ key, visible: true }));
 
 const DEFAULTS: Preferences = {
@@ -94,12 +90,9 @@ const DEFAULTS: Preferences = {
   heading1Scale: 2,
   heading2Scale: 1.5,
   heading3Scale: 1.2,
-  exchangeRateApiKey: '',
   codeWrap: false,
   openRouterApiKey: '',
   openRouterModel: '',
-  geminiApiKey: '',
-  geminiTtsModel: 'gemini-3.1-flash-tts-preview',
   aiGlobalInstruction: '',
   aiSkills: [],
   menuCommands: DEFAULT_MENU_COMMANDS,
@@ -131,12 +124,9 @@ export function getPreferences(): Preferences {
     heading1Scale: store.get('heading1Scale', DEFAULTS.heading1Scale),
     heading2Scale: store.get('heading2Scale', DEFAULTS.heading2Scale),
     heading3Scale: store.get('heading3Scale', DEFAULTS.heading3Scale),
-    exchangeRateApiKey: store.get('exchangeRateApiKey', DEFAULTS.exchangeRateApiKey),
     codeWrap: store.get('codeWrap', DEFAULTS.codeWrap),
     openRouterApiKey: store.get('openRouterApiKey', DEFAULTS.openRouterApiKey),
     openRouterModel: store.get('openRouterModel', DEFAULTS.openRouterModel),
-    geminiApiKey: store.get('geminiApiKey', DEFAULTS.geminiApiKey),
-    geminiTtsModel: store.get('geminiTtsModel', DEFAULTS.geminiTtsModel),
     aiGlobalInstruction: store.get('aiGlobalInstruction', DEFAULTS.aiGlobalInstruction),
     aiSkills: store.get('aiSkills', DEFAULTS.aiSkills),
     menuCommands: store.get('menuCommands', DEFAULTS.menuCommands),

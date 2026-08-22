@@ -4,27 +4,6 @@ import { evaluateLine, formatNumber } from './evaluator';
 
 const KEY = new PluginKey('math-overlay');
 
-// Async rate cache so synchronous decorations have immediate access
-const rateCache = new Map<string, { rate: number; reason?: string; pending?: Promise<void> }>();
-
-function ensureRate(currency: string, redraw: () => void): void {
-  const cached = rateCache.get(currency);
-  if (cached && !cached.pending) return;
-  if (cached?.pending) return;
-  const pending = window.api.rate
-    .get(currency)
-    .then((res) => {
-      if (res.ok) rateCache.set(currency, { rate: res.rate });
-      else rateCache.set(currency, { rate: NaN, reason: res.reason });
-      redraw();
-    })
-    .catch(() => {
-      rateCache.set(currency, { rate: NaN, reason: '錯誤' });
-      redraw();
-    });
-  rateCache.set(currency, { rate: NaN, pending });
-}
-
 function buildResultEl(text: string, isError: boolean): HTMLElement {
   const span = document.createElement('span');
   span.className = 'math-result' + (isError ? ' math-error' : '');
@@ -38,13 +17,6 @@ interface State {
 }
 
 export function createMathPlugin(getEnabled: () => boolean): Plugin {
-  let editorView: { dispatch: (tr: any) => void; state: any } | null = null;
-
-  const requestRedraw = (): void => {
-    if (!editorView) return;
-    editorView.dispatch(editorView.state.tr.setMeta(KEY, { redraw: true }));
-  };
-
   function recompute(doc: any): DecorationSet {
     if (!getEnabled()) return DecorationSet.empty;
     const decos: Decoration[] = [];
@@ -60,27 +32,6 @@ export function createMathPlugin(getEnabled: () => boolean): Plugin {
         decos.push(
           Decoration.widget(endPos, () => buildResultEl(result.display, false), { side: 1 })
         );
-      } else if (result.kind === 'query-currency') {
-        const cached = rateCache.get(result.currency);
-        if (!cached || cached.pending) {
-          ensureRate(result.currency, requestRedraw);
-          decos.push(
-            Decoration.widget(endPos, () => buildResultEl('查詢中…', false), { side: 1 })
-          );
-        } else if (Number.isFinite(cached.rate)) {
-          const twd = result.amount * cached.rate;
-          decos.push(
-            Decoration.widget(endPos, () => buildResultEl(`${formatNumber(twd)} TWD`, false), {
-              side: 1,
-            })
-          );
-        } else {
-          decos.push(
-            Decoration.widget(endPos, () => buildResultEl(cached.reason ?? '錯誤', true), {
-              side: 1,
-            })
-          );
-        }
       } else if (result.kind === 'error') {
         // Silence "未定義變數" while user is still typing; show only meaningful arithmetic errors
         const isUndefinedVar = result.message.startsWith('未定義變數');
@@ -108,14 +59,6 @@ export function createMathPlugin(getEnabled: () => boolean): Plugin {
         }
         return value;
       },
-    },
-    view(view) {
-      editorView = view as any;
-      return {
-        destroy() {
-          editorView = null;
-        },
-      };
     },
     props: {
       decorations(state) {

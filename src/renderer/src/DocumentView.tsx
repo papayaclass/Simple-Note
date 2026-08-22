@@ -3,6 +3,7 @@ import { Editor, EditorHandle } from './editor/Editor';
 import { attachMarquee } from './editor/marquee';
 import { useStore, ColumnLayout } from './store';
 import { isPathInVault, refreshVaultTree, rememberLastEditedFile } from './fileActions';
+import { lossyFeatures, parseSnote, serializeSnote, withSnoteExt } from './noteFormat';
 
 // Imperative interface each DocumentView registers so the app shell (menu save,
 // window-close dirty check, tab context menu) can act on a specific tab without
@@ -10,9 +11,12 @@ import { isPathInVault, refreshVaultTree, rememberLastEditedFile } from './fileA
 export interface DocumentViewHandle {
   save: () => Promise<boolean>;
   buildMarkdown: () => Promise<string>;
+  buildSnote: () => Promise<string>;
+  // Formatting in this document that a Markdown save would discard.
+  lossyFeatures: () => string[];
   hasContent: () => boolean;
   cancelPendingAutoSave: () => void;
-  replaceWithMarkdown: (md: string, opts?: { focus?: boolean }) => Promise<void>;
+  replaceWithContent: (text: string, opts?: { focus?: boolean }) => Promise<void>;
   pastePlainText: () => void;
   removeParagraphBreaks: () => void;
   focusLastBlock: () => void;
@@ -306,14 +310,45 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
     return parts.filter((p) => p.trim().length > 0).join('\n\n');
   }, [currentLayout]);
 
+  // The `.snote` payload: every column's raw block tree plus the layout, so a
+  // reopened note is byte-for-byte the document the user left behind.
+  const buildSnote = useCallback(async (): Promise<string> => {
+    const tab = useStore.getState().tabs.find((t) => t.id === tabId);
+    return serializeSnote({
+      format: 'simple-note',
+      version: 1,
+      columnLayout: currentLayout(),
+      columnSplit: tab?.columnSplit ?? 0.5,
+      columns: {
+        left: leftHandleRef.current?.asBlocks() ?? [],
+        middle: midHandleRef.current?.asBlocks() ?? [],
+        right: rightHandleRef.current?.asBlocks() ?? [],
+      },
+    });
+  }, [currentLayout, tabId]);
+
+  // Which Markdown-incompatible features this document currently uses. A
+  // two-column layout counts too — Markdown has no way to express it.
+  const documentLossyFeatures = useCallback((): string[] => {
+    const layout = currentLayout();
+    const found = new Set<string>(lossyFeatures(midHandleRef.current?.editor.document ?? []));
+    if (layout !== 'center') {
+      found.add('雙欄版面');
+      const scratch = layout === 'article-left' ? rightHandleRef.current : leftHandleRef.current;
+      for (const f of lossyFeatures(scratch?.editor.document ?? [])) found.add(f);
+    }
+    return [...found];
+  }, [currentLayout]);
+
   const save = useCallback(async (): Promise<boolean> => {
     if (!midHandleRef.current) return false;
     try {
-      const markdown = await buildMarkdown();
       const tab = useStore.getState().tabs.find((t) => t.id === tabId);
-      const r = await window.api.file.save(markdown, {
+      const contents = { markdown: await buildMarkdown(), snote: await buildSnote() };
+      const r = await window.api.file.save(contents, {
         path: tab?.filePath ?? null,
-        suggestedName: `${tab?.fileName ?? '未命名筆記'}.md`,
+        // Untitled notes default to the app's own format so nothing is lost.
+        suggestedName: withSnoteExt(tab?.fileName ?? '未命名筆記'),
       });
       if (r.ok && r.path) {
         const cur = useStore.getState().tabs.find((t) => t.id === tabId);
@@ -327,7 +362,7 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
       // Editor may be mid-teardown (flush on unmount); ignore.
       return false;
     }
-  }, [buildMarkdown, setTabFile, setTabDirty, tabId]);
+  }, [buildMarkdown, buildSnote, setTabFile, setTabDirty, tabId]);
   saveRef.current = save;
 
   // In-vault debounced action: auto-name an untitled file from its first
@@ -381,34 +416,55 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
     return false;
   }, [currentLayout]);
 
-  const replaceWithMarkdown = useCallback(
-    async (md: string, opts: { focus?: boolean } = {}): Promise<void> => {
-      cancelPendingAutoSave();
-      loadingRef.current = true;
-      try {
+  // Load a file's text into the columns. `.snote` JSON restores every column
+  // and the layout; anything else is parsed as Markdown into the article column.
+  const loadContent = useCallback(
+    async (text: string, opts: { focus?: boolean } = {}): Promise<void> => {
+      const snote = parseSnote(text);
+      if (snote) {
+        leftHandleRef.current?.loadBlocks(snote.columns.left);
+        rightHandleRef.current?.loadBlocks(snote.columns.right);
+        midHandleRef.current?.loadBlocks(snote.columns.middle);
+        setTabColumnLayout(tabId, snote.columnLayout);
+        setTabColumnSplit(tabId, snote.columnSplit);
+      } else {
         await Promise.all([
           leftHandleRef.current?.loadMarkdown(''),
           rightHandleRef.current?.loadMarkdown(''),
         ]);
-        await midHandleRef.current?.loadMarkdown(md);
+        setTabColumnLayout(tabId, 'center');
+        await midHandleRef.current?.loadMarkdown(text);
+      }
+      if (opts.focus) requestAnimationFrame(() => midHandleRef.current?.focusLastBlock());
+    },
+    [setTabColumnLayout, setTabColumnSplit, tabId]
+  );
+
+  const replaceWithContent = useCallback(
+    async (text: string, opts: { focus?: boolean } = {}): Promise<void> => {
+      cancelPendingAutoSave();
+      loadingRef.current = true;
+      try {
+        await loadContent(text, opts);
         setTabDirty(tabId, false);
-        if (opts.focus) requestAnimationFrame(() => midHandleRef.current?.focusLastBlock());
       } finally {
         window.setTimeout(() => {
           loadingRef.current = false;
         }, 0);
       }
     },
-    [cancelPendingAutoSave, setTabDirty, tabId]
+    [cancelPendingAutoSave, loadContent, setTabDirty, tabId]
   );
 
   // Register this view's imperative API (stable object, mutated each render).
   const viewApiRef = useRef<DocumentViewHandle>({
     save: async () => false,
     buildMarkdown: async () => '',
+    buildSnote: async () => '',
+    lossyFeatures: () => [],
     hasContent: () => false,
     cancelPendingAutoSave: () => {},
-    replaceWithMarkdown: async () => {},
+    replaceWithContent: async () => {},
     pastePlainText: () => {},
     removeParagraphBreaks: () => {},
     focusLastBlock: () => {},
@@ -416,9 +472,11 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
   });
   viewApiRef.current.save = save;
   viewApiRef.current.buildMarkdown = buildMarkdown;
+  viewApiRef.current.buildSnote = buildSnote;
+  viewApiRef.current.lossyFeatures = documentLossyFeatures;
   viewApiRef.current.hasContent = hasContent;
   viewApiRef.current.cancelPendingAutoSave = cancelPendingAutoSave;
-  viewApiRef.current.replaceWithMarkdown = replaceWithMarkdown;
+  viewApiRef.current.replaceWithContent = replaceWithContent;
   viewApiRef.current.pastePlainText = () => focusedHandle()?.pastePlainText();
   viewApiRef.current.removeParagraphBreaks = () => focusedHandle()?.removeParagraphBreaks();
   viewApiRef.current.focusLastBlock = () => midHandleRef.current?.focusLastBlock();
@@ -458,14 +516,14 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
     };
     if (tab.initialMarkdown != null) {
       loadingRef.current = true;
-      const md = tab.initialMarkdown;
+      const text = tab.initialMarkdown;
       updateTab(tabId, { initialMarkdown: undefined });
-      void midHandleRef.current?.loadMarkdown(md).then(finish);
+      void loadContent(text).then(finish);
     } else if (tab.filePath) {
       loadingRef.current = true;
       void window.api.vault.read(tab.filePath).then((r) => {
         if (r.ok && r.content != null) {
-          void midHandleRef.current?.loadMarkdown(r.content).then(finish);
+          void loadContent(r.content).then(finish);
         } else {
           loadingRef.current = false;
         }

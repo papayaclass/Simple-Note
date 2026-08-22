@@ -14,7 +14,7 @@ export interface VaultNode {
 }
 
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.avif']);
-const IMPORT_EXTS = new Set(['.md', '.txt', ...IMAGE_EXTS]);
+const IMPORT_EXTS = new Set(['.snote', '.md', '.txt', ...IMAGE_EXTS]);
 
 export function isInVault(p: string): boolean {
   const v = getVault();
@@ -194,7 +194,7 @@ async function uniquePath(dir: string, base: string, ext: string): Promise<strin
 export async function createFile(dir?: string | null): Promise<{ ok: boolean; path?: string }> {
   const target = dir || getVault();
   if (!target) return { ok: false };
-  const path = await uniquePath(target, '未命名筆記', '.md');
+  const path = await uniquePath(target, '未命名筆記', '.snote');
   await fs.writeFile(path, '', 'utf-8');
   return { ok: true, path };
 }
@@ -207,12 +207,12 @@ export async function createFile(dir?: string | null): Promise<{ ok: boolean; pa
 export async function createBlankNote(): Promise<{ ok: boolean; path?: string }> {
   const vault = getVault();
   if (!vault) return { ok: false };
-  const canonical = join(vault, '未命名筆記.md');
+  const canonical = join(vault, '未命名筆記.snote');
   if (await exists(canonical)) {
     const content = await fs.readFile(canonical, 'utf-8').catch(() => null);
     if (content !== null && content.trim() === '') return { ok: true, path: canonical };
   }
-  const path = await uniquePath(vault, '未命名筆記', '.md');
+  const path = await uniquePath(vault, '未命名筆記', '.snote');
   await fs.writeFile(path, '', 'utf-8');
   return { ok: true, path };
 }
@@ -322,19 +322,24 @@ export async function readMarkdown(path: string): Promise<{ ok: boolean; content
 // defaulted to the vault root so the user can confirm the name/location.
 export async function moveToVault(
   win: BrowserWindow | null,
-  markdown: string,
+  contents: { markdown: string; snote: string },
   suggestedName?: string
 ): Promise<{ ok: boolean; path?: string }> {
   const vault = getVault();
-  const name = suggestedName ?? '未命名筆記.md';
+  const name = suggestedName ?? '未命名筆記.snote';
   const defaultPath = vault ? join(vault, name) : name;
   const opts = {
     defaultPath,
-    filters: [{ name: 'Markdown', extensions: ['md'] }],
+    filters: [
+      { name: 'Simple Note', extensions: ['snote'] },
+      { name: 'Markdown', extensions: ['md'] },
+    ],
   };
   const r = win ? await dialog.showSaveDialog(win, opts) : await dialog.showSaveDialog(opts);
   if (r.canceled || !r.filePath) return { ok: false };
-  await fs.writeFile(r.filePath, markdown, 'utf-8');
+  const ext = extname(r.filePath).toLowerCase();
+  const body = ext === '.md' || ext === '.txt' ? contents.markdown : contents.snote;
+  await fs.writeFile(r.filePath, body, 'utf-8');
   return { ok: true, path: r.filePath };
 }
 

@@ -3,14 +3,13 @@ import { useStore, Preferences } from '../store';
 import { refreshVaultTree } from '../fileActions';
 import { MENU_COMMANDS, reconcileMenuCommands, isDivider } from '../context-menu/commands';
 
-type Category = 'general' | 'layout' | 'menu' | 'apikeys' | 'instruction' | 'ai';
+type Category = 'general' | 'layout' | 'menu' | 'apikeys' | 'ai';
 
 const CATEGORIES: { id: Category; label: string }[] = [
   { id: 'general', label: '一般' },
   { id: 'layout', label: '版面調整' },
   { id: 'menu', label: '右鍵選單' },
   { id: 'apikeys', label: 'API Keys' },
-  { id: 'instruction', label: '自訂指令' },
   { id: 'ai', label: 'AI 技能' },
 ];
 
@@ -406,49 +405,15 @@ export function PreferencesPanel(): JSX.Element | null {
                 <div className="prefs-section-divider" />
 
                 <div className="prefs-field">
-                  <label>Gemini API Key</label>
-                  <input
-                    type="password"
-                    placeholder="輸入你的 Gemini API Key"
-                    value={draft.geminiApiKey}
-                    onChange={(e) => update({ geminiApiKey: e.target.value })}
-                  />
-                </div>
-
-                <div className="prefs-field">
-                  <label>Gemini TTS Model Name</label>
-                  <input
-                    type="text"
-                    placeholder="gemini-3.1-flash-tts-preview"
-                    value={draft.geminiTtsModel}
-                    onChange={(e) => update({ geminiTtsModel: e.target.value })}
-                  />
-                </div>
-
-                <div className="prefs-section-divider" />
-
-                <div className="prefs-field">
-                  <label>ExchangeRate-API Key</label>
-                  <input
-                    type="password"
-                    placeholder="輸入你的 API Key"
-                    value={draft.exchangeRateApiKey}
-                    onChange={(e) => update({ exchangeRateApiKey: e.target.value })}
+                  <label>Global Custom Instruction</label>
+                  <textarea
+                    rows={10}
+                    placeholder="套用到每個 Skill 的全域指令（選填）"
+                    value={draft.aiGlobalInstruction}
+                    onChange={(e) => update({ aiGlobalInstruction: e.target.value })}
                   />
                 </div>
               </>
-            )}
-
-            {category === 'instruction' && (
-              <div className="prefs-field">
-                <label>Global Custom Instruction</label>
-                <textarea
-                  rows={10}
-                  placeholder="套用到每個 Skill 的全域指令（選填）"
-                  value={draft.aiGlobalInstruction}
-                  onChange={(e) => update({ aiGlobalInstruction: e.target.value })}
-                />
-              </div>
             )}
 
             {category === 'ai' && (

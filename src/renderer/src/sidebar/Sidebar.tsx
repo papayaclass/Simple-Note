@@ -47,7 +47,7 @@ function withoutDescendantSelections(paths: string[]): string[] {
 }
 
 function displayName(node: VaultNode): string {
-  return node.type === 'file' ? node.name.replace(/\.md$/i, '') : node.name;
+  return node.type === 'file' ? node.name.replace(/\.(md|snote)$/i, '') : node.name;
 }
 
 function filePathFor(file: File): string {

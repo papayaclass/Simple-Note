@@ -73,12 +73,9 @@ export interface Preferences {
   heading1Scale: number;
   heading2Scale: number;
   heading3Scale: number;
-  exchangeRateApiKey: string;
   codeWrap: boolean;
   openRouterApiKey: string;
   openRouterModel: string;
-  geminiApiKey: string;
-  geminiTtsModel: string;
   aiGlobalInstruction: string;
   aiSkills: AISkill[];
   menuCommands: MenuItemPref[];
@@ -104,12 +101,9 @@ export const DEFAULT_PREFS: Preferences = {
   heading1Scale: 2,
   heading2Scale: 1.5,
   heading3Scale: 1.2,
-  exchangeRateApiKey: '',
   codeWrap: false,
   openRouterApiKey: '',
   openRouterModel: '',
-  geminiApiKey: '',
-  geminiTtsModel: 'gemini-3.1-flash-tts-preview',
   aiGlobalInstruction: '',
   aiSkills: [],
   menuCommands: DEFAULT_MENU_COMMANDS,
@@ -138,7 +132,7 @@ function nextPaneId(): string {
 }
 
 function fileNameFromPath(path: string | null): string {
-  return path ? path.split('/').pop()!.replace(/\.md$/i, '') : '未命名筆記';
+  return path ? path.split('/').pop()!.replace(/\.(md|snote)$/i, '') : '未命名筆記';
 }
 
 export interface NewTabOptions {
@@ -207,8 +201,6 @@ interface AppState {
   activePaneId: string;
   splitRatio: number;
   mathMode: boolean;
-  timer: { endsAt: number } | null;
-  alarms: Array<{ id: string; at: number }>;
   preferences: Preferences;
   prefsPanelOpen: boolean;
   contextMenuOpen: boolean;
@@ -246,9 +238,6 @@ interface AppState {
   // Global view/state
   toggleMathMode: () => void;
   setMathMode: (on: boolean) => void;
-  setTimer: (t: { endsAt: number } | null) => void;
-  addAlarm: (at: number) => void;
-  removeAlarm: (id: string) => void;
   setPreferences: (p: Partial<Preferences>) => void;
   setPrefsPanelOpen: (open: boolean) => void;
   setWordCountPopover: (v: AppState['wordCountPopover']) => void;
@@ -273,8 +262,6 @@ export const useStore = create<AppState>((set) => ({
   activePaneId: FIRST_PANE.id,
   splitRatio: 0.5,
   mathMode: false,
-  timer: null,
-  alarms: [],
   preferences: DEFAULT_PREFS,
   prefsPanelOpen: false,
   contextMenuOpen: false,
@@ -510,14 +497,6 @@ export const useStore = create<AppState>((set) => ({
 
   toggleMathMode: () => set((s) => ({ mathMode: !s.mathMode })),
   setMathMode: (on) => set({ mathMode: on }),
-  setTimer: (t) => set({ timer: t }),
-  addAlarm: (at) =>
-    set((s) => ({
-      alarms: [...s.alarms, { id: `${at}-${Math.random().toString(36).slice(2, 8)}`, at }].sort(
-        (a, b) => a.at - b.at
-      ),
-    })),
-  removeAlarm: (id) => set((s) => ({ alarms: s.alarms.filter((a) => a.id !== id) })),
   setPreferences: (p) => set((s) => ({ preferences: { ...s.preferences, ...p } })),
   setPrefsPanelOpen: (open) => set({ prefsPanelOpen: open }),
   setWordCountPopover: (v) => set({ wordCountPopover: v }),

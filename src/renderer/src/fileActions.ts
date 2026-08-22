@@ -1,5 +1,6 @@
-import { BlankFirstLineFormat, useStore, VaultNode } from './store';
+import { BlankFirstLineFormat, Tab, useStore, VaultNode } from './store';
 import { getDocumentView } from './DocumentView';
+import { isSnotePath } from './noteFormat';
 
 interface OpenFileOptions {
   autoFocus?: boolean;
@@ -13,7 +14,7 @@ function currentBlankFirstLineFormat(): BlankFirstLineFormat {
 }
 
 function fileNameFromPath(path: string): string {
-  return path.split('/').pop()!.replace(/\.md$/i, '');
+  return path.split('/').pop()!.replace(/\.(md|snote)$/i, '');
 }
 
 function nextAnimationFrame(): Promise<void> {
@@ -61,7 +62,9 @@ export async function stageTabForPaneMove(tabId: string): Promise<void> {
   if (!tab || tab.kind !== 'editor') return;
   const view = getDocumentView(tabId);
   if (!view) return;
-  const markdown = await view.buildMarkdown();
+  // Staged in the app's own format so a pane move never drops red text,
+  // toggles or the column layout.
+  const markdown = await view.buildSnote();
   useStore.getState().updateTab(tabId, {
     initialMarkdown: markdown,
     restoreDirtyAfterLoad: tab.dirty,
@@ -157,7 +160,7 @@ export async function openFileInCurrentTab(
 
   if (willReloadMountedEditor) {
     await nextAnimationFrame();
-    await getDocumentView(activeTab.id)?.replaceWithMarkdown(md, { focus: opts.autoFocus });
+    await getDocumentView(activeTab.id)?.replaceWithContent(md, { focus: opts.autoFocus });
   } else if (opts.autoFocus) {
     focusTabWhenReady(activeTab.id);
   }
@@ -204,13 +207,25 @@ export async function createNewTab(): Promise<void> {
   focusTabWhenReady(tabId);
 }
 
-// Startup "在儲存庫內新增空白文件": physically create 未命名筆記.md in the vault
+// Startup "在儲存庫內新增空白文件": physically create 未命名筆記.snote in the vault
 // root and open it (so it auto-saves and lists in the sidebar), unlike the
 // in-memory starter. No-op when no vault is configured. Returns
 // whether a file was actually created + opened.
 export async function createBlankVaultNote(): Promise<boolean> {
   const s = useStore.getState();
   if (!s.vaultPath) return false;
+  // When the vault's only note is already a placeholder 未命名筆記, open that one
+  // instead of stacking a second placeholder next to it. A lone *named* note
+  // still gets a fresh blank document, as the setting promises.
+  const sole = soleNotePath();
+  if (sole && isUnnamedNotePath(sole)) {
+    const opened = await openFileInTab(sole, undefined, {
+      autoFocus: true,
+      autoName: true,
+      blankFirstLineFormat: currentBlankFirstLineFormat(),
+    });
+    if (opened) return true;
+  }
   const r = await window.api.vault.createBlankNote();
   if (!r.ok || !r.path) return false;
   await refreshVaultTree();
@@ -222,7 +237,7 @@ export async function createBlankVaultNote(): Promise<boolean> {
   return true;
 }
 
-// The vault's placeholder note(s): 未命名筆記.md, 未命名筆記 1.md, …
+// The vault's placeholder note(s): 未命名筆記.snote, 未命名筆記 1.snote, …
 const UNNAMED_NOTE_NAME = /^未命名筆記( \d+)?$/;
 
 function walkFiles(nodes: VaultNode[], visit: (node: VaultNode) => void): void {
@@ -233,23 +248,35 @@ function walkFiles(nodes: VaultNode[], visit: (node: VaultNode) => void): void {
 }
 
 function noteNameOf(path: string): string {
-  return path.split('/').pop()!.replace(/\.(md|txt)$/i, '');
+  return path.split('/').pop()!.replace(/\.(md|txt|snote)$/i, '');
 }
 
 export function isUnnamedNotePath(path: string): boolean {
   return isTextNotePath(path) && UNNAMED_NOTE_NAME.test(noteNameOf(path));
 }
 
-// The app must always keep at least one document, so the vault's *last*
-// remaining 未命名筆記 can't be deleted. Renaming it (or creating another
-// unnamed note) lifts the lock; surplus unnamed notes stay deletable.
+// The path of the vault's one and only note, or null when it holds none / more
+// than one.
+function soleNotePath(): string | null {
+  const notes: string[] = [];
+  walkFiles(useStore.getState().fileTree, (node) => {
+    if (isTextNotePath(node.path)) notes.push(node.path);
+  });
+  return notes.length === 1 ? notes[0] : null;
+}
+
+// The vault must never be empty, so the one note that can't be deleted is a
+// lone 未命名筆記 — the placeholder the app would just have to recreate. Any
+// other note stays deletable: deleting the last *named* note simply spawns a
+// fresh 未命名筆記 (see ensureVaultHasNote), and an unnamed note is deletable
+// as soon as some other note keeps the vault non-empty.
 export function isProtectedUnnamedNote(path: string | null): boolean {
   if (!path || !isUnnamedNotePath(path)) return false;
-  let count = 0;
+  let notes = 0;
   walkFiles(useStore.getState().fileTree, (node) => {
-    if (isUnnamedNotePath(node.path)) count += 1;
+    if (isTextNotePath(node.path)) notes += 1;
   });
-  return count <= 1;
+  return notes <= 1;
 }
 
 // After a delete: if the vault ended up without a single note, put the
@@ -273,7 +300,45 @@ export function isImagePath(p: string): boolean {
 }
 
 export function isTextNotePath(p: string): boolean {
-  return /\.(md|txt)$/i.test(p);
+  return /\.(md|txt|snote)$/i.test(p);
+}
+
+// Closing a Markdown note that uses formatting Markdown can't store: offer to
+// convert it to the app's own `.snote` format (answering "維持 Markdown" is what
+// loses the red text / toggles / two-column layout). Returns silently for
+// `.snote` notes and for documents that survive Markdown untouched.
+export async function convertMarkdownNoteIfLossy(tab: Tab): Promise<void> {
+  if (tab.kind !== 'editor' || !tab.filePath || isSnotePath(tab.filePath)) return;
+  const view = getDocumentView(tab.id);
+  if (!view) return;
+  const features = view.lossyFeatures();
+  if (features.length === 0) return;
+  const convert = await window.api.file.confirmLossy('convert', tab.fileName, features);
+  if (!convert) return;
+  const snote = await view.buildSnote();
+  view.cancelPendingAutoSave();
+  const r = await window.api.file.convertToSnote(tab.filePath, snote);
+  if (r.ok && r.path) {
+    retargetLastEditedFile(tab.filePath, r.path);
+    useStore.getState().retargetTabs(tab.filePath, r.path);
+    useStore.getState().setTabDirty(tab.id, false);
+    await refreshVaultTree();
+  }
+}
+
+// Close a tab, first asking about any formatting a Markdown file can't keep.
+export async function closeTabWithChecks(tabId: string): Promise<void> {
+  const tab = useStore.getState().tabs.find((t) => t.id === tabId);
+  if (tab) await convertMarkdownNoteIfLossy(tab);
+  useStore.getState().closeTab(tabId);
+}
+
+// Same check across every open tab — run by the main process before a window
+// closes (see window.__simpleNote_beforeClose in App.tsx).
+export async function convertLossyMarkdownTabs(): Promise<void> {
+  for (const tab of [...useStore.getState().tabs]) {
+    await convertMarkdownNoteIfLossy(tab);
+  }
 }
 
 // Open an image file in a read-only preview tab (sidebar single-click on an

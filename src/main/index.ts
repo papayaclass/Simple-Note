@@ -1,13 +1,12 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, screen, Notification } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, screen } from 'electron';
 import { join } from 'node:path';
 import { readFile, writeFile } from 'node:fs/promises';
+import { extname } from 'node:path';
 import Store from 'electron-store';
 import { buildMenu } from './menu.js';
 import { getPreferences, setPreference, setAllPreferences } from './preferences.js';
-import { getRate, clearRateCache } from './exchange-rate.js';
 import { getYouTubePreview } from './youtube-preview.js';
 import { runAI } from './openrouter.js';
-import { speakText } from './gemini-tts.js';
 import {
   pickVault,
   getVault,
@@ -31,6 +30,24 @@ import {
 } from './vault.js';
 
 app.setName('Simple Note');
+
+// A document is written as Markdown only when the target file is a Markdown /
+// plain-text file; everything else (notably `.snote`) gets the app's own
+// lossless format. See src/renderer/src/noteFormat.ts.
+interface NoteContents {
+  markdown: string;
+  snote: string;
+}
+
+function contentForPath(path: string, contents: NoteContents): string {
+  const ext = extname(path).toLowerCase();
+  return ext === '.md' || ext === '.txt' ? contents.markdown : contents.snote;
+}
+
+const NOTE_FILTERS = [
+  { name: 'Simple Note', extensions: ['snote'] },
+  { name: 'Markdown', extensions: ['md'] },
+];
 
 interface WindowBounds {
   x?: number;
@@ -254,6 +271,12 @@ function createWindow(openPath?: string): BrowserWindow {
     if (forceClose) return;
     e.preventDefault();
     void (async () => {
+      // Give the renderer a chance to ask about Markdown-incompatible
+      // formatting (and convert those notes to .snote) before the dirty check.
+      await win.webContents.executeJavaScript(
+        'window.__simpleNote_beforeClose?.() ?? true'
+      );
+      if (win.isDestroyed()) return;
       const dirty = await win.webContents.executeJavaScript(
         'window.__simpleNote_isDirty?.() ?? false'
       );
@@ -319,7 +342,7 @@ async function openViaDialog(): Promise<void> {
   const focused = BrowserWindow.getFocusedWindow();
   const options = {
     properties: ['openFile' as const],
-    filters: [{ name: 'Markdown / Text', extensions: ['md', 'txt'] }],
+    filters: [{ name: 'Simple Note / Markdown / Text', extensions: ['snote', 'md', 'txt'] }],
   };
   const r = focused
     ? await dialog.showOpenDialog(focused, options)
@@ -394,8 +417,8 @@ app.whenReady().then(() => {
   ipcMain.handle('vault:duplicate', (_e, path: string) => duplicateEntry(path));
   ipcMain.handle('vault:move', (_e, src: string, destDir: string) => moveEntry(src, destDir));
   ipcMain.handle('vault:reveal', (_e, path: string) => revealEntry(path));
-  ipcMain.handle('vault:moveToVault', (e, markdown: string, suggestedName?: string) =>
-    moveToVault(BrowserWindow.fromWebContents(e.sender), markdown, suggestedName)
+  ipcMain.handle('vault:moveToVault', (e, contents: NoteContents, suggestedName?: string) =>
+    moveToVault(BrowserWindow.fromWebContents(e.sender), contents, suggestedName)
   );
   ipcMain.handle('vault:importExternal', (_e, paths: string[], destDir: string | null) =>
     importExternal(paths, destDir)
@@ -419,18 +442,13 @@ app.whenReady().then(() => {
   // Start watching the saved vault (if any) so external changes push updates.
   startWatching(getVault());
 
-  ipcMain.handle('rate:get', async (_e, currency: string) => getRate(currency));
-  ipcMain.handle('rate:clear', () => clearRateCache());
-
   ipcMain.handle('youtube:preview', async (_e, videoId: string) => getYouTubePreview(videoId));
 
   ipcMain.handle('ai:run', async (_e, userContent: string) => runAI(userContent));
 
-  ipcMain.handle('tts:speak', async (_e, text: string) => speakText(text));
-
   ipcMain.handle(
     'file:save',
-    async (e, markdown: string, options: { path: string | null; suggestedName?: string }) => {
+    async (e, contents: NoteContents, options: { path: string | null; suggestedName?: string }) => {
       // The renderer is the source of truth for the current file path; main no
       // longer tracks it (with multiple windows there'd be many). Operate on the
       // window that sent the request.
@@ -438,8 +456,8 @@ app.whenReady().then(() => {
       let path = options?.path ?? null;
       if (!path) {
         const saveOptions = {
-          defaultPath: options?.suggestedName ?? '未命名筆記.md',
-          filters: [{ name: 'Markdown', extensions: ['md'] }],
+          defaultPath: options?.suggestedName ?? '未命名筆記.snote',
+          filters: NOTE_FILTERS,
         };
         const r = win
           ? await dialog.showSaveDialog(win, saveOptions)
@@ -447,7 +465,7 @@ app.whenReady().then(() => {
         if (r.canceled || !r.filePath) return { ok: false };
         path = r.filePath;
       }
-      await writeFile(path, markdown, 'utf-8');
+      await writeFile(path, contentForPath(path, contents), 'utf-8');
       win?.setRepresentedFilename(path);
       win?.setTitle(path.split('/').pop() ?? 'Simple Note');
       win?.setDocumentEdited(false);
@@ -458,11 +476,27 @@ app.whenReady().then(() => {
   // "另存新檔": export a copy of the note to an arbitrary location, defaulting to
   // the Downloads folder. Unlike file:save this never rebinds the tab (the
   // renderer keeps its own path), so the window's represented file is untouched.
-  ipcMain.handle('file:saveAs', async (e, markdown: string, suggestedName?: string) => {
+  ipcMain.handle('file:saveAs', async (e, contents: NoteContents, suggestedName?: string) => {
     const win = BrowserWindow.fromWebContents(e.sender);
-    const name = suggestedName ?? '未命名筆記.md';
+    const name = suggestedName ?? '未命名筆記.snote';
     const saveOptions = {
       defaultPath: join(app.getPath('downloads'), name),
+      filters: NOTE_FILTERS,
+    };
+    const r = win
+      ? await dialog.showSaveDialog(win, saveOptions)
+      : await dialog.showSaveDialog(saveOptions);
+    if (r.canceled || !r.filePath) return { ok: false };
+    await writeFile(r.filePath, contentForPath(r.filePath, contents), 'utf-8');
+    return { ok: true, path: r.filePath };
+  });
+
+  // "匯出成 MD 文件": write a Markdown copy of a `.snote` document, defaulting to
+  // the Downloads folder. The tab keeps pointing at its own file.
+  ipcMain.handle('file:exportMarkdown', async (e, markdown: string, suggestedName?: string) => {
+    const win = BrowserWindow.fromWebContents(e.sender);
+    const saveOptions = {
+      defaultPath: join(app.getPath('downloads'), suggestedName ?? '未命名筆記.md'),
       filters: [{ name: 'Markdown', extensions: ['md'] }],
     };
     const r = win
@@ -472,6 +506,52 @@ app.whenReady().then(() => {
     await writeFile(r.filePath, markdown, 'utf-8');
     return { ok: true, path: r.filePath };
   });
+
+  // Convert a Markdown note that gained Markdown-incompatible formatting into a
+  // `.snote` beside it; the original .md goes to the Trash (recoverable).
+  ipcMain.handle('file:convertToSnote', async (_e, path: string, snote: string) => {
+    try {
+      const target = path.replace(/\.(md|txt)$/i, '') + '.snote';
+      await writeFile(target, snote, 'utf-8');
+      if (target !== path) await shell.trashItem(path);
+      return { ok: true, path: target };
+    } catch (err) {
+      console.error('[convert] failed:', err);
+      return { ok: false };
+    }
+  });
+
+  // Ask before losing formatting: on close (offer to convert to .snote) and on
+  // Markdown export (the copy will be missing these features).
+  ipcMain.handle(
+    'file:confirmLossy',
+    async (e, kind: 'convert' | 'export', name: string, features: string[]) => {
+      const win = BrowserWindow.fromWebContents(e.sender);
+      const list = features.length > 0 ? features.join('、') : '特殊格式';
+      const options =
+        kind === 'convert'
+          ? {
+              type: 'warning' as const,
+              buttons: ['轉存為 .snote', '維持 Markdown'],
+              defaultId: 0,
+              cancelId: 1,
+              message: `「${name}」含有 Markdown 不支援的格式`,
+              detail: `此文件使用了 ${list}，以 Markdown 儲存會遺失這些內容。要改存成 Simple Note 格式 (.snote) 嗎？原本的 .md 檔會移到垃圾桶。`,
+            }
+          : {
+              type: 'warning' as const,
+              buttons: ['繼續匯出', '取消'],
+              defaultId: 0,
+              cancelId: 1,
+              message: `「${name}」含有 Markdown 不支援的格式`,
+              detail: `此文件使用了 ${list}，匯出的 .md 檔不會包含這些內容（原始文件不受影響）。`,
+            };
+      const r = win
+        ? await dialog.showMessageBox(win, options)
+        : await dialog.showMessageBox(options);
+      return r.response === 0;
+    }
+  );
 
   // Save an in-editor image (a data URL) to disk. Images are never persisted in
   // the .md, so this is the only way to keep one — invoked from the preview
@@ -499,13 +579,6 @@ app.whenReady().then(() => {
 
   ipcMain.on('window:setTitle', (e, title: string) => {
     BrowserWindow.fromWebContents(e.sender)?.setTitle(title);
-  });
-
-  ipcMain.on('notify:show', (_e, options: { title: string; body: string }) => {
-    if (!Notification.isSupported()) return;
-    // Silent: the app plays its own looping alarm sound (Alarm.wav), so the
-    // short macOS notification "ding" would otherwise play on top of it.
-    new Notification({ title: options.title, body: options.body, silent: true }).show();
   });
 
   // A window's renderer signals it has mounted listeners; flush the file (if

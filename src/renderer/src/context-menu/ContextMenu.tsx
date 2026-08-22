@@ -14,7 +14,6 @@ import { AIResultModal, AIState } from './AIResultModal';
 import { PinyinModal } from './PinyinModal';
 import { BoshiamyModal } from './BoshiamyModal';
 import { MENU_COMMANDS, reconcileMenuCommands, isDivider } from './commands';
-import { speak } from './speech';
 import { parseYouTubeId } from '../editor/youtubePreview';
 import { getCachedViewCount } from '../editor/youtubeMention';
 import { removeParagraphBreaks } from './removeParagraphBreaks';
@@ -358,10 +357,6 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
       searchSelection(
         (q) => `https://dictionary.cambridge.org/search/english-chinese-traditional/direct/?q=${q}`
       );
-      close();
-    },
-    speak: () => {
-      void speak();
       close();
     },
   };

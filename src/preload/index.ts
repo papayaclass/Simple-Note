@@ -11,27 +11,23 @@ export interface VaultNode {
   children?: VaultNode[];
 }
 
+// Both serializations of the current document; main writes whichever matches
+// the target file's extension.
+export interface NoteContents {
+  markdown: string;
+  snote: string;
+}
+
 export interface SimpleNoteAPI {
   prefs: {
     get: () => Promise<Record<string, unknown>>;
     set: (key: string, value: unknown) => Promise<void>;
     setAll: (prefs: Record<string, unknown>) => Promise<void>;
   };
-  rate: {
-    get: (
-      currency: string
-    ) => Promise<{ ok: true; rate: number; fetchedAt: number } | { ok: false; reason: string }>;
-    clearCache: () => Promise<void>;
-  };
   ai: {
     run: (
       userContent: string
     ) => Promise<{ ok: true; content: string } | { ok: false; reason: string }>;
-  };
-  tts: {
-    speak: (
-      text: string
-    ) => Promise<{ ok: true; audio: string } | { ok: false; reason: string }>;
   };
   youtube: {
     preview: (
@@ -53,13 +49,23 @@ export interface SimpleNoteAPI {
   };
   file: {
     save: (
-      markdown: string,
+      contents: NoteContents,
       options: { path: string | null; suggestedName?: string }
     ) => Promise<{ ok: boolean; path?: string }>;
     saveAs: (
+      contents: NoteContents,
+      suggestedName?: string
+    ) => Promise<{ ok: boolean; path?: string }>;
+    exportMarkdown: (
       markdown: string,
       suggestedName?: string
     ) => Promise<{ ok: boolean; path?: string }>;
+    convertToSnote: (path: string, snote: string) => Promise<{ ok: boolean; path?: string }>;
+    confirmLossy: (
+      kind: 'convert' | 'export',
+      name: string,
+      features: string[]
+    ) => Promise<boolean>;
     saveImage: (dataUrl: string) => Promise<{ ok: boolean; path?: string }>;
     getPathForFile: (file: File) => string;
   };
@@ -84,7 +90,7 @@ export interface SimpleNoteAPI {
     ) => Promise<{ ok: boolean; path?: string; reason?: string }>;
     reveal: (path: string) => Promise<void>;
     moveToVault: (
-      markdown: string,
+      contents: NoteContents,
       suggestedName?: string
     ) => Promise<{ ok: boolean; path?: string }>;
     importExternal: (
@@ -112,9 +118,6 @@ export interface SimpleNoteAPI {
     close: () => void;
     openInNewWindow: (path: string) => void;
   };
-  notify: {
-    show: (title: string, body: string) => void;
-  };
   onMenu: (handler: (command: string) => void) => () => void;
   onExternalOpen: (
     handler: (payload: { path: string; content: string }) => void
@@ -132,23 +135,21 @@ const api: SimpleNoteAPI = {
     set: (key, value) => ipcRenderer.invoke('prefs:set', key, value),
     setAll: (prefs) => ipcRenderer.invoke('prefs:setAll', prefs),
   },
-  rate: {
-    get: (currency) => ipcRenderer.invoke('rate:get', currency),
-    clearCache: () => ipcRenderer.invoke('rate:clear'),
-  },
   ai: {
     run: (userContent) => ipcRenderer.invoke('ai:run', userContent),
-  },
-  tts: {
-    speak: (text) => ipcRenderer.invoke('tts:speak', text),
   },
   youtube: {
     preview: (videoId) => ipcRenderer.invoke('youtube:preview', videoId),
   },
   file: {
-    save: (markdown, options) => ipcRenderer.invoke('file:save', markdown, options),
-    saveAs: (markdown, suggestedName) =>
-      ipcRenderer.invoke('file:saveAs', markdown, suggestedName),
+    save: (contents, options) => ipcRenderer.invoke('file:save', contents, options),
+    saveAs: (contents, suggestedName) =>
+      ipcRenderer.invoke('file:saveAs', contents, suggestedName),
+    exportMarkdown: (markdown, suggestedName) =>
+      ipcRenderer.invoke('file:exportMarkdown', markdown, suggestedName),
+    convertToSnote: (path, snote) => ipcRenderer.invoke('file:convertToSnote', path, snote),
+    confirmLossy: (kind, name, features) =>
+      ipcRenderer.invoke('file:confirmLossy', kind, name, features),
     saveImage: (dataUrl) => ipcRenderer.invoke('file:saveImage', dataUrl),
     getPathForFile: (file) => webUtils.getPathForFile(file),
   },
@@ -166,8 +167,8 @@ const api: SimpleNoteAPI = {
     duplicate: (path) => ipcRenderer.invoke('vault:duplicate', path),
     move: (src, destDir) => ipcRenderer.invoke('vault:move', src, destDir),
     reveal: (path) => ipcRenderer.invoke('vault:reveal', path),
-    moveToVault: (markdown, suggestedName) =>
-      ipcRenderer.invoke('vault:moveToVault', markdown, suggestedName),
+    moveToVault: (contents, suggestedName) =>
+      ipcRenderer.invoke('vault:moveToVault', contents, suggestedName),
     importExternal: (paths, destDir) =>
       ipcRenderer.invoke('vault:importExternal', paths, destDir),
     saveImageForNote: (args) => ipcRenderer.invoke('vault:saveImageForNote', args),
@@ -184,9 +185,6 @@ const api: SimpleNoteAPI = {
     setTitle: (title) => ipcRenderer.send('window:setTitle', title),
     close: () => ipcRenderer.send('window:close'),
     openInNewWindow: (path) => ipcRenderer.send('window:openFile', path),
-  },
-  notify: {
-    show: (title, body) => ipcRenderer.send('notify:show', { title, body }),
   },
   onMenu: (handler) => {
     type Listener = Parameters<typeof ipcRenderer.on>[1];

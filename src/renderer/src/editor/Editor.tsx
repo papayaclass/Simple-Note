@@ -20,20 +20,16 @@ import { setEditorNoteDir, dirOf } from './noteDir';
 import { openFileInTab } from '../fileActions';
 import { ContextMenu } from '../context-menu/ContextMenu';
 import { removeParagraphBreaks } from '../context-menu/removeParagraphBreaks';
-import {
-  TIMER_RE,
-  ALARM_RE,
-  parseTimer,
-  parseAlarm,
-  nextAlarmTimestamp,
-  normalizeCommandText,
-} from '../timer/parse';
 
 export interface EditorHandle {
   serialize: () => string;
   load: (json: string) => void;
   loadMarkdown: (md: string) => Promise<void>;
   asMarkdown: () => Promise<string>;
+  // Raw BlockNote block tree — the payload of the `.snote` format, which keeps
+  // everything Markdown drops (red text, toggles, images…).
+  asBlocks: () => unknown[];
+  loadBlocks: (blocks: unknown[]) => void;
   focusLastBlock: () => void;
   focus: () => void;
   pastePlainText: () => void;
@@ -296,39 +292,6 @@ export function Editor({
       },
     }),
     createBlockNoteExtension({
-      key: 'simple-note-timer',
-      keyboardShortcuts: {
-        // Pressing Enter on a line like "timer 10m" / "alarm 13:30" starts the
-        // timer/alarm and clears the line. Otherwise let Enter act normally.
-        Enter: ({ editor }) => {
-          const block = editor.getTextCursorPosition().block;
-          const text = normalizeCommandText(blockPlainText(block));
-
-          const timerMatch = TIMER_RE.exec(text);
-          if (timerMatch) {
-            const secs = parseTimer(timerMatch[1]!);
-            if (secs != null && secs > 0) {
-              useStore.getState().setTimer({ endsAt: Date.now() + secs * 1000 });
-              (editor.updateBlock as (b: unknown, u: unknown) => unknown)(block, { content: [] });
-              return true;
-            }
-          }
-
-          const alarmMatch = ALARM_RE.exec(text);
-          if (alarmMatch) {
-            const parsed = parseAlarm(alarmMatch[1]!);
-            if (parsed) {
-              useStore.getState().addAlarm(nextAlarmTimestamp(parsed.hours, parsed.minutes));
-              (editor.updateBlock as (b: unknown, u: unknown) => unknown)(block, { content: [] });
-              return true;
-            }
-          }
-
-          return false;
-        },
-      },
-    }),
-    createBlockNoteExtension({
       key: 'simple-note-heading-enter',
       keyboardShortcuts: {
         // Pressing Enter at the very start or end of a heading should leave a
@@ -395,14 +358,9 @@ export function Editor({
           }
           return true;
         },
-        // Escape stops a running timer first (if any). Otherwise it selects the
-        // whole text of the block the cursor is in (same as Cmd+A's first
-        // stage). Overrides BlockNote's default Escape (blur).
+        // Escape selects the whole text of the block the cursor is in (same as
+        // Cmd+A's first stage). Overrides BlockNote's default Escape (blur).
         Escape: ({ editor }) => {
-          if (useStore.getState().timer) {
-            useStore.getState().setTimer(null);
-            return true;
-          }
           const tipTap = (editor as unknown as { _tiptapEditor: { state: any; view: any } })
             ._tiptapEditor;
           const state = tipTap.state;
@@ -468,6 +426,14 @@ export function Editor({
         (editor.replaceBlocks as (a: unknown, b: unknown) => unknown)(editor.document, blocks);
       },
       asMarkdown: async () => markdownWithBlankLines(editor),
+      asBlocks: () => JSON.parse(JSON.stringify(editor.document)) as unknown[],
+      loadBlocks: (blocks: unknown[]) => {
+        const next =
+          Array.isArray(blocks) && blocks.length > 0
+            ? blocks
+            : blankContentForFormat(blankFirstLineFormat);
+        (editor.replaceBlocks as (a: unknown, b: unknown) => unknown)(editor.document, next);
+      },
       focusLastBlock: () => {
         focusLastBlock(editor);
       },
