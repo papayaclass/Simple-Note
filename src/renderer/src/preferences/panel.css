@@ -221,68 +221,6 @@
   line-height: 1.6;
 }
 
-/* AI skills */
-.prefs-skills {
-  border-top: 1px solid var(--panel-border);
-  padding-top: 14px;
-  margin-bottom: 4px;
-}
-
-.prefs-skills-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10px;
-}
-
-.prefs-skill-add {
-  background: var(--input-bg);
-  color: var(--fg);
-  border: 1px solid var(--input-border);
-  border-radius: 6px;
-  padding: 5px 10px;
-  font-size: 12px;
-  cursor: pointer;
-  font-family: inherit;
-}
-.prefs-skill-add:hover {
-  background: var(--panel-border);
-}
-
-.prefs-skills-empty {
-  color: var(--fg-faint);
-  font-size: 12px;
-  margin: 0 0 10px;
-}
-
-.prefs-skill-card {
-  border: 1px solid var(--input-border);
-  border-radius: 8px;
-  padding: 10px;
-  margin-bottom: 10px;
-}
-
-.prefs-skill-card-top {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.prefs-skill-name {
-  flex: 1;
-  background: var(--input-bg);
-  border: 1px solid var(--input-border);
-  border-radius: 6px;
-  padding: 7px 9px;
-  color: var(--fg);
-  font-size: 13px;
-  outline: none;
-  font-family: inherit;
-}
-.prefs-skill-name:focus {
-  border-color: var(--accent);
-}
-
 .prefs-skill-delete {
   background: none;
   border: 1px solid var(--input-border);
@@ -296,23 +234,6 @@
 .prefs-skill-delete:hover {
   color: var(--fg);
   background: var(--input-bg);
-}
-
-.prefs-skill-prompt {
-  width: 100%;
-  background: var(--input-bg);
-  border: 1px solid var(--input-border);
-  border-radius: 6px;
-  padding: 8px 10px;
-  color: var(--fg);
-  font-size: 13px;
-  outline: none;
-  font-family: inherit;
-  resize: vertical;
-  line-height: 1.5;
-}
-.prefs-skill-prompt:focus {
-  border-color: var(--accent);
 }
 
 /* Right-click menu command list (toggle + drag-to-reorder) */
@@ -511,7 +432,7 @@
   font-size: 12px;
 }
 
-/* AI result modal */
+/* Shared result modal used by pinyin and Boshiamy lookup. */
 .ai-modal-overlay {
   position: fixed;
   inset: 0;
@@ -552,21 +473,28 @@
   color: var(--fg);
 }
 
-.ai-modal-status {
-  color: var(--fg-muted);
-  padding: 12px 0;
-}
-
-.ai-modal-error {
-  color: var(--fg);
-  padding: 8px 0 4px;
-}
-
 .ai-modal-actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
   margin-top: 16px;
+}
+
+.translation-status-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  z-index: 120;
+  max-width: min(420px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  padding: 9px 14px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--panel-bg);
+  color: var(--fg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  font-size: 13px;
+  -webkit-app-region: no-drag;
 }
 
 /* context menu */

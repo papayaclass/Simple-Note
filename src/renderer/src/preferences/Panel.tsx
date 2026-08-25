@@ -3,14 +3,13 @@ import { useStore, Preferences } from '../store';
 import { refreshVaultTree } from '../fileActions';
 import { MENU_COMMANDS, reconcileMenuCommands, isDivider } from '../context-menu/commands';
 
-type Category = 'general' | 'layout' | 'menu' | 'apikeys' | 'ai';
+type Category = 'general' | 'layout' | 'menu' | 'apikeys';
 
 const CATEGORIES: { id: Category; label: string }[] = [
   { id: 'general', label: '一般' },
   { id: 'layout', label: '版面調整' },
   { id: 'menu', label: '右鍵選單' },
   { id: 'apikeys', label: 'API Keys' },
-  { id: 'ai', label: 'AI 技能' },
 ];
 
 const MENU_LABELS = new Map(MENU_COMMANDS.map((c) => [c.key, c.label]));
@@ -218,6 +217,22 @@ export function PreferencesPanel(): JSX.Element | null {
                     <option value="paragraph">內文</option>
                   </select>
                 </div>
+
+                <div className="prefs-field">
+                  <label>中英互譯結果</label>
+                  <select
+                    value={draft.translationResultMode}
+                    onChange={(e) =>
+                      update({
+                        translationResultMode: e.target
+                          .value as Preferences['translationResultMode'],
+                      })
+                    }
+                  >
+                    <option value="insertBelow">插入到下方</option>
+                    <option value="replaceSelection">取代選取文字</option>
+                  </select>
+                </div>
               </>
             )}
 
@@ -416,73 +431,6 @@ export function PreferencesPanel(): JSX.Element | null {
               </>
             )}
 
-            {category === 'ai' && (
-              <>
-                <div className="prefs-skills">
-                  <div className="prefs-skills-header">
-                    <strong>AI Skills</strong>
-                    <button
-                      className="prefs-skill-add"
-                      onClick={() =>
-                        update({
-                          aiSkills: [
-                            ...draft.aiSkills,
-                            { id: crypto.randomUUID(), name: '', prompt: '' },
-                          ],
-                        })
-                      }
-                    >
-                      ＋ 新增 Skill
-                    </button>
-                  </div>
-
-                  {draft.aiSkills.length === 0 && (
-                    <p className="prefs-skills-empty">尚未建立任何 Skill。</p>
-                  )}
-
-                  {draft.aiSkills.map((skill) => (
-                    <div className="prefs-skill-card" key={skill.id}>
-                      <div className="prefs-skill-card-top">
-                        <input
-                          type="text"
-                          className="prefs-skill-name"
-                          placeholder="Skill 名稱"
-                          value={skill.name}
-                          onChange={(e) =>
-                            update({
-                              aiSkills: draft.aiSkills.map((s) =>
-                                s.id === skill.id ? { ...s, name: e.target.value } : s
-                              ),
-                            })
-                          }
-                        />
-                        <button
-                          className="prefs-skill-delete"
-                          onClick={() =>
-                            update({ aiSkills: draft.aiSkills.filter((s) => s.id !== skill.id) })
-                          }
-                        >
-                          刪除
-                        </button>
-                      </div>
-                      <textarea
-                        rows={3}
-                        className="prefs-skill-prompt"
-                        placeholder="提示詞（反白文字會自動附加在末端）"
-                        value={skill.prompt}
-                        onChange={(e) =>
-                          update({
-                            aiSkills: draft.aiSkills.map((s) =>
-                              s.id === skill.id ? { ...s, prompt: e.target.value } : s
-                            ),
-                          })
-                        }
-                      />
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
           </div>
 
           <div className="prefs-actions">

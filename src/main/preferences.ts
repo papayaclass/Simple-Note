@@ -1,11 +1,5 @@
 import Store from 'electron-store';
 
-export interface AISkill {
-  id: string;
-  name: string;
-  prompt: string;
-}
-
 export interface MenuCommandPref {
   key: string;
   visible: boolean;
@@ -22,6 +16,7 @@ export type MenuItemPref = MenuCommandPref | MenuDividerPref;
 export type SortMode = 'manual' | 'name' | 'created' | 'modified';
 export type StartupBehavior = 'newBlankInVault' | 'lastEdited';
 export type BlankFirstLineFormat = 'heading1' | 'heading2' | 'heading3' | 'paragraph';
+export type TranslationResultMode = 'insertBelow' | 'replaceSelection';
 
 export interface Preferences {
   vaultPath: string;
@@ -46,8 +41,8 @@ export interface Preferences {
   openRouterApiKey: string;
   openRouterModel: string;
   aiGlobalInstruction: string;
-  aiSkills: AISkill[];
   menuCommands: MenuItemPref[];
+  translationResultMode: TranslationResultMode;
   startupBehavior: StartupBehavior;
   blankNoteFirstLineFormat: BlankFirstLineFormat;
   lastEditedFilePath: string;
@@ -72,6 +67,7 @@ const DEFAULT_MENU_COMMANDS: MenuCommandPref[] = [
   'googleMaps',
   'youtube',
   'cambridge',
+  'translate',
 ].map((key) => ({ key, visible: true }));
 
 const DEFAULTS: Preferences = {
@@ -94,8 +90,8 @@ const DEFAULTS: Preferences = {
   openRouterApiKey: '',
   openRouterModel: '',
   aiGlobalInstruction: '',
-  aiSkills: [],
   menuCommands: DEFAULT_MENU_COMMANDS,
+  translationResultMode: 'insertBelow',
   startupBehavior: 'newBlankInVault',
   blankNoteFirstLineFormat: 'paragraph',
   lastEditedFilePath: '',
@@ -128,8 +124,11 @@ export function getPreferences(): Preferences {
     openRouterApiKey: store.get('openRouterApiKey', DEFAULTS.openRouterApiKey),
     openRouterModel: store.get('openRouterModel', DEFAULTS.openRouterModel),
     aiGlobalInstruction: store.get('aiGlobalInstruction', DEFAULTS.aiGlobalInstruction),
-    aiSkills: store.get('aiSkills', DEFAULTS.aiSkills),
     menuCommands: store.get('menuCommands', DEFAULTS.menuCommands),
+    translationResultMode:
+      store.get('translationResultMode', DEFAULTS.translationResultMode) === 'replaceSelection'
+        ? 'replaceSelection'
+        : 'insertBelow',
     startupBehavior: normalizeStartupBehavior(
       store.get('startupBehavior', DEFAULTS.startupBehavior)
     ),

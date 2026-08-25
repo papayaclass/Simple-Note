@@ -10,7 +10,6 @@ import {
   wordCount,
 } from './transforms';
 import { useStore } from '../store';
-import { AIResultModal, AIState } from './AIResultModal';
 import { PinyinModal } from './PinyinModal';
 import { BoshiamyModal } from './BoshiamyModal';
 import { MENU_COMMANDS, reconcileMenuCommands, isDivider } from './commands';
@@ -19,6 +18,15 @@ import { getCachedViewCount } from '../editor/youtubeMention';
 import { removeParagraphBreaks } from './removeParagraphBreaks';
 
 type MenuItem = { divider: true } | { label: string; disabled: boolean; onClick: () => void };
+
+const TRANSLATION_PROMPT = `你是一位中英翻譯的語言專家，請針對我提供的【內容】進行中英互譯，並遵守以下要點。
+- 如果我提供的內容為「繁體中文」，請翻譯成英文。
+- 如果我提供的內容為「英文」，請翻譯成繁體中文。
+- 執行「英翻中」時，請在遵守原意的前提下讓內容通俗易懂，並符合台灣繁體中文的表達習慣。
+- 段落中的軟體指令、工具、參數、介面等名稱請維持英文，不要翻譯成中文。
+- 英文術語或數字的兩側請加上空白符號。例：撰寫 Python 腳本。
+- 如果我提供的內容中包含了不相關的廣告、UI 文字、促銷訊息等，請直接忽略這些與主題無關的文字。
+- 只輸出翻譯結果，不要包含任何其它的說明。`;
 
 // Drop leading/trailing dividers and collapse runs of adjacent dividers into one
 // (hidden commands between two dividers would otherwise leave them adjacent).
@@ -76,11 +84,10 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
   // menu). Starts at the click point, then a layout effect nudges it on-screen.
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const [aiState, setAiState] = useState<AIState | null>(null);
+  const [translationStatus, setTranslationStatus] = useState<string | null>(null);
   const [pinyinState, setPinyinState] = useState<PinyinState | null>(null);
   const [boshiamyState, setBoshiamyState] = useState<BoshiamyState | null>(null);
   const setWordCount = useStore((s) => s.setWordCountPopover);
-  const skills = useStore((s) => s.preferences.aiSkills);
   const menuCommands = useStore((s) => s.preferences.menuCommands);
 
   useEffect(() => {
@@ -126,21 +133,27 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
     if (left !== pos?.left || top !== pos?.top) setPos({ left, top });
   }, [menu]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const runSkill = async (skill: { name: string; prompt: string }) => {
+  const runTranslation = async () => {
     const { from, to } = editor._tiptapEditor.state.selection;
     const selText = editor.getSelectedText?.() ?? window.getSelection()?.toString() ?? '';
-    const userContent = skill.prompt + (selText ? '\n\n' + selText : '');
-    const skillName = skill.name.trim() || '未命名 Skill';
+    if (!selText) return;
     close();
-    setAiState({ status: 'loading', skillName, range: { from, to } });
-    const res = await window.api.ai.run(userContent);
-    setAiState({
-      status: res.ok ? 'done' : 'error',
-      skillName,
-      range: { from, to },
-      result: res.ok ? res.content : undefined,
-      reason: res.ok ? undefined : res.reason,
-    });
+    setTranslationStatus('AI 翻譯中…');
+    const res = await window.api.ai.run(`${TRANSLATION_PROMPT}\n\n${selText}`);
+    if (!res.ok) {
+      setTranslationStatus(res.reason);
+      window.setTimeout(() => setTranslationStatus(null), 4000);
+      return;
+    }
+
+    const tipTap = editor._tiptapEditor;
+    const mode = useStore.getState().preferences.translationResultMode;
+    if (mode === 'replaceSelection') {
+      tipTap.chain().focus().insertContentAt({ from, to }, res.content).run();
+    } else {
+      tipTap.chain().focus().insertContentAt(to, `\n\n${res.content}`).run();
+    }
+    setTranslationStatus(null);
   };
 
   // Apply a text→text transform to the selection while preserving block
@@ -359,13 +372,15 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
       );
       close();
     },
+    translate: () => {
+      void runTranslation();
+    },
   };
 
   const labelByKey = new Map(MENU_COMMANDS.map((c) => [c.key, c]));
 
   // Built-in commands rendered in the user-defined order, hidden ones filtered
-  // out, user-inserted dividers kept in place. AI Skills are appended after a
-  // divider (managed in the AI prefs tab).
+  // out, and user-inserted dividers kept in place.
   const builtInItems: MenuItem[] = [];
   for (const c of reconcileMenuCommands(menuCommands)) {
     if (isDivider(c)) {
@@ -380,21 +395,7 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
     }
   }
 
-  const items = collapseDividers([
-    ...builtInItems,
-    ...(skills.length > 0
-      ? [
-          { divider: true } as const,
-          ...skills.map((skill) => ({
-            label: skill.name.trim() || '未命名 Skill',
-            disabled: false,
-            onClick: () => {
-              void runSkill(skill);
-            },
-          })),
-        ]
-      : []),
-  ]);
+  const items = collapseDividers(builtInItems);
 
   return (
     <>
@@ -421,8 +422,10 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
           )}
         </div>
       )}
-      {aiState && (
-        <AIResultModal editor={editor} state={aiState} onClose={() => setAiState(null)} />
+      {translationStatus && (
+        <div className="translation-status-toast" role="status">
+          {translationStatus}
+        </div>
       )}
       {pinyinState && (
         <PinyinModal

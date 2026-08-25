@@ -13,15 +13,10 @@ export interface VaultNode {
   children?: VaultNode[];
 }
 
-export interface AISkill {
-  id: string;
-  name: string;
-  prompt: string;
-}
-
 export type SortMode = 'manual' | 'name' | 'created' | 'modified';
 export type StartupBehavior = 'newBlankInVault' | 'lastEdited';
 export type BlankFirstLineFormat = 'heading1' | 'heading2' | 'heading3' | 'paragraph';
+export type TranslationResultMode = 'insertBelow' | 'replaceSelection';
 
 // Column layout as the article's position on a `[left] — center — [right]` track.
 // `center` is single-column; the other two reveal an independent blank column on
@@ -77,8 +72,8 @@ export interface Preferences {
   openRouterApiKey: string;
   openRouterModel: string;
   aiGlobalInstruction: string;
-  aiSkills: AISkill[];
   menuCommands: MenuItemPref[];
+  translationResultMode: TranslationResultMode;
   startupBehavior: StartupBehavior;
   blankNoteFirstLineFormat: BlankFirstLineFormat;
   lastEditedFilePath: string;
@@ -105,8 +100,8 @@ export const DEFAULT_PREFS: Preferences = {
   openRouterApiKey: '',
   openRouterModel: '',
   aiGlobalInstruction: '',
-  aiSkills: [],
   menuCommands: DEFAULT_MENU_COMMANDS,
+  translationResultMode: 'insertBelow',
   startupBehavior: 'newBlankInVault',
   blankNoteFirstLineFormat: 'paragraph',
   lastEditedFilePath: '',

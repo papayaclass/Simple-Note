@@ -25,6 +25,7 @@ export const MENU_COMMANDS: MenuCommandDef[] = [
   { key: 'googleMaps', label: '在 Google Maps 搜尋', requiresSelection: true },
   { key: 'youtube', label: '在 YouTube 搜尋', requiresSelection: true },
   { key: 'cambridge', label: '查詢劍橋詞典', requiresSelection: true },
+  { key: 'translate', label: '中英互譯', requiresSelection: true },
 ];
 
 export interface MenuCommandPref {
