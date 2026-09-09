@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Editor, EditorHandle } from './editor/Editor';
 import { attachMarquee } from './editor/marquee';
 import { useStore, ColumnLayout } from './store';
 import { isPathInVault, refreshVaultTree, rememberLastEditedFile } from './fileActions';
 import { lossyFeatures, parseSnote, serializeSnote, withSnoteExt } from './noteFormat';
+import { FindBar, FindBarHandle } from './find/FindBar';
+import { selectedText } from './find/findPlugin';
+import './find/find.css';
 
 // Imperative interface each DocumentView registers so the app shell (menu save,
 // window-close dirty check, tab context menu) can act on a specific tab without
@@ -21,6 +24,10 @@ export interface DocumentViewHandle {
   removeParagraphBreaks: () => void;
   focusLastBlock: () => void;
   focus: () => void;
+  // Find & replace bar (menu commands 尋找 / 尋找並取代 / 找下一個 / 找上一個).
+  openFind: (withReplace: boolean) => void;
+  findNext: () => void;
+  findPrev: () => void;
 }
 
 const registry = new Map<string, DocumentViewHandle>();
@@ -56,6 +63,10 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
   const shiftTabColumn = useStore((s) => s.shiftTabColumn);
   const setTabColumnLayout = useStore((s) => s.setTabColumnLayout);
   const updateTab = useStore((s) => s.updateTab);
+
+  const [findOpen, setFindOpen] = useState(false);
+  const [findShowReplace, setFindShowReplace] = useState(false);
+  const findApiRef = useRef<FindBarHandle | null>(null);
 
   const leftHandleRef = useRef<EditorHandle | null>(null);
   const midHandleRef = useRef<EditorHandle | null>(null);
@@ -404,6 +415,42 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
     return midHandleRef.current;
   }, []);
 
+  // The editors the find bar searches, in on-screen left-to-right order. Only
+  // the columns actually visible in the current layout take part.
+  const getFindEditors = useCallback((): unknown[] => {
+    const layout = currentLayout();
+    const list: unknown[] = [];
+    if (layout === 'article-right' && leftHandleRef.current) {
+      list.push(leftHandleRef.current.editor);
+    }
+    if (midHandleRef.current) list.push(midHandleRef.current.editor);
+    if (layout === 'article-left' && rightHandleRef.current) {
+      list.push(rightHandleRef.current.editor);
+    }
+    return list;
+  }, [currentLayout]);
+
+  // Cmd+F / Opt+Cmd+F. Like macOS apps, a one-line selection seeds the field;
+  // when the bar is already open we just re-focus and select it.
+  const openFind = useCallback(
+    (withReplace: boolean) => {
+      const seed = selectedText(focusedHandle()?.editor).trim();
+      const usable = seed && !seed.includes('\n') ? seed : '';
+      if (withReplace) setFindShowReplace(true);
+      setFindOpen(true);
+      requestAnimationFrame(() => {
+        if (usable) findApiRef.current?.seed(usable);
+        findApiRef.current?.focusQuery();
+      });
+    },
+    [focusedHandle]
+  );
+
+  const closeFind = useCallback(() => {
+    setFindOpen(false);
+    requestAnimationFrame(() => midHandleRef.current?.focus());
+  }, []);
+
   const hasContent = useCallback((): boolean => {
     const mid = midHandleRef.current;
     if (mid && docHasContent(mid.editor.document)) return true;
@@ -469,6 +516,9 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
     removeParagraphBreaks: () => {},
     focusLastBlock: () => {},
     focus: () => {},
+    openFind: () => {},
+    findNext: () => {},
+    findPrev: () => {},
   });
   viewApiRef.current.save = save;
   viewApiRef.current.buildMarkdown = buildMarkdown;
@@ -481,6 +531,9 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
   viewApiRef.current.removeParagraphBreaks = () => focusedHandle()?.removeParagraphBreaks();
   viewApiRef.current.focusLastBlock = () => midHandleRef.current?.focusLastBlock();
   viewApiRef.current.focus = () => midHandleRef.current?.focus();
+  viewApiRef.current.openFind = openFind;
+  viewApiRef.current.findNext = () => findApiRef.current?.next();
+  viewApiRef.current.findPrev = () => findApiRef.current?.prev();
   useEffect(() => {
     registry.set(tabId, viewApiRef.current);
     return () => {
@@ -565,6 +618,16 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
       onClick={onPageClick}
       data-tab-id={tabId}
     >
+      {findOpen && (
+        <FindBar
+          getEditors={getFindEditors}
+          scopeKey={columnLayout}
+          showReplace={findShowReplace}
+          onToggleReplace={setFindShowReplace}
+          onClose={closeFind}
+          handleRef={findApiRef}
+        />
+      )}
       <div className={`page${pageLayoutClass}`} ref={pageRef}>
         <div className="column column-left" ref={leftColRef}>
           <Editor

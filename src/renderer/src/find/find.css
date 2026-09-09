@@ -1,0 +1,169 @@
+/* Find & replace bar.
+
+   The dock is a zero-height sticky strip at the top of the scrolling document
+   surface, so the bar stays pinned while the page scrolls underneath it. */
+.sn-find-dock {
+  position: sticky;
+  top: 0;
+  height: 0;
+  z-index: 20;
+  pointer-events: none;
+}
+
+.sn-find-bar {
+  position: absolute;
+  top: 10px;
+  right: 18px;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 10px;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.16);
+  font-size: 13px;
+  -webkit-app-region: no-drag;
+}
+
+.sn-find-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sn-find-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 210px;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: 6px;
+}
+
+.sn-find-field input {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 13px;
+  padding: 5px 8px;
+}
+
+.sn-find-field input::placeholder {
+  color: var(--fg-faint);
+}
+
+.sn-find-counter {
+  flex: 0 0 auto;
+  padding-right: 8px;
+  padding-left: 4px;
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sn-find-btn,
+.sn-find-disclosure {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.sn-find-btn:hover:not(:disabled),
+.sn-find-disclosure:hover {
+  background: var(--hover-bg);
+  color: var(--fg);
+}
+
+.sn-find-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.sn-find-toggle[data-on='true'] {
+  background: var(--accent);
+  color: #fff;
+}
+
+.sn-find-disclosure svg {
+  transition: transform 140ms ease;
+}
+
+.sn-find-disclosure[data-open='true'] svg {
+  transform: rotate(90deg);
+}
+
+.sn-find-disclosure-spacer {
+  flex: 0 0 auto;
+  width: 26px;
+}
+
+.sn-find-text-btn {
+  flex: 0 0 auto;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--input-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.sn-find-text-btn:hover:not(:disabled) {
+  background: var(--hover-bg);
+}
+
+.sn-find-text-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* Match highlights inside the editors. */
+.sn-find-match {
+  background: rgba(250, 204, 21, 0.4);
+  border-radius: 2px;
+}
+
+.sn-find-match-active {
+  background: rgba(249, 146, 21, 0.75);
+}
+
+@media (prefers-color-scheme: dark) {
+  .sn-find-match {
+    background: rgba(250, 204, 21, 0.3);
+  }
+  .sn-find-match-active {
+    background: rgba(249, 146, 21, 0.6);
+  }
+}
+
+@media print {
+  .sn-find-dock {
+    display: none !important;
+  }
+  .sn-find-match,
+  .sn-find-match-active {
+    background: transparent !important;
+  }
+}

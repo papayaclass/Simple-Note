@@ -11,6 +11,7 @@ import { createPasteLinkExtension } from './pasteLink';
 import { createCodeHighlightPlugin } from './codeHighlight';
 import { createCodeWrapPlugin } from './codeWrap';
 import { createCodeBlockSelectPlugin } from './codeBlockSelect';
+import { createFindPlugin } from '../find/findPlugin';
 import { createSelectionClampPlugin } from './selectionClamp';
 import { deleteSelectedBlocks, deleteForwardEmptyBlock } from './blockDelete';
 import { createToggleKeyboardExtension } from './toggle';
@@ -259,6 +260,10 @@ export function Editor({
     createBlockNoteExtension({
       key: 'simple-note-codeblock-select',
       plugins: [createCodeBlockSelectPlugin()],
+    }),
+    createBlockNoteExtension({
+      key: 'simple-note-find',
+      plugins: [createFindPlugin()],
     }),
     createBlockNoteExtension({
       key: 'simple-note-code-highlight',

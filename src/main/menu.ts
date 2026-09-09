@@ -64,6 +64,27 @@ export function buildMenu(h: MenuHandlers): void {
         { role: 'selectAll' },
         { type: 'separator' },
         {
+          label: '尋找…',
+          accelerator: 'CmdOrCtrl+F',
+          click: () => h.onCommand('find'),
+        },
+        {
+          label: '尋找並取代…',
+          accelerator: 'Alt+CmdOrCtrl+F',
+          click: () => h.onCommand('find-replace'),
+        },
+        {
+          label: '找下一個',
+          accelerator: 'CmdOrCtrl+G',
+          click: () => h.onCommand('find-next'),
+        },
+        {
+          label: '找上一個',
+          accelerator: 'Shift+CmdOrCtrl+G',
+          click: () => h.onCommand('find-prev'),
+        },
+        { type: 'separator' },
+        {
           label: '簡體轉繁體',
           click: () => h.onCommand('s2t'),
         },

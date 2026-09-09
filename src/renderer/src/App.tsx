@@ -331,6 +331,18 @@ export function App(): JSX.Element {
           s.shiftTabColumn(id, 'right');
           s.setTabDirty(id, true);
           break;
+        case 'find':
+          getDocumentView(id)?.openFind(false);
+          break;
+        case 'find-replace':
+          getDocumentView(id)?.openFind(true);
+          break;
+        case 'find-next':
+          getDocumentView(id)?.findNext();
+          break;
+        case 'find-prev':
+          getDocumentView(id)?.findPrev();
+          break;
         case 'paste-plain':
           getDocumentView(id)?.pastePlainText();
           break;
