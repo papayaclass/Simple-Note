@@ -64,7 +64,8 @@ export interface SimpleNoteAPI {
     confirmLossy: (
       kind: 'convert' | 'export',
       name: string,
-      features: string[]
+      features: string[],
+      doc?: 'note' | 'sheet'
     ) => Promise<boolean>;
     saveImage: (dataUrl: string) => Promise<{ ok: boolean; path?: string }>;
     getPathForFile: (file: File) => string;
@@ -75,7 +76,10 @@ export interface SimpleNoteAPI {
     clear: () => Promise<void>;
     list: () => Promise<VaultNode[]>;
     read: (path: string) => Promise<{ ok: boolean; content?: string }>;
-    createFile: (dir?: string | null) => Promise<{ ok: boolean; path?: string }>;
+    createFile: (
+      dir?: string | null,
+      kind?: 'note' | 'sheet'
+    ) => Promise<{ ok: boolean; path?: string }>;
     createBlankNote: () => Promise<{ ok: boolean; path?: string }>;
     createFolder: (dir?: string | null) => Promise<{ ok: boolean; path?: string }>;
     rename: (
@@ -148,8 +152,8 @@ const api: SimpleNoteAPI = {
     exportMarkdown: (markdown, suggestedName) =>
       ipcRenderer.invoke('file:exportMarkdown', markdown, suggestedName),
     convertToSnote: (path, snote) => ipcRenderer.invoke('file:convertToSnote', path, snote),
-    confirmLossy: (kind, name, features) =>
-      ipcRenderer.invoke('file:confirmLossy', kind, name, features),
+    confirmLossy: (kind, name, features, doc) =>
+      ipcRenderer.invoke('file:confirmLossy', kind, name, features, doc),
     saveImage: (dataUrl) => ipcRenderer.invoke('file:saveImage', dataUrl),
     getPathForFile: (file) => webUtils.getPathForFile(file),
   },
@@ -159,7 +163,7 @@ const api: SimpleNoteAPI = {
     clear: () => ipcRenderer.invoke('vault:clear'),
     list: () => ipcRenderer.invoke('vault:list'),
     read: (path) => ipcRenderer.invoke('vault:read', path),
-    createFile: (dir) => ipcRenderer.invoke('vault:createFile', dir),
+    createFile: (dir, kind) => ipcRenderer.invoke('vault:createFile', dir, kind),
     createBlankNote: () => ipcRenderer.invoke('vault:createBlankNote'),
     createFolder: (dir) => ipcRenderer.invoke('vault:createFolder', dir),
     rename: (path, newName) => ipcRenderer.invoke('vault:rename', path, newName),

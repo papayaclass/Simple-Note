@@ -14,7 +14,7 @@ export interface VaultNode {
 }
 
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.avif']);
-const IMPORT_EXTS = new Set(['.snote', '.md', '.txt', ...IMAGE_EXTS]);
+const IMPORT_EXTS = new Set(['.snote', '.ssheet', '.md', '.txt', '.csv', ...IMAGE_EXTS]);
 
 export function isInVault(p: string): boolean {
   const v = getVault();
@@ -191,10 +191,16 @@ async function uniquePath(dir: string, base: string, ext: string): Promise<strin
   return candidate;
 }
 
-export async function createFile(dir?: string | null): Promise<{ ok: boolean; path?: string }> {
+export async function createFile(
+  dir?: string | null,
+  kind: 'note' | 'sheet' = 'note'
+): Promise<{ ok: boolean; path?: string }> {
   const target = dir || getVault();
   if (!target) return { ok: false };
-  const path = await uniquePath(target, '未命名筆記', '.snote');
+  const path =
+    kind === 'sheet'
+      ? await uniquePath(target, '未命名試算表', '.ssheet')
+      : await uniquePath(target, '未命名筆記', '.snote');
   await fs.writeFile(path, '', 'utf-8');
   return { ok: true, path };
 }
@@ -330,15 +336,20 @@ export async function moveToVault(
   const defaultPath = vault ? join(vault, name) : name;
   const opts = {
     defaultPath,
-    filters: [
-      { name: 'Simple Note', extensions: ['snote'] },
-      { name: 'Markdown', extensions: ['md'] },
-    ],
+    filters: /\.(ssheet|csv)$/i.test(name)
+      ? [
+          { name: 'Simple Sheet', extensions: ['ssheet'] },
+          { name: 'CSV', extensions: ['csv'] },
+        ]
+      : [
+          { name: 'Simple Note', extensions: ['snote'] },
+          { name: 'Markdown', extensions: ['md'] },
+        ],
   };
   const r = win ? await dialog.showSaveDialog(win, opts) : await dialog.showSaveDialog(opts);
   if (r.canceled || !r.filePath) return { ok: false };
   const ext = extname(r.filePath).toLowerCase();
-  const body = ext === '.md' || ext === '.txt' ? contents.markdown : contents.snote;
+  const body = ext === '.md' || ext === '.txt' || ext === '.csv' ? contents.markdown : contents.snote;
   await fs.writeFile(r.filePath, body, 'utf-8');
   return { ok: true, path: r.filePath };
 }

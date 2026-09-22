@@ -2,12 +2,14 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { useStore, useActiveTab } from './store';
 import { DocumentView, getDocumentView } from './DocumentView';
 import { ImageView } from './ImageView';
+import { SheetView } from './sheet/SheetView';
 import { Sidebar } from './sidebar/Sidebar';
 import { TabBar } from './tabs/TabBar';
 import {
   openFileInTab,
   refreshVaultTree,
   createNewTab,
+  createNewSheet,
   createBlankVaultNote,
   isPathInVault,
   forgetLastEditedFile,
@@ -310,6 +312,9 @@ export function App(): JSX.Element {
         case 'new-tab':
           void createNewTab();
           break;
+        case 'new-sheet':
+          void createNewSheet();
+          break;
         case 'close-tab-or-window':
           if (s.tabs.length > 1) void closeTabWithChecks(id);
           else window.api.window.close();
@@ -419,6 +424,8 @@ export function App(): JSX.Element {
                     if (!t) return null;
                     return t.kind === 'image' ? (
                       <ImageView key={t.id} tabId={t.id} active={t.id === pane.activeTabId} />
+                    ) : t.kind === 'sheet' ? (
+                      <SheetView key={t.id} tabId={t.id} active={t.id === pane.activeTabId} />
                     ) : (
                       <DocumentView key={t.id} tabId={t.id} active={t.id === pane.activeTabId} />
                     );

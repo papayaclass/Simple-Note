@@ -35,6 +35,21 @@ main 端在 `app.whenReady` 內註冊 handler，命名採 `namespace:action`（�
 
 存檔內容是純 Markdown：`file:save` 收下 renderer 用 `editor.blocksToMarkdownLossy` 產生的字串直接寫入 `.md`。雙欄模式啟用時，右欄文字會接到左欄下方（Markdown 無法表達多欄）。`file:save` 會記住 `currentFilePath`，後續按 Cmd+S 不再跳對話框；`file:new` 與 `file:open` 會更新標題列與 `representedFilename`。開啟檔案時一律用 `loadMarkdown` 解析進左欄、清空右欄並退回單欄。Renderer 端透過 `window.__simpleNote_isDirty()` / `window.__simpleNote_save()` 兩個全域函式，讓 main 在視窗關閉前可同步詢問是否儲存。
 
+**試算表 (`src/renderer/src/sheet/`)**
+
+`.ssheet` (Simple Sheet，JSON：`{ format: 'simple-sheet', version, colWidths, cells }`，cells 以 A1 位址為 key，存原始輸入含公式與粗斜體／顏色) 與 `.csv` 以 `kind: 'sheet'` 分頁開啟，由 `SheetView` 渲染 (`makeTab` 依副檔名推斷 kind)。沿用 `DocumentViewHandle`（透過 `registerDocumentView` 註冊），所以存檔、關閉詢問、分頁搬移不用分支：`buildMarkdown` 回傳 CSV、`buildSnote` 回傳 `.ssheet` JSON，main 端 `.csv` 與 `.md` 一樣走純文字那份。`.csv` 行為比照 `.md`：存回 CSV 時公式變計算結果、樣式捨棄，關閉時若用了公式或格式會詢問轉存 `.ssheet`。
+
+- `formula.ts`：手寫公式引擎（文法在檔頭），支援 SUM / AVERAGE / COUNT / COUNTIF / SUMIF / IF 等；插入／刪除列欄與相對貼上時用 `shiftForStructure` / `shiftRelative` 改寫參照。
+- `SheetView` 內的 `.sheet-input` 同時是鍵盤接收器：未編輯時透明地停在作用中儲存格上並保持 focus，讓注音等輸入法直接在格子上組字。快捷鍵一樣用 `e.code`。
+- 「檔案 → 新增試算表」(Opt+Cmd+N) 建立試算表；分頁列的 + 號只建立一般筆記。
+- 編輯公式時，`formulaRanges()` 找出公式內所有參照，畫成 `.sheet-ref-box` 虛線框；用滑鼠剛點選／拖曳的那一段 (`refPick`) 加 `.marching` 流動虛線（四條 gradient 邊框動畫 background-position），使用者一打字就停止。
+- 踩過的坑：
+  - 閒置的 `.sheet-input` 疊在作用中儲存格上方，**不可**套 `fill-*` 底色，否則會把格子裡的文字蓋掉（只在編輯時套）。
+  - 整欄／整列選取時 `rowCount`/`colCount` 只能「容納」選取範圍 (`range.r2 + 1`)，不能再加緩衝，否則每點一次欄標題表格就長 50 列。
+  - `registerDocumentView` 的 cleanup 要比對 handle 是否仍是自己：分頁從筆記切成試算表 (同一個 tab id) 時，新 view 可能先註冊、舊 view 後卸載。
+  - Browser pane 模擬按鍵時 `e.code` 是空字串，快捷鍵用 `isKey()`：有 code 比 code，沒有才退回 `e.key`。
+- 驗證 UI：`.claude/launch.json` 的 `renderer-only` 只跑 Vite，沒有 preload，`window.api` 不存在會直接壞掉。可暫時在 `src/renderer/` 放一個 harness html，先用 inline script 塞假的 `window.api` (記下 `onOpenInTab` / `onMenu` 的 handler 以便從 console 開檔、送選單命令) 再載入 `./src/main.tsx`，測完刪除。
+
 **編輯器核心 (`src/renderer/src/editor/`)**
 
 - 使用 BlockNote 預設 schema，加上一個自訂 style `RedText`（紅字標記）。

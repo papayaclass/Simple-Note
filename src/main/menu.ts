@@ -35,6 +35,11 @@ export function buildMenu(h: MenuHandlers): void {
       label: '檔案',
       submenu: [
         { label: '新增', accelerator: 'CmdOrCtrl+N', click: () => h.onNew() },
+        {
+          label: '新增試算表',
+          accelerator: 'Alt+CmdOrCtrl+N',
+          click: () => h.onCommand('new-sheet'),
+        },
         { label: '開啟…', accelerator: 'CmdOrCtrl+O', click: () => h.onOpen() },
         { type: 'separator' },
         { label: '儲存', accelerator: 'CmdOrCtrl+S', click: () => h.onSave() },

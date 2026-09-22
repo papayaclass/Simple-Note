@@ -40,6 +40,17 @@ export function allDocumentViews(): Array<[string, DocumentViewHandle]> {
   return [...registry.entries()];
 }
 
+// Tab surfaces other than DocumentView (the spreadsheet view) register the same
+// handle so save / close / pane-move flows treat every tab alike. The returned
+// cleanup only unregisters its own handle: when a tab switches between a note
+// and a sheet, the new view may register before the old one unmounts.
+export function registerDocumentView(id: string, handle: DocumentViewHandle): () => void {
+  registry.set(id, handle);
+  return () => {
+    if (registry.get(id) === handle) registry.delete(id);
+  };
+}
+
 interface Props {
   tabId: string;
   active: boolean;
@@ -534,12 +545,7 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
   viewApiRef.current.openFind = openFind;
   viewApiRef.current.findNext = () => findApiRef.current?.next();
   viewApiRef.current.findPrev = () => findApiRef.current?.prev();
-  useEffect(() => {
-    registry.set(tabId, viewApiRef.current);
-    return () => {
-      registry.delete(tabId);
-    };
-  }, [tabId]);
+  useEffect(() => registerDocumentView(tabId, viewApiRef.current), [tabId]);
 
   useEffect(() => {
     const tab = useStore.getState().tabs.find((t) => t.id === tabId);

@@ -12,6 +12,7 @@ import {
   closeTabWithChecks,
 } from '../fileActions';
 import { isSnotePath, withMarkdownExt, withSnoteExt } from '../noteFormat';
+import { isSsheetPath, withCsvExt, withSsheetExt } from '../sheet/sheetFormat';
 import { PopMenu, PopMenuState } from '../ui/PopMenu';
 import './tabs.css';
 
@@ -27,6 +28,11 @@ interface TabBarProps {
 }
 
 export const TAB_DRAG_TYPE = 'application/x-simple-note-tab';
+
+// The app's own lossless file name for a tab (.snote note / .ssheet sheet).
+function nativeFileName(tab: Tab): string {
+  return tab.kind === 'sheet' ? withSsheetExt(tab.fileName) : withSnoteExt(tab.fileName);
+}
 
 export function TabBar({
   paneId,
@@ -81,7 +87,7 @@ export function TabBar({
       }
     } else {
       const content = (await getDocumentView(tab.id)?.buildSnote()) ?? '';
-      addTab({ initialMarkdown: content }, paneId);
+      addTab({ initialMarkdown: content, kind: tab.kind }, paneId);
     }
   }, [addTab, paneId]);
 
@@ -111,7 +117,7 @@ export function TabBar({
   );
 
   // Both serializations of a tab's document; the chosen file extension decides
-  // which one is written.
+  // which one is written. For a sheet, `markdown` carries the CSV text.
   const contentsOf = useCallback(async (tab: Tab) => {
     const view = getDocumentView(tab.id);
     return {
@@ -125,7 +131,7 @@ export function TabBar({
   // saves to the vault.
   const saveAsCopy = useCallback(
     async (tab: Tab) => {
-      await window.api.file.saveAs(await contentsOf(tab), withSnoteExt(tab.fileName));
+      await window.api.file.saveAs(await contentsOf(tab), nativeFileName(tab));
     },
     [contentsOf]
   );
@@ -143,11 +149,18 @@ export function TabBar({
     await window.api.file.exportMarkdown(await view.buildMarkdown(), withMarkdownExt(tab.fileName));
   }, []);
 
+  // "匯出成 CSV 文件": values only (formula results, no colours/styles).
+  const exportCsv = useCallback(async (tab: Tab) => {
+    const view = getDocumentView(tab.id);
+    if (!view) return;
+    await window.api.file.exportMarkdown(await view.buildMarkdown(), withCsvExt(tab.fileName));
+  }, []);
+
   const saveToVault = useCallback(
     async (tab: Tab) => {
       const r = await window.api.vault.moveToVault(
         await contentsOf(tab),
-        withSnoteExt(tab.fileName)
+        nativeFileName(tab)
       );
       if (r.ok && r.path) {
         setTabFile(tab.id, r.path);
@@ -179,11 +192,17 @@ export function TabBar({
             disabled: !outsideVault,
             onClick: () => void saveToVault(tab),
           },
-          {
-            label: '匯出成 MD 文件…',
-            disabled: !isSnotePath(tab.filePath),
-            onClick: () => void exportMarkdown(tab),
-          },
+          tab.kind === 'sheet'
+            ? {
+                label: '匯出成 CSV 文件…',
+                disabled: !!tab.filePath && !isSsheetPath(tab.filePath),
+                onClick: () => void exportCsv(tab),
+              }
+            : {
+                label: '匯出成 MD 文件…',
+                disabled: !isSnotePath(tab.filePath),
+                onClick: () => void exportMarkdown(tab),
+              },
           { divider: true },
           {
             label: '刪除文件',
@@ -194,7 +213,7 @@ export function TabBar({
         ],
       });
     },
-    [isInVault, duplicateTab, saveAsCopy, exportMarkdown, saveToVault, deleteDocument]
+    [isInVault, duplicateTab, saveAsCopy, exportMarkdown, exportCsv, saveToVault, deleteDocument]
   );
 
   const onDragOver = useCallback((e: React.DragEvent, index: number) => {

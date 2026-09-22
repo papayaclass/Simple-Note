@@ -31,9 +31,11 @@ import {
 
 app.setName('Simple Note');
 
-// A document is written as Markdown only when the target file is a Markdown /
-// plain-text file; everything else (notably `.snote`) gets the app's own
-// lossless format. See src/renderer/src/noteFormat.ts.
+// A document is written in its plain form only when the target file is a
+// Markdown / plain-text / CSV file; everything else (`.snote`, `.ssheet`) gets
+// the app's own lossless format. See src/renderer/src/noteFormat.ts and
+// src/renderer/src/sheet/sheetFormat.ts. For spreadsheets `markdown` carries
+// the CSV text and `snote` the Simple Sheet JSON.
 interface NoteContents {
   markdown: string;
   snote: string;
@@ -41,13 +43,23 @@ interface NoteContents {
 
 function contentForPath(path: string, contents: NoteContents): string {
   const ext = extname(path).toLowerCase();
-  return ext === '.md' || ext === '.txt' ? contents.markdown : contents.snote;
+  return ext === '.md' || ext === '.txt' || ext === '.csv' ? contents.markdown : contents.snote;
 }
 
 const NOTE_FILTERS = [
   { name: 'Simple Note', extensions: ['snote'] },
   { name: 'Markdown', extensions: ['md'] },
 ];
+
+const SHEET_FILTERS = [
+  { name: 'Simple Sheet', extensions: ['ssheet'] },
+  { name: 'CSV', extensions: ['csv'] },
+];
+
+// Save dialogs offer the formats matching the suggested file's kind.
+function filtersFor(name: string | undefined): typeof NOTE_FILTERS {
+  return name && /\.(ssheet|csv)$/i.test(name) ? SHEET_FILTERS : NOTE_FILTERS;
+}
 
 interface WindowBounds {
   x?: number;
@@ -342,7 +354,12 @@ async function openViaDialog(): Promise<void> {
   const focused = BrowserWindow.getFocusedWindow();
   const options = {
     properties: ['openFile' as const],
-    filters: [{ name: 'Simple Note / Markdown / Text', extensions: ['snote', 'md', 'txt'] }],
+    filters: [
+      {
+        name: 'Simple Note / Simple Sheet / Markdown / CSV / Text',
+        extensions: ['snote', 'ssheet', 'md', 'csv', 'txt'],
+      },
+    ],
   };
   const r = focused
     ? await dialog.showOpenDialog(focused, options)
@@ -409,7 +426,9 @@ app.whenReady().then(() => {
   ipcMain.handle('vault:clear', () => clearVault());
   ipcMain.handle('vault:list', () => listVault());
   ipcMain.handle('vault:read', (_e, path: string) => readMarkdown(path));
-  ipcMain.handle('vault:createFile', (_e, dir?: string | null) => createFile(dir));
+  ipcMain.handle('vault:createFile', (_e, dir?: string | null, kind?: 'note' | 'sheet') =>
+    createFile(dir, kind)
+  );
   ipcMain.handle('vault:createBlankNote', () => createBlankNote());
   ipcMain.handle('vault:createFolder', (_e, dir?: string | null) => createFolder(dir));
   ipcMain.handle('vault:rename', (_e, path: string, newName: string) => renameEntry(path, newName));
@@ -457,7 +476,7 @@ app.whenReady().then(() => {
       if (!path) {
         const saveOptions = {
           defaultPath: options?.suggestedName ?? '未命名筆記.snote',
-          filters: NOTE_FILTERS,
+          filters: filtersFor(options?.suggestedName),
         };
         const r = win
           ? await dialog.showSaveDialog(win, saveOptions)
@@ -481,7 +500,7 @@ app.whenReady().then(() => {
     const name = suggestedName ?? '未命名筆記.snote';
     const saveOptions = {
       defaultPath: join(app.getPath('downloads'), name),
-      filters: NOTE_FILTERS,
+      filters: filtersFor(name),
     };
     const r = win
       ? await dialog.showSaveDialog(win, saveOptions)
@@ -491,13 +510,17 @@ app.whenReady().then(() => {
     return { ok: true, path: r.filePath };
   });
 
-  // "匯出成 MD 文件": write a Markdown copy of a `.snote` document, defaulting to
-  // the Downloads folder. The tab keeps pointing at its own file.
+  // "匯出成 MD 文件" / "匯出成 CSV 文件": write the plain copy of a `.snote` /
+  // `.ssheet` document, defaulting to the Downloads folder. The tab keeps
+  // pointing at its own file.
   ipcMain.handle('file:exportMarkdown', async (e, markdown: string, suggestedName?: string) => {
     const win = BrowserWindow.fromWebContents(e.sender);
+    const name = suggestedName ?? '未命名筆記.md';
     const saveOptions = {
-      defaultPath: join(app.getPath('downloads'), suggestedName ?? '未命名筆記.md'),
-      filters: [{ name: 'Markdown', extensions: ['md'] }],
+      defaultPath: join(app.getPath('downloads'), name),
+      filters: name.toLowerCase().endsWith('.csv')
+        ? [{ name: 'CSV', extensions: ['csv'] }]
+        : [{ name: 'Markdown', extensions: ['md'] }],
     };
     const r = win
       ? await dialog.showSaveDialog(win, saveOptions)
@@ -508,10 +531,13 @@ app.whenReady().then(() => {
   });
 
   // Convert a Markdown note that gained Markdown-incompatible formatting into a
-  // `.snote` beside it; the original .md goes to the Trash (recoverable).
+  // `.snote` beside it (a `.csv` sheet with formulas / styling into a
+  // `.ssheet`); the original goes to the Trash (recoverable).
   ipcMain.handle('file:convertToSnote', async (_e, path: string, snote: string) => {
     try {
-      const target = path.replace(/\.(md|txt)$/i, '') + '.snote';
+      const target = /\.csv$/i.test(path)
+        ? path.replace(/\.csv$/i, '') + '.ssheet'
+        : path.replace(/\.(md|txt)$/i, '') + '.snote';
       await writeFile(target, snote, 'utf-8');
       if (target !== path) await shell.trashItem(path);
       return { ok: true, path: target };
@@ -525,11 +551,26 @@ app.whenReady().then(() => {
   // Markdown export (the copy will be missing these features).
   ipcMain.handle(
     'file:confirmLossy',
-    async (e, kind: 'convert' | 'export', name: string, features: string[]) => {
+    async (
+      e,
+      kind: 'convert' | 'export',
+      name: string,
+      features: string[],
+      doc: 'note' | 'sheet' = 'note'
+    ) => {
       const win = BrowserWindow.fromWebContents(e.sender);
       const list = features.length > 0 ? features.join('、') : '特殊格式';
       const options =
-        kind === 'convert'
+        kind === 'convert' && doc === 'sheet'
+          ? {
+              type: 'warning' as const,
+              buttons: ['轉存為 .ssheet', '維持 CSV'],
+              defaultId: 0,
+              cancelId: 1,
+              message: `「${name}」含有 CSV 不支援的內容`,
+              detail: `此試算表使用了 ${list}，以 CSV 儲存時公式只會留下計算結果，顏色與文字樣式也會遺失。要改存成 Simple Sheet 格式 (.ssheet) 嗎？原本的 .csv 檔會移到垃圾桶。`,
+            }
+          : kind === 'convert'
           ? {
               type: 'warning' as const,
               buttons: ['轉存為 .snote', '維持 Markdown'],

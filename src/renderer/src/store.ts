@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { DEFAULT_MENU_COMMANDS, MenuItemPref } from './context-menu/commands';
+import { isSheetPath } from './sheet/sheetFormat';
 
 // Mirrors VaultNode in src/preload/index.ts (kept local so the renderer's
 // tsconfig project stays self-contained). window.api.vault.list() returns the
@@ -22,6 +23,8 @@ export type TranslationResultMode = 'insertBelow' | 'replaceSelection';
 // `center` is single-column; the other two reveal an independent blank column on
 // the opposite side (article-left reveals the right column, and vice versa).
 export type ColumnLayout = 'center' | 'article-left' | 'article-right';
+
+export type TabKind = 'editor' | 'image' | 'sheet';
 
 export interface TabPane {
   id: string;
@@ -55,8 +58,9 @@ export interface Tab {
   // the previous dirty state is restored after that load.
   restoreDirtyAfterLoad?: boolean;
   // 'editor' (default) renders a DocumentView; 'image' renders a read-only
-  // ImageView previewing the file at filePath.
-  kind: 'editor' | 'image';
+  // ImageView previewing the file at filePath; 'sheet' renders a SheetView
+  // (.ssheet / .csv spreadsheets).
+  kind: TabKind;
 }
 
 export interface Preferences {
@@ -126,8 +130,9 @@ function nextPaneId(): string {
   return `pane-${paneCounter}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-function fileNameFromPath(path: string | null): string {
-  return path ? path.split('/').pop()!.replace(/\.(md|snote)$/i, '') : '未命名筆記';
+function fileNameFromPath(path: string | null, kind: TabKind = 'editor'): string {
+  if (!path) return kind === 'sheet' ? '未命名試算表' : '未命名筆記';
+  return path.split('/').pop()!.replace(/\.(md|snote|ssheet)$/i, '');
 }
 
 export interface NewTabOptions {
@@ -136,15 +141,16 @@ export interface NewTabOptions {
   autoFocus?: boolean;
   autoName?: boolean;
   blankFirstLineFormat?: BlankFirstLineFormat;
-  kind?: 'editor' | 'image';
+  kind?: TabKind;
 }
 
 export function makeTab(opts: NewTabOptions = {}): Tab {
   const filePath = opts.filePath ?? null;
+  const kind = opts.kind ?? (isSheetPath(filePath) ? 'sheet' : 'editor');
   return {
     id: nextTabId(),
     filePath,
-    fileName: fileNameFromPath(filePath),
+    fileName: fileNameFromPath(filePath, kind),
     dirty: false,
     columnLayout: 'center',
     columnSplit: 0.5,
@@ -152,7 +158,7 @@ export function makeTab(opts: NewTabOptions = {}): Tab {
     autoFocus: opts.autoFocus ?? true,
     autoName: opts.autoName ?? false,
     blankFirstLineFormat: opts.blankFirstLineFormat ?? DEFAULT_PREFS.blankNoteFirstLineFormat,
-    kind: opts.kind ?? 'editor',
+    kind,
   };
 }
 
@@ -468,7 +474,7 @@ export const useStore = create<AppState>((set) => ({
     set((s) => ({
       tabs: s.tabs.map((t) =>
         t.id === id
-          ? { ...t, filePath: path, fileName: fileNameFromPath(path), dirty: false }
+          ? { ...t, filePath: path, fileName: fileNameFromPath(path, t.kind), dirty: false }
           : t
       ),
     })),

@@ -1,6 +1,7 @@
 import { BlankFirstLineFormat, Tab, useStore, VaultNode } from './store';
 import { getDocumentView } from './DocumentView';
 import { isSnotePath } from './noteFormat';
+import { isCsvPath, isSheetPath } from './sheet/sheetFormat';
 
 interface OpenFileOptions {
   autoFocus?: boolean;
@@ -14,7 +15,7 @@ function currentBlankFirstLineFormat(): BlankFirstLineFormat {
 }
 
 function fileNameFromPath(path: string): string {
-  return path.split('/').pop()!.replace(/\.(md|snote)$/i, '');
+  return path.split('/').pop()!.replace(/\.(md|snote|ssheet)$/i, '');
 }
 
 function nextAnimationFrame(): Promise<void> {
@@ -59,7 +60,7 @@ export function forgetLastEditedFile(path: string): void {
 export async function stageTabForPaneMove(tabId: string): Promise<void> {
   const s = useStore.getState();
   const tab = s.tabs.find((t) => t.id === tabId);
-  if (!tab || tab.kind !== 'editor') return;
+  if (!tab || tab.kind === 'image') return;
   const view = getDocumentView(tabId);
   if (!view) return;
   // Staged in the app's own format so a pane move never drops red text,
@@ -120,12 +121,13 @@ export async function openFileInCurrentTab(
   const activeTab = s.tabs.find((t) => t.id === s.activeTabId);
   if (!activeTab) return openFileInTab(path, content, opts);
 
-  if (activeTab.kind === 'editor' && activeTab.filePath === path) {
+  const kind = isSheetPath(path) ? 'sheet' : 'editor';
+  if (activeTab.kind === kind && activeTab.filePath === path) {
     if (opts.autoFocus) focusTabWhenReady(activeTab.id);
     return activeTab.id;
   }
 
-  const activeView = activeTab.kind === 'editor' ? getDocumentView(activeTab.id) : undefined;
+  const activeView = activeTab.kind !== 'image' ? getDocumentView(activeTab.id) : undefined;
   if (activeView) {
     const shouldFlushVaultFile = !!activeTab.filePath && isPathInVault(activeTab.filePath);
     const shouldSaveDirtyFile = activeTab.dirty && activeView.hasContent();
@@ -142,7 +144,8 @@ export async function openFileInCurrentTab(
     md = r.content ?? '';
   }
 
-  const willReloadMountedEditor = activeTab.kind === 'editor' && !!activeView;
+  // A note ↔ sheet switch remounts a different view, which loads initialMarkdown.
+  const willReloadMountedEditor = activeTab.kind === kind && !!activeView;
   useStore.getState().updateTab(activeTab.id, {
     filePath: path,
     fileName: fileNameFromPath(path),
@@ -154,7 +157,7 @@ export async function openFileInCurrentTab(
     autoName: opts.autoName ?? false,
     blankFirstLineFormat: opts.blankFirstLineFormat ?? activeTab.blankFirstLineFormat,
     restoreDirtyAfterLoad: undefined,
-    kind: 'editor',
+    kind,
   });
   useStore.getState().setActiveTab(activeTab.id);
 
@@ -205,6 +208,22 @@ export async function createNewTab(): Promise<void> {
   }
   const tabId = s.addTab({ blankFirstLineFormat });
   focusTabWhenReady(tabId);
+}
+
+// File → 新增試算表: a blank Simple Sheet. In the vault it's a real
+// 未命名試算表.ssheet (auto-saved, listed in the sidebar); otherwise an untitled
+// in-memory tab. The tab bar's + button never creates sheets.
+export async function createNewSheet(dir: string | null = null): Promise<void> {
+  const s = useStore.getState();
+  if (s.vaultPath) {
+    const r = await window.api.vault.createFile(dir, 'sheet');
+    if (r.ok && r.path) {
+      await refreshVaultTree();
+      await openFileInTab(r.path, '', { autoFocus: true });
+      return;
+    }
+  }
+  s.addTab({ kind: 'sheet' });
 }
 
 // Startup "在儲存庫內新增空白文件": physically create 未命名筆記.snote in the vault
@@ -303,17 +322,30 @@ export function isTextNotePath(p: string): boolean {
   return /\.(md|txt|snote)$/i.test(p);
 }
 
+// Anything that opens in an editable tab: notes and spreadsheets.
+export function isDocumentPath(p: string): boolean {
+  return isTextNotePath(p) || isSheetPath(p);
+}
+
 // Closing a Markdown note that uses formatting Markdown can't store: offer to
 // convert it to the app's own `.snote` format (answering "維持 Markdown" is what
-// loses the red text / toggles / two-column layout). Returns silently for
-// `.snote` notes and for documents that survive Markdown untouched.
+// loses the red text / toggles / two-column layout). A `.csv` sheet with
+// formulas or cell styling gets the same offer for `.ssheet`. Returns silently
+// for native-format files and for documents that survive untouched.
 export async function convertMarkdownNoteIfLossy(tab: Tab): Promise<void> {
-  if (tab.kind !== 'editor' || !tab.filePath || isSnotePath(tab.filePath)) return;
+  if (tab.kind === 'image' || !tab.filePath) return;
+  const plain = tab.kind === 'sheet' ? isCsvPath(tab.filePath) : !isSnotePath(tab.filePath);
+  if (!plain) return;
   const view = getDocumentView(tab.id);
   if (!view) return;
   const features = view.lossyFeatures();
   if (features.length === 0) return;
-  const convert = await window.api.file.confirmLossy('convert', tab.fileName, features);
+  const convert = await window.api.file.confirmLossy(
+    'convert',
+    tab.fileName,
+    features,
+    tab.kind === 'sheet' ? 'sheet' : 'note'
+  );
   if (!convert) return;
   const snote = await view.buildSnote();
   view.cancelPendingAutoSave();

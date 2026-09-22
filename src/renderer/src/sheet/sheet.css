@@ -1,0 +1,462 @@
+/* Simple Sheet — the spreadsheet surface for .ssheet / .csv tabs. Borrows the
+   app's tokens: headers sit on the sidebar tone, selection uses the accent. */
+:root {
+  --sheet-grid: rgba(0, 0, 0, 0.075);
+  --sheet-head-bg: var(--sidebar-bg);
+  --sheet-head-fg: #8a8a86;
+  --sheet-head-sel-bg: rgba(37, 99, 235, 0.1);
+  --sheet-head-sel-fg: var(--accent);
+  --sheet-sel-fill: rgba(37, 99, 235, 0.07);
+  --sheet-err: var(--red);
+
+  --sheet-text-red: #d1383d;
+  --sheet-text-orange: #c8630a;
+  --sheet-text-yellow: #a07800;
+  --sheet-text-green: #2c7d47;
+  --sheet-text-blue: #2563eb;
+  --sheet-text-purple: #7445c7;
+  --sheet-text-pink: #c13a75;
+  --sheet-text-gray: #73736f;
+
+  --sheet-fill-red: #fde3e2;
+  --sheet-fill-orange: #fdebd9;
+  --sheet-fill-yellow: #fbf2c9;
+  --sheet-fill-green: #ddf1e3;
+  --sheet-fill-blue: #dfeafd;
+  --sheet-fill-purple: #ece3fb;
+  --sheet-fill-pink: #fbe2ee;
+  --sheet-fill-gray: #ededeb;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --sheet-grid: rgba(255, 255, 255, 0.08);
+    --sheet-head-fg: #8c8c88;
+    --sheet-head-sel-bg: rgba(96, 165, 250, 0.16);
+    --sheet-sel-fill: rgba(96, 165, 250, 0.1);
+
+    --sheet-text-red: #f47174;
+    --sheet-text-orange: #f0a060;
+    --sheet-text-yellow: #e5c44d;
+    --sheet-text-green: #6cc58a;
+    --sheet-text-blue: #6aa9fb;
+    --sheet-text-purple: #b48cf2;
+    --sheet-text-pink: #f07fb0;
+    --sheet-text-gray: #a3a3a0;
+
+    --sheet-fill-red: #4a2524;
+    --sheet-fill-orange: #4a3321;
+    --sheet-fill-yellow: #463d18;
+    --sheet-fill-green: #1f3d2a;
+    --sheet-fill-blue: #1e3152;
+    --sheet-fill-purple: #34284e;
+    --sheet-fill-pink: #47243a;
+    --sheet-fill-gray: #363634;
+  }
+}
+
+.sheet-view {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.sheet-view[hidden] {
+  display: none;
+}
+
+/* Formula bar ------------------------------------------------------------ */
+
+.sheet-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  height: 34px;
+  padding: 0 10px 0 0;
+  border-bottom: 1px solid var(--hr);
+  background: var(--bg);
+}
+.sheet-bar-address {
+  flex: 0 0 auto;
+  min-width: 52px;
+  padding: 0 12px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid var(--hr);
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  user-select: none;
+}
+.sheet-bar-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  padding: 0 12px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+}
+.sheet-bar-input:focus {
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+.sheet-bar-summary {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 14px;
+  padding-left: 12px;
+  color: var(--fg-muted);
+  font-size: 12px;
+  white-space: nowrap;
+  user-select: none;
+}
+
+/* Grid --------------------------------------------------------------------- */
+
+.sheet-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  position: relative;
+  background: var(--bg);
+  overscroll-behavior: contain;
+}
+.sheet-scroll::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+.sheet-scroll::-webkit-scrollbar-thumb {
+  background: rgba(127, 127, 127, 0.32);
+  border: 3px solid transparent;
+  border-radius: 8px;
+  background-clip: content-box;
+}
+.sheet-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(127, 127, 127, 0.5);
+}
+.sheet-scroll::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.sheet-canvas {
+  position: relative;
+}
+
+.sheet-colhead {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  height: 26px;
+  user-select: none;
+}
+.sheet-corner {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  flex: 0 0 52px;
+  height: 100%;
+  background: var(--sheet-head-bg);
+  border-right: 1px solid var(--sheet-grid);
+  border-bottom: 1px solid var(--sheet-grid);
+  cursor: cell;
+}
+.sheet-colhead-track {
+  position: relative;
+  flex: 1 1 auto;
+  height: 100%;
+  background: var(--sheet-head-bg);
+  border-bottom: 1px solid var(--sheet-grid);
+}
+.sheet-colhead-cell {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid var(--sheet-grid);
+  color: var(--sheet-head-fg);
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: s-resize;
+}
+.sheet-col-resize {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  width: 8px;
+  height: 100%;
+  z-index: 1;
+  cursor: col-resize;
+}
+.sheet-col-resize:hover {
+  background: linear-gradient(var(--accent), var(--accent)) center / 2px 100% no-repeat;
+}
+
+.sheet-body {
+  display: flex;
+}
+.sheet-rowheads {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  flex: 0 0 52px;
+  height: 100%;
+  background: var(--sheet-head-bg);
+  border-right: 1px solid var(--sheet-grid);
+  user-select: none;
+}
+.sheet-rowhead {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 10px;
+  border-bottom: 1px solid var(--sheet-grid);
+  color: var(--sheet-head-fg);
+  font-size: 11.5px;
+  cursor: e-resize;
+}
+.sheet-colhead-cell.in-sel,
+.sheet-rowhead.in-sel {
+  background: var(--sheet-head-sel-bg);
+  color: var(--sheet-head-sel-fg);
+}
+
+.sheet-cells {
+  position: relative;
+  flex: 0 0 auto;
+  height: 100%;
+  cursor: cell;
+  user-select: none;
+}
+.sheet-cell {
+  position: absolute;
+  height: 26px;
+  padding: 0 7px;
+  line-height: 25px;
+  border-right: 1px solid var(--sheet-grid);
+  border-bottom: 1px solid var(--sheet-grid);
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sheet-cell.num {
+  text-align: right;
+}
+.sheet-cell.bool {
+  text-align: center;
+}
+.sheet-cell.err {
+  color: var(--sheet-err);
+}
+
+/* Cell styling — shared by cells, the in-cell editor and menu swatches. */
+.sheet-view .b {
+  font-weight: 650;
+}
+.sheet-view .i {
+  font-style: italic;
+}
+.sheet-view .u {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.sheet-view .s {
+  text-decoration: line-through;
+}
+.sheet-view .u.s {
+  text-decoration: underline line-through;
+}
+.sheet-view .text-red { color: var(--sheet-text-red) !important; }
+.sheet-view .text-orange { color: var(--sheet-text-orange) !important; }
+.sheet-view .text-yellow { color: var(--sheet-text-yellow) !important; }
+.sheet-view .text-green { color: var(--sheet-text-green) !important; }
+.sheet-view .text-blue { color: var(--sheet-text-blue) !important; }
+.sheet-view .text-purple { color: var(--sheet-text-purple) !important; }
+.sheet-view .text-pink { color: var(--sheet-text-pink) !important; }
+.sheet-view .text-gray { color: var(--sheet-text-gray) !important; }
+.sheet-view .fill-red { background-color: var(--sheet-fill-red); }
+.sheet-view .fill-orange { background-color: var(--sheet-fill-orange); }
+.sheet-view .fill-yellow { background-color: var(--sheet-fill-yellow); }
+.sheet-view .fill-green { background-color: var(--sheet-fill-green); }
+.sheet-view .fill-blue { background-color: var(--sheet-fill-blue); }
+.sheet-view .fill-purple { background-color: var(--sheet-fill-purple); }
+.sheet-view .fill-pink { background-color: var(--sheet-fill-pink); }
+.sheet-view .fill-gray { background-color: var(--sheet-fill-gray); }
+
+/* Selection */
+.sheet-sel-range {
+  position: absolute;
+  pointer-events: none;
+  background: var(--sheet-sel-fill);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.sheet-sel-active {
+  position: absolute;
+  pointer-events: none;
+  margin: -1px 0 0 -1px;
+  box-shadow: inset 0 0 0 2px var(--accent);
+  border-radius: 1px;
+  z-index: 1;
+}
+
+/* The in-cell editor doubles as the grid's keyboard sink: always focused while
+   the sheet is, invisible until typing starts, so input methods compose right
+   where the text will land. */
+.sheet-input {
+  position: absolute;
+  z-index: 2;
+  margin: 0;
+  padding: 0 7px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: transparent;
+  caret-color: transparent;
+  font: inherit;
+  font-size: 13px;
+  cursor: cell;
+}
+.sheet-input.editing {
+  color: var(--fg);
+  caret-color: var(--accent);
+  box-shadow:
+    inset 0 0 0 2px var(--accent),
+    0 4px 14px rgba(0, 0, 0, 0.12);
+  border-radius: 1px;
+  cursor: text;
+}
+.sheet-input.editing:not([class*='fill-']) {
+  background: var(--bg);
+}
+.sheet-input::selection {
+  background: var(--selection);
+}
+
+/* Context menu ------------------------------------------------------------ */
+
+.sheet-menu {
+  width: 232px;
+}
+.sheet-menu-item .sheet-menu-label {
+  flex: 1 1 auto;
+}
+.sheet-menu-shortcut {
+  color: var(--fg-muted);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+.sheet-menu-caption {
+  padding: 6px 10px 4px 30px;
+  color: var(--fg-muted);
+  font-size: 11.5px;
+}
+.sheet-swatches {
+  display: flex;
+  gap: 4px;
+  padding: 0 10px 6px 30px;
+}
+.sheet-swatch {
+  width: 19px;
+  height: 19px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 5px;
+  box-shadow: inset 0 0 0 1px rgba(127, 127, 127, 0.28);
+  background-color: var(--bg);
+  color: var(--fg);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 120ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.sheet-swatch:hover {
+  transform: scale(1.12);
+}
+.sheet-swatch:focus-visible,
+.sheet-swatch.current {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+/* "No colour": a hairline slash across an empty chip. */
+.sheet-swatch.none {
+  background-image: linear-gradient(
+    135deg,
+    transparent calc(50% - 0.75px),
+    var(--red) calc(50% - 0.75px),
+    var(--red) calc(50% + 0.75px),
+    transparent calc(50% + 0.75px)
+  );
+}
+.sheet-swatch[class*='fill-'] {
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+@media (prefers-reduced-motion: reduce) {
+  .sheet-swatch {
+    transition: none;
+  }
+}
+
+/* Formula references --------------------------------------------------------
+   While a formula is edited, each range it points at gets a dashed frame; the
+   range being picked with the mouse "marches" like Excel's copy marquee. The
+   dashes are four gradient edges so they can scroll around the box. */
+.sheet-ref-box {
+  --ant: var(--accent);
+  position: absolute;
+  z-index: 1;
+  margin: -1px 0 0 -1px;
+  pointer-events: none;
+  background-color: var(--sheet-sel-fill);
+  background-image:
+    linear-gradient(90deg, var(--ant) 50%, transparent 50%),
+    linear-gradient(90deg, var(--ant) 50%, transparent 50%),
+    linear-gradient(0deg, var(--ant) 50%, transparent 50%),
+    linear-gradient(0deg, var(--ant) 50%, transparent 50%);
+  background-size:
+    8px 2px,
+    8px 2px,
+    2px 8px,
+    2px 8px;
+  background-position:
+    0 0,
+    0 100%,
+    0 0,
+    100% 0;
+  background-repeat: repeat-x, repeat-x, repeat-y, repeat-y;
+}
+.sheet-ref-box.marching {
+  animation: sheet-ants 420ms linear infinite;
+}
+@keyframes sheet-ants {
+  to {
+    background-position:
+      8px 0,
+      -8px 100%,
+      0 -8px,
+      100% 8px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sheet-ref-box.marching {
+    animation: none;
+  }
+}

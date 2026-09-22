@@ -5,7 +5,8 @@ import {
   openFileInCurrentTab,
   openImageTab,
   isImagePath,
-  isTextNotePath,
+  isDocumentPath,
+  createNewSheet,
   refreshVaultTree,
   retargetLastEditedFile,
   forgetLastEditedFile,
@@ -47,7 +48,7 @@ function withoutDescendantSelections(paths: string[]): string[] {
 }
 
 function displayName(node: VaultNode): string {
-  return node.type === 'file' ? node.name.replace(/\.(md|snote)$/i, '') : node.name;
+  return node.type === 'file' ? node.name.replace(/\.(md|snote|ssheet)$/i, '') : node.name;
 }
 
 function filePathFor(file: File): string {
@@ -830,7 +831,7 @@ export function Sidebar(): JSX.Element {
     (node: VaultNode) => {
       if (isImagePath(node.path)) {
         void openImageTab(node.path).finally(focusSidebarSoon);
-      } else if (isTextNotePath(node.path)) {
+      } else if (isDocumentPath(node.path)) {
         void openFileInCurrentTab(node.path, undefined, { autoFocus: false }).finally(
           focusSidebarSoon
         );
@@ -843,7 +844,7 @@ export function Sidebar(): JSX.Element {
     (node: VaultNode) => {
       if (isImagePath(node.path)) {
         void openImageTab(node.path, { forceNew: true }).finally(focusSidebarSoon);
-      } else if (isTextNotePath(node.path)) {
+      } else if (isDocumentPath(node.path)) {
         void openFileInTab(node.path, undefined, {
           autoFocus: false,
           forceNew: true,
@@ -900,7 +901,7 @@ export function Sidebar(): JSX.Element {
           onClick: () =>
             isImagePath(node.path)
               ? void openImageTab(node.path, { forceNew: true })
-              : isTextNotePath(node.path)
+              : isDocumentPath(node.path)
                 ? void openFileInTab(node.path, undefined, { forceNew: true })
                 : undefined,
         },
@@ -915,7 +916,7 @@ export function Sidebar(): JSX.Element {
         },
       ];
       // Folders can't be opened in a tab, and neither can non-image/non-text files.
-      if (node.type === 'folder' || (!isImagePath(node.path) && !isTextNotePath(node.path))) {
+      if (node.type === 'folder' || (!isImagePath(node.path) && !isDocumentPath(node.path))) {
         items.shift();
       }
       setMenu({ x: e.clientX, y: e.clientY, items });
@@ -933,6 +934,7 @@ export function Sidebar(): JSX.Element {
         y: e.clientY,
         items: [
           { label: '新增文件', onClick: () => void newFile() },
+          { label: '新增試算表', onClick: () => void createNewSheet(targetDir()) },
           { label: '新增資料夾', onClick: () => void newFolder() },
           // Deferred so it opens *after* PopMenu auto-closes this menu.
           { label: '排序…', onClick: () => setTimeout(() => openSortMenu(e.clientX, e.clientY), 0) },
@@ -944,7 +946,7 @@ export function Sidebar(): JSX.Element {
         ],
       });
     },
-    [newFile, newFolder, openSortMenu]
+    [newFile, newFolder, openSortMenu, targetDir]
   );
 
   // Enter = rename selected; Delete = trash selected.
@@ -985,7 +987,7 @@ export function Sidebar(): JSX.Element {
     onOpen: (node, event) => {
       const mode = selectFromClick(node, event);
       if (mode !== 'single') return;
-      if (isImagePath(node.path) || isTextNotePath(node.path)) scheduleSingleOpen(node);
+      if (isImagePath(node.path) || isDocumentPath(node.path)) scheduleSingleOpen(node);
       // Other file types: select only, no open.
     },
     onOpenInNewTab: (node, event) => {
