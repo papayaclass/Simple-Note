@@ -72,6 +72,20 @@ export function parseSnote(text: string): SnoteFile | null {
   }
 }
 
+// Split a leading YAML front matter block (`---` … `---`) off a Markdown file.
+// The editor would parse it as a thematic break plus a setext heading and save
+// it back as `***` / `------`, which breaks files whose header is read by other
+// tools (e.g. Claude Code skills' SKILL.md). The raw text is kept aside and
+// written back verbatim on save, so it is never shown in or touched by the editor.
+export function splitFrontMatter(text: string): { frontMatter: string; body: string } {
+  // The first line must be a `key:` pair, so a note that merely opens with a
+  // divider isn't mistaken for front matter and hidden from the editor.
+  const match =
+    /^﻿?---[ \t]*\r?\n[A-Za-z_][\w-]*:[\s\S]*?\r?\n(?:---|\.\.\.)[ \t]*(?:\r?\n|$)/.exec(text);
+  if (!match) return { frontMatter: '', body: text };
+  return { frontMatter: match[0], body: text.slice(match[0].length) };
+}
+
 // ---------------------------------------------------------------------------
 // Detecting formatting Markdown can't carry.
 // ---------------------------------------------------------------------------

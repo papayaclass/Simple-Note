@@ -3,7 +3,13 @@ import { Editor, EditorHandle } from './editor/Editor';
 import { attachMarquee } from './editor/marquee';
 import { useStore, ColumnLayout } from './store';
 import { isPathInVault, refreshVaultTree, rememberLastEditedFile } from './fileActions';
-import { lossyFeatures, parseSnote, serializeSnote, withSnoteExt } from './noteFormat';
+import {
+  lossyFeatures,
+  parseSnote,
+  serializeSnote,
+  splitFrontMatter,
+  withSnoteExt,
+} from './noteFormat';
 import { FindBar, FindBarHandle } from './find/FindBar';
 import { selectedText } from './find/findPlugin';
 import './find/find.css';
@@ -91,6 +97,8 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
   const prevRectsRef = useRef<{ mid: DOMRect; left: DOMRect; right: DOMRect } | null>(null);
   // Suppresses onChange-driven dirty marking while the initial content loads.
   const loadingRef = useRef(false);
+  // Raw YAML front matter of the loaded Markdown file, re-attached on save.
+  const frontMatterRef = useRef('');
   // Latest save()/sync closures + the pending auto-save timer (in-vault tabs).
   const saveRef = useRef<() => Promise<boolean>>(async () => false);
   const syncRef = useRef<() => void>(() => {});
@@ -322,14 +330,14 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
     if (!article) return '';
     const layout = currentLayout();
     const articleMd = await article.asMarkdown();
-    if (layout === 'center') return articleMd;
+    if (layout === 'center') return frontMatterRef.current + articleMd;
     const scratchMd = async (h: EditorHandle | null): Promise<string> =>
       h && docHasContent(h.editor.document) ? await h.asMarkdown() : '';
     const parts =
       layout === 'article-left'
         ? [articleMd, await scratchMd(rightHandleRef.current)]
         : [await scratchMd(leftHandleRef.current), articleMd];
-    return parts.filter((p) => p.trim().length > 0).join('\n\n');
+    return frontMatterRef.current + parts.filter((p) => p.trim().length > 0).join('\n\n');
   }, [currentLayout]);
 
   // The `.snote` payload: every column's raw block tree plus the layout, so a
@@ -479,6 +487,7 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
   const loadContent = useCallback(
     async (text: string, opts: { focus?: boolean } = {}): Promise<void> => {
       const snote = parseSnote(text);
+      frontMatterRef.current = '';
       if (snote) {
         leftHandleRef.current?.loadBlocks(snote.columns.left);
         rightHandleRef.current?.loadBlocks(snote.columns.right);
@@ -491,7 +500,9 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
           rightHandleRef.current?.loadMarkdown(''),
         ]);
         setTabColumnLayout(tabId, 'center');
-        await midHandleRef.current?.loadMarkdown(text);
+        const { frontMatter, body } = splitFrontMatter(text);
+        frontMatterRef.current = frontMatter;
+        await midHandleRef.current?.loadMarkdown(body);
       }
       if (opts.focus) requestAnimationFrame(() => midHandleRef.current?.focusLastBlock());
     },
