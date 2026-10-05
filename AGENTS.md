@@ -100,6 +100,7 @@ Cmd+F 尋找、Opt+Cmd+F 尋找並取代、Cmd+G / Shift+Cmd+G 下一個／上�
 - **儲存庫內的檔案編輯後約 600ms 自動存檔，不會出現未存檔圓點**；儲存庫外的檔案與未命名分頁才標 dirty、需要手動存檔。
 - 新建的 `未命名筆記` 會自動以第一個標題命名（`autoName`，直到使用者手動改名為止）。儲存庫永遠至少保留一則筆記：刪光時會補一個 `未命名筆記.snote`，而唯一剩下的那個未命名筆記不能刪（`isProtectedUnnamedNote`）。
 - 啟動行為由偏好設定 `startupBehavior` 決定：在儲存庫新增空白筆記，或重新開啟上次編輯的檔案（`lastEditedFilePath`）。
+- 啟動時由 `src/renderer/src/main.tsx` 的 `bootstrap()` 先讀取偏好設定，將 `preferences`、`sidebarOpen` 與排序狀態還原至 store，完成後才掛載 React。不可在 `App.tsx` 掛載後才還原側邊欄狀態，否則已關閉的側邊欄會先顯示再收合；`App.tsx` 只沿用已載入的偏好設定，處理命令清單同步與儲存庫初始化。讀取失敗時會記錄錯誤並使用預設設定啟動。
 
 **狀態管理 (`src/renderer/src/store.ts`)**
 
