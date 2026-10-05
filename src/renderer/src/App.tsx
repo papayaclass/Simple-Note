@@ -179,10 +179,10 @@ export function App(): JSX.Element {
     document.documentElement.setAttribute('data-code-wrap', preferences.codeWrap ? 'true' : 'false');
   }, [preferences]);
 
-  // Load preferences + vault state once on mount.
+  // Preferences are restored before mount; normalize commands and load the vault.
   useEffect(() => {
     (async () => {
-      const stored = (await window.api.prefs.get()) as Partial<typeof preferences>;
+      const stored = useStore.getState().preferences;
       const menuCommands = reconcileMenuCommands(stored.menuCommands);
       const menuCommandsChanged =
         JSON.stringify(menuCommands) !== JSON.stringify(stored.menuCommands ?? []);
@@ -191,9 +191,6 @@ export function App(): JSX.Element {
       // Persist registry additions immediately so they become real rows in the
       // customizable preferences list, not temporary context-menu-only items.
       if (menuCommandsChanged) await window.api.prefs.set('menuCommands', menuCommands);
-      useStore.getState().setSidebarOpen(stored.sidebarOpen ?? true);
-      useStore.getState().setSortMode(stored.sortMode ?? 'manual');
-      useStore.getState().setSortAsc(stored.sortAsc ?? true);
       if (stored.blankNoteFirstLineFormat) {
         const s = useStore.getState();
         const stillBlank =

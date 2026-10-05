@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "layout-transition",
+        "value": "*",
+        "files": [
+          "src/renderer/src/theme.css"
+        ],
+        "createdAt": "2026-10-05T01:31:19.856Z",
+        "reason": "Agent: existing sidebar width motion reallocates editor space during manual collapse; theme.css documents the clipped fixed-width content, disables transitions while resizing, and honors reduced motion."
+      }
+    ]
+  }
+}
