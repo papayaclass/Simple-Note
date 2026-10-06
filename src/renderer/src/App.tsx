@@ -46,6 +46,7 @@ export function App(): JSX.Element {
   const [activeDropPaneId, setActiveDropPaneId] = useState<string | null>(null);
   const [splitDropSide, setSplitDropSide] = useState<'left' | 'right' | null>(null);
   const workspaceRef = useRef<HTMLDivElement | null>(null);
+  const startupInitialized = useRef(false);
 
   const tabById = useMemo(() => new Map(tabs.map((tab) => [tab.id, tab])), [tabs]);
 
@@ -181,6 +182,9 @@ export function App(): JSX.Element {
 
   // Preferences are restored before mount; normalize commands and load the vault.
   useEffect(() => {
+    // StrictMode remounts effects; initialization must only run once per window.
+    if (startupInitialized.current) return;
+    startupInitialized.current = true;
     (async () => {
       const stored = useStore.getState().preferences;
       const menuCommands = reconcileMenuCommands(stored.menuCommands);
@@ -204,6 +208,9 @@ export function App(): JSX.Element {
       const vp = await window.api.vault.get();
       useStore.getState().setVaultPath(vp);
       if (vp) await refreshVaultTree();
+      // File listeners are mounted by now. Finish queued Finder opens before
+      // deciding whether this window needs a default startup document.
+      if (await window.api.notifyReady()) return;
       const createStartupBlankVaultNote = async (): Promise<void> => {
         await new Promise((resolve) => window.setTimeout(resolve, 0));
         const s = useStore.getState();
@@ -282,12 +289,11 @@ export function App(): JSX.Element {
   // Files pushed in by main (Finder open / File → Open / new window) open as tabs.
   useEffect(() => {
     const offExternal = window.api.onExternalOpen(({ path, content }) => {
-      void openFileInTab(path, content);
+      void openFileInTab(path, content, { autoFocus: true });
     });
     const offInTab = window.api.onOpenInTab(({ path, content }) => {
-      void openFileInTab(path, content);
+      void openFileInTab(path, content, { autoFocus: true });
     });
-    window.api.notifyReady();
     return () => {
       offExternal();
       offInTab();

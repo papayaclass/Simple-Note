@@ -130,7 +130,7 @@ export interface SimpleNoteAPI {
     handler: (payload: { path: string; content: string }) => void
   ) => () => void;
   onVaultChanged: (handler: () => void) => () => void;
-  notifyReady: () => void;
+  notifyReady: () => Promise<boolean>;
 }
 
 const api: SimpleNoteAPI = {
@@ -229,7 +229,7 @@ const api: SimpleNoteAPI = {
     ipcRenderer.on('vault:changed', listener);
     return () => ipcRenderer.removeListener('vault:changed', listener);
   },
-  notifyReady: () => ipcRenderer.send('renderer:ready'),
+  notifyReady: () => ipcRenderer.invoke('renderer:ready'),
 };
 
 contextBridge.exposeInMainWorld('api', api);

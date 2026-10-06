@@ -94,6 +94,7 @@ const coldStartPaths: string[] = [];
 // mounted its listeners; it flushes when the renderer sends 'renderer:ready'.
 const pendingOpenByWebContents = new Map<number, string[]>();
 const readyWebContents = new Set<number>();
+const startupOpenResults = new Map<number, Promise<boolean>>();
 
 function queuePathForWindow(win: BrowserWindow, path: string): void {
   const wcId = win.webContents.id;
@@ -102,26 +103,30 @@ function queuePathForWindow(win: BrowserWindow, path: string): void {
   pendingOpenByWebContents.set(wcId, pending);
 }
 
-async function deliverPathToWindow(win: BrowserWindow | null, path: string): Promise<void> {
-  if (!win || win.isDestroyed()) return;
+async function deliverPathToWindow(win: BrowserWindow | null, path: string): Promise<boolean> {
+  if (!win || win.isDestroyed()) return false;
   try {
     const content = await readFile(path, 'utf-8');
     win.setRepresentedFilename(path);
     win.setTitle(path.split('/').pop() ?? 'Simple Note');
     win.webContents.send('file:openInTab', { path, content });
+    return true;
   } catch (err) {
     console.error('Failed to read external file:', path, err);
+    return false;
   }
 }
 
-async function flushPendingPaths(win: BrowserWindow | null): Promise<void> {
-  if (!win || win.isDestroyed()) return;
+async function flushPendingPaths(win: BrowserWindow | null): Promise<boolean> {
+  if (!win || win.isDestroyed()) return false;
   const wcId = win.webContents.id;
   const paths = pendingOpenByWebContents.get(wcId) ?? [];
   pendingOpenByWebContents.delete(wcId);
+  let opened = false;
   for (const path of paths) {
-    await deliverPathToWindow(win, path);
+    if (await deliverPathToWindow(win, path)) opened = true;
   }
+  return opened;
 }
 
 function bringWindowForward(win: BrowserWindow): void {
@@ -239,6 +244,7 @@ function createWindow(openPath?: string): BrowserWindow {
     if (lastActiveWindow === win) lastActiveWindow = null;
     pendingOpenByWebContents.delete(wcId);
     readyWebContents.delete(wcId);
+    startupOpenResults.delete(wcId);
   });
 
   let saveTimer: NodeJS.Timeout | null = null;
@@ -624,9 +630,14 @@ app.whenReady().then(() => {
 
   // A window's renderer signals it has mounted listeners; flush the file (if
   // any) that was queued for that specific window.
-  ipcMain.on('renderer:ready', (e) => {
+  ipcMain.handle('renderer:ready', (e) => {
     readyWebContents.add(e.sender.id);
-    void flushPendingPaths(BrowserWindow.fromWebContents(e.sender));
+    let result = startupOpenResults.get(e.sender.id);
+    if (!result) {
+      result = flushPendingPaths(BrowserWindow.fromWebContents(e.sender));
+      startupOpenResults.set(e.sender.id, result);
+    }
+    return result;
   });
 
   // Open files double-clicked before launch as tabs in a single window;
