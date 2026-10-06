@@ -14,6 +14,7 @@ Simple Note 是一款 macOS 為主的極簡 Block 式筆記桌面應用，採用
 - `npm run pack`：build 後以 `electron-builder --dir` 產生未打包的 app 目錄（測試用，不簽章）。
 - `npm run dist`：build 後以 `electron-builder` 產生可散布的安裝檔，輸出到 `dist/`electron-builder 會自動用鑰匙圈裡的 Developer ID 憑證簽章（含 hardened runtime 與時間戳記），但 `notarize` 設為 `false`，發布時要另外把 `dist/mac-universal/Simple Note.app` 壓成 zip 用 `notarytool` 公證再 `stapler staple`。第一次打包需要下載 x64 與 arm64 兩份 Electron（各約 100 MB），會花好幾分鐘。
 - `npm run icons`：從根目錄的 `Simple Note.png` 產生 `build/icons/` 內所有平台圖示。
+- 指定 electron-builder 的 `CSC_NAME` 時使用 `Mu-Hua Wang (7Y3SNMCD34)`，不要加上 `Developer ID Application:` 前綴，否則 builder 會拒絕。正式 App 公證並 staple 後，需重新製作最終 DMG，確保其中包含已附票證的 App；DMG 先以 `hdiutil verify` 驗證，再簽章、公證與 staple。
 - 目前沒有測試框架、ESLint 或 Prettier 設定；型別檢查只透過 `electron-vite build` 進行。要單獨檢查型別可執行 `npx tsc --noEmit -p tsconfig.web.json` 或 `tsconfig.node.json`。
 
 **進程架構**
@@ -100,6 +101,7 @@ Cmd+F 尋找、Opt+Cmd+F 尋找並取代、Cmd+G / Shift+Cmd+G 下一個／上�
 - **儲存庫內的檔案編輯後約 600ms 自動存檔，不會出現未存檔圓點**；儲存庫外的檔案與未命名分頁才標 dirty、需要手動存檔。
 - 新建的 `未命名筆記` 會自動以第一個標題命名（`autoName`，直到使用者手動改名為止）。儲存庫永遠至少保留一則筆記：刪光時會補一個 `未命名筆記.snote`，而唯一剩下的那個未命名筆記不能刪（`isProtectedUnnamedNote`）。
 - 啟動行為由偏好設定 `startupBehavior` 決定：在儲存庫新增空白筆記，或重新開啟上次編輯的檔案（`lastEditedFilePath`）。
+- 從 Finder 雙擊文件或以文件建立新視窗時，main 先將路徑放入 `pendingOpenByWebContents`。`App.tsx` 註冊檔案事件並載入儲存庫後，會等待 `window.api.notifyReady()`（`renderer:ready` 使用 invoke / handle，回傳是否成功送出啟動文件）。有啟動文件就略過 `startupBehavior`，避免額外建立未命名筆記或讓上次文件搶走焦點。檔案事件以 `autoFocus: true` 開啟；原本的空白分頁由 `openFileInTab` 移除。初始化以 ref 保護，避免 React StrictMode 重跑；main 快取每個視窗的啟動結果並在關閉時清除。不可把啟動判斷改回未等待檔案讀取的計時器。
 - 啟動時由 `src/renderer/src/main.tsx` 的 `bootstrap()` 先讀取偏好設定，將 `preferences`、`sidebarOpen` 與排序狀態還原至 store，完成後才掛載 React。不可在 `App.tsx` 掛載後才還原側邊欄狀態，否則已關閉的側邊欄會先顯示再收合；`App.tsx` 只沿用已載入的偏好設定，處理命令清單同步與儲存庫初始化。讀取失敗時會記錄錯誤並使用預設設定啟動。
 
 **狀態管理 (`src/renderer/src/store.ts`)**
