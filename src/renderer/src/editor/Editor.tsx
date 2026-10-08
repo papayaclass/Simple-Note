@@ -654,8 +654,8 @@ export function Editor({
         transformSelectedBlocks(editor, 'checkListItem');
         return;
       }
-      // Shift+Cmd+L → quote
-      if (e.shiftKey && !e.altKey && code === 'KeyL') {
+      // Shift+Cmd+D → quote
+      if (e.shiftKey && !e.altKey && code === 'KeyD') {
         e.preventDefault();
         transformSelectedBlocks(editor, 'quote');
         return;
