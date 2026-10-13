@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { createBlockNoteExtension, PartialBlock } from '@blocknote/core';
 import { BlockNoteView } from '@blocknote/mantine';
 import { useCreateBlockNote } from '@blocknote/react';
-import { TextSelection, AllSelection } from 'prosemirror-state';
+import { TextSelection, AllSelection, NodeSelection } from 'prosemirror-state';
 import { schema } from './schema';
 import { createLinkExtension, sanitizeLoadedMarkdown } from './link';
 import { createMathPlugin } from '../math/overlay';
@@ -14,7 +14,8 @@ import { createCodeBlockSelectPlugin } from './codeBlockSelect';
 import { createFindPlugin } from '../find/findPlugin';
 import { createSelectionClampPlugin } from './selectionClamp';
 import { deleteSelectedBlocks, deleteForwardEmptyBlock } from './blockDelete';
-import { createToggleKeyboardExtension } from './toggle';
+import { createToggleKeyboardExtension, htmlToToggleBlocks, toggleBlocksToHTML } from './toggle';
+import { NOTION_MIME, hasDetails, htmlToNotion, notionToHTML } from './toggleClipboard';
 import { SimpleNoteSideMenuController } from './sideMenu';
 import { SimpleNoteSlashMenu } from './slashMenu';
 import { BlankFirstLineFormat, useStore } from '../store';
@@ -545,11 +546,84 @@ export function Editor({
 
     const onPaste = (e: ClipboardEvent): void => {
       const files = imageFilesFrom(e.clipboardData);
-      if (files.length === 0) return;
+      if (files.length === 0) {
+        pasteToggles(e);
+        return;
+      }
       e.preventDefault();
       e.stopPropagation();
       const ref = editor.getTextCursorPosition().block.id;
       void insertImageFiles(editor, files, ref, notePathRef.current);
+    };
+
+    // Toggle List from Simple Canvas (<details>) or Notion (its private block
+    // JSON — Notion's own HTML renders toggles as plain bullets). Our own
+    // blocknote/html copies are left to BlockNote.
+    const pasteToggles = (e: ClipboardEvent): void => {
+      const cd = e.clipboardData;
+      if (!cd || cd.types.includes('blocknote/html')) return;
+      let html = cd.getData('text/html');
+      if (!hasDetails(html)) html = notionToHTML(cd.getData(NOTION_MIME)) ?? '';
+      if (!hasDetails(html)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const blocks = htmlToToggleBlocks(editor, html);
+      if (blocks.length === 0) return;
+      // Insert as whole blocks after the current one (or in place of an empty
+      // paragraph), like Notion does, rather than splicing into the text.
+      editor.transact((tr) => tr.deleteSelection());
+      const cur = editor.getTextCursorPosition().block;
+      const isEmpty = cur.type === 'paragraph' && (cur.content as unknown[]).length === 0;
+      const inserted = isEmpty
+        ? editor.replaceBlocks([cur], blocks as never).insertedBlocks
+        : editor.insertBlocks(blocks as never, cur, 'after');
+      const last = inserted[inserted.length - 1];
+      if (last) editor.setTextCursorPosition(last.id, 'end');
+    };
+
+    // Copy / cut: BlockNote's external HTML flattens a toggle's children, so
+    // when the selection holds a toggle we replace text/html with <details>
+    // markup and add Notion's block JSON. The HTML is built in the capture
+    // phase (before cut deletes the selection) and written in the bubble phase
+    // (after BlockNote has cleared and filled the clipboard).
+    let pendingCopyHTML: string | null = null;
+    const onCopyCapture = (): void => {
+      pendingCopyHTML = null;
+      const { selection } = (editor as any)._tiptapEditor.view.state;
+      const { $from, $to } = selection;
+      // Text inside a single block stays a plain text copy — unless it covers a
+      // whole toggle line, which codeBlockSelect paints as a selected block.
+      const wholeToggle =
+        $from.parent.type.name === 'toggle' && $from.parentOffset === 0 && $to.parentOffset === $to.parent.content.size;
+      if (!(selection instanceof NodeSelection) && $from.sameParent($to) && $from.parent.isTextblock && !wholeToggle) return;
+      // getSelection() is undefined for a whole-block NodeSelection (drag handle).
+      const node = (selection as { node?: any }).node;
+      const nodeBlock = node?.type.name === 'blockContainer' ? editor.getBlock(node.attrs.id) : undefined;
+      let blocks: any[] | undefined = nodeBlock ? [nodeBlock] : editor.getSelection()?.blocks;
+      if (!blocks) return;
+      if (!wholeToggle && !nodeBlock) {
+        // getSelection() returns whole blocks; keep only the children the
+        // selection actually reaches, so a cut doesn't copy what it leaves behind.
+        const ranges = new Map<string, [number, number]>();
+        selection.$from.doc.descendants((node: any, pos: number) => {
+          if (node.type.name === 'blockContainer') ranges.set(node.attrs.id, [pos, pos + node.nodeSize]);
+        });
+        const inRange = (b: any): boolean => {
+          const r = ranges.get(b.id);
+          return !!r && r[0] < selection.to && r[1] > selection.from;
+        };
+        const trim = (b: any): any => ({ ...b, children: b.children.filter(inRange).map(trim) });
+        blocks = blocks.map(trim);
+      }
+      pendingCopyHTML = toggleBlocksToHTML(editor, blocks);
+    };
+    const onCopy = (e: ClipboardEvent): void => {
+      const html = pendingCopyHTML;
+      pendingCopyHTML = null;
+      if (!html || !e.clipboardData?.getData('blocknote/html')) return;
+      e.clipboardData.setData('text/html', html);
+      const notion = htmlToNotion(html);
+      if (notion) e.clipboardData.setData(NOTION_MIME, notion);
     };
 
     const onDrop = (e: DragEvent): void => {
@@ -600,7 +674,15 @@ export function Editor({
     host.addEventListener('paste', onPaste, true);
     host.addEventListener('drop', onDrop, true);
     host.addEventListener('dragover', onDragOver, true);
+    for (const type of ['copy', 'cut'] as const) {
+      host.addEventListener(type, onCopyCapture, true);
+      host.addEventListener(type, onCopy);
+    }
     return () => {
+      for (const type of ['copy', 'cut'] as const) {
+        host.removeEventListener(type, onCopyCapture, true);
+        host.removeEventListener(type, onCopy);
+      }
       host.removeEventListener('paste', onPaste, true);
       host.removeEventListener('drop', onDrop, true);
       host.removeEventListener('dragover', onDragOver, true);

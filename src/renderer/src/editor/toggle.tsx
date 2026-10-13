@@ -112,3 +112,78 @@ export function createToggleKeyboardExtension() {
     },
   });
 }
+
+// ---------- 剪貼簿 (跨 App 轉移，格式說明見 toggleClipboard.ts) ----------
+
+const containsToggle = (b: any): boolean =>
+  b.type === 'toggle' || (b.children ?? []).some(containsToggle);
+
+// BlockNote 輸出外部 HTML 時會把子 block 攤平成兄弟節點，Toggle 結構因此消失。
+// 含 Toggle 的部分改由這裡輸出 <details>，其他 block 仍交給 blocksToHTMLLossy。
+export function toggleBlocksToHTML(editor: any, blocks: any[]): string | null {
+  if (!blocks.some(containsToggle)) return null;
+  let html = '';
+  let run: any[] = [];
+  const flush = (): void => {
+    if (run.length) html += editor.blocksToHTMLLossy(run);
+    run = [];
+  };
+  for (const b of blocks) {
+    if (!containsToggle(b)) {
+      run.push(b);
+      continue;
+    }
+    flush();
+    const children = toggleBlocksToHTML(editor, b.children) ?? editor.blocksToHTMLLossy(b.children);
+    if (b.type === 'toggle') {
+      const tpl = document.createElement('template');
+      tpl.innerHTML = editor.blocksToHTMLLossy([{ type: 'paragraph', content: b.content }]);
+      const summary = tpl.content.firstElementChild?.innerHTML ?? '';
+      html += `<details${b.props.open !== false ? ' open' : ''}><summary>${summary}</summary>${children}</details>`;
+    } else {
+      html += editor.blocksToHTMLLossy([{ ...b, children: [] }]) + children;
+    }
+  }
+  flush();
+  return html;
+}
+
+// 外部 HTML 裡的 <details> 轉成 toggle block，其他內容交給 tryParseHTMLToBlocks。
+export function htmlToToggleBlocks(editor: any, html: string): any[] {
+  const tpl = document.createElement('template');
+  tpl.innerHTML = html;
+  const convert = (nodes: Node[]): any[] => {
+    const out: any[] = [];
+    let run: Node[] = [];
+    const flush = (): void => {
+      const div = document.createElement('div');
+      run.forEach((n) => div.appendChild(n.cloneNode(true)));
+      if (div.textContent?.trim() || div.querySelector('img, hr')) out.push(...editor.tryParseHTMLToBlocks(div.innerHTML));
+      run = [];
+    };
+    for (const n of nodes) {
+      if (!(n instanceof Element) || (n.tagName !== 'DETAILS' && !n.querySelector('details'))) {
+        run.push(n);
+        continue;
+      }
+      flush();
+      if (n.tagName !== 'DETAILS') {
+        // 包著 <details> 的外層 (例如 Simple Canvas 的 toggle-list div)：往裡面找
+        out.push(...convert(Array.from(n.childNodes)));
+        continue;
+      }
+      const kids = Array.from(n.childNodes);
+      const summary = kids.find((k) => k instanceof Element && k.tagName === 'SUMMARY') as Element | undefined;
+      const title = summary ? editor.tryParseHTMLToBlocks(`<p>${summary.innerHTML}</p>`)[0] : undefined;
+      out.push({
+        type: 'toggle',
+        props: { open: n.hasAttribute('open') },
+        content: title?.content ?? [],
+        children: convert(kids.filter((k) => k !== summary)),
+      });
+    }
+    flush();
+    return out;
+  };
+  return convert(Array.from(tpl.content.childNodes));
+}
