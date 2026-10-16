@@ -104,31 +104,6 @@ export function halfToFullPunctuation(text: string): string {
   return text.replace(/[,.:;!?()[\]<>"'~@#$%&*]/g, (m) => HALF_TO_FULL[m] ?? m);
 }
 
-const CITATION_MARK_RE =
-  /[ \t\u00a0]*[\[［]\s*[0-9０-９]+(?:\s*(?:[,，、-]|–|—)\s*[0-9０-９]+)*\s*[\]］][ \t\u00a0]*/g;
-const CJK_OR_CJK_PUNCT_RE = /[\u3400-\u9fff。，、：；！？）」』】》]/;
-const CLOSING_PUNCT_RE = /[.,，。!?！？:：;；、)\]）］}』」》]/;
-
-export function stripCitationMarkers(text: string): string {
-  return text.replace(CITATION_MARK_RE, (match, offset, full) => {
-    const prev = full[offset - 1] ?? '';
-    const next = full[offset + match.length] ?? '';
-    if (!prev || !next) return '';
-    if (CLOSING_PUNCT_RE.test(next)) return '';
-    if (CJK_OR_CJK_PUNCT_RE.test(prev) && CJK_OR_CJK_PUNCT_RE.test(next)) return '';
-    return ' ';
-  });
-}
-
-// ~100 words of standard Lorem Ipsum
-export const LOREM_IPSUM =
-  'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ' +
-  'ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco ' +
-  'laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in ' +
-  'voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat ' +
-  'non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Sed ut perspiciatis ' +
-  'unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, ' +
-  'eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo.';
 
 export interface WordCount {
   chars: number; // 全部字元 (含空白)

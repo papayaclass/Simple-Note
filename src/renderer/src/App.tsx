@@ -12,6 +12,7 @@ import {
   convertLossyMarkdownTabs,
 } from './fileActions';
 import { PreferencesPanel } from './preferences/Panel';
+import { TweaksPanel } from './preferences/TweaksPanel';
 import { ImageLightbox } from './ImageLightbox';
 import { YouTubePreviewHover } from './editor/youtubePreview';
 import { reconcileMenuCommands } from './context-menu/commands';
@@ -89,7 +90,8 @@ export function App(): JSX.Element {
 
   const handleWorkspaceDragOver = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {
-      if (!draggedTabId) {
+      // Cmd-drag swaps panes via the target's tab strip, so no edge split.
+      if (!draggedTabId || e.metaKey) {
         setSplitDrop(null);
         return;
       }
@@ -107,7 +109,7 @@ export function App(): JSX.Element {
 
   const handleWorkspaceDrop = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {
-      if (!draggedTabId || pendingSplitDragRef.current !== draggedTabId) return;
+      if (!draggedTabId || e.metaKey || pendingSplitDragRef.current !== draggedTabId) return;
       const side = (splitDrop ?? splitDropForPoint(e.clientX, draggedTabId))?.side;
       if (!side) return;
       e.preventDefault();
@@ -219,16 +221,6 @@ export function App(): JSX.Element {
       // Persist registry additions immediately so they become real rows in the
       // customizable preferences list, not temporary context-menu-only items.
       if (menuCommandsChanged) await window.api.prefs.set('menuCommands', menuCommands);
-      if (stored.blankNoteFirstLineFormat) {
-        const s = useStore.getState();
-        const stillBlank =
-          s.tabs.length === 1 && !s.tabs[0]?.filePath && !s.tabs[0]?.dirty;
-        if (stillBlank) {
-          s.updateTab(s.tabs[0].id, {
-            blankFirstLineFormat: stored.blankNoteFirstLineFormat,
-          });
-        }
-      }
       await window.api.notifyReady();
     })();
   }, [setPreferences]);
@@ -304,6 +296,10 @@ export function App(): JSX.Element {
         case 'preferences':
           setPrefsOpen(true);
           break;
+        case 'tweaks': {
+          s.setTweaksPanelOpen(!s.tweaksPanelOpen);
+          break;
+        }
         case 'toggle-math':
           toggleMathMode();
           break;
@@ -336,7 +332,6 @@ export function App(): JSX.Element {
         case 's2t':
         case 'half2full':
         case 'clear-format':
-        case 'lorem':
         case 'word-count':
           window.dispatchEvent(new CustomEvent('simple-note:command', { detail: cmd }));
           break;
@@ -424,6 +419,7 @@ export function App(): JSX.Element {
       </div>
 
       <PreferencesPanel />
+      <TweaksPanel />
       <ImageLightbox />
       <YouTubePreviewHover />
       {wordCountPopover && (

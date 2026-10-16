@@ -99,7 +99,7 @@ Cmd+F 尋找、Opt+Cmd+F 尋找並取代、Cmd+G / Shift+Cmd+G 下一個／上�
 **分頁、分割窗格與視窗**
 
 - 每個分頁是 `store.ts` 的一個 `Tab`，`kind` 為 `editor`（`DocumentView`）或 `sheet`（`SheetView`）。分頁的 view 一直掛著、非作用中時只是隱藏，所以各自保有復原紀錄、游標與捲動位置。App shell 透過 `getDocumentView(tabId)` 取得 `DocumentViewHandle` 操作特定分頁。
-- 最多三個分割窗格（`panes`，上限 `MAX_PANES`）：把分頁拖到工作區左右邊緣，還沒滿三欄時在該側新增一欄並把所有窗格重設為等寬，滿三欄時則移入最外側那一欄。每個窗格的寬度存在 `TabPane.size`（flex-grow），拖曳分隔線只在相鄰兩欄之間調整（`resizePanes`）。踩過的坑：分頁放在編輯器上時，同一次放開會有兩個 `drop` 事件抵達工作區（BlockNote 會在編輯器上再派送一次），第二次會看到已經搬好的版面而再分割一次，所以 `App.tsx` 以 `pendingSplitDragRef` 讓每次拖曳只處理第一個 drop。分頁移到另一個窗格時 React 會重新掛載 view，所以 `stageTabForPaneMove` 先把內容存進 `initialMarkdown`，並用 `restoreDirtyAfterLoad` 保留 dirty 狀態。
+- 最多三個分割窗格（`panes`，上限 `MAX_PANES`）：按住 Cmd 把分頁拖到另一個窗格的分頁列時，兩個窗格整組對調位置 (`swapPaneTabs`，寬度留在原位；此時工作區不顯示也不執行邊緣分割)。把分頁拖到工作區左右邊緣，還沒滿三欄時在該側新增一欄並把所有窗格重設為等寬，滿三欄時則移入最外側那一欄。每個窗格的寬度存在 `TabPane.size`（flex-grow），拖曳分隔線只在相鄰兩欄之間調整（`resizePanes`）。踩過的坑：分頁放在編輯器上時，同一次放開會有兩個 `drop` 事件抵達工作區（BlockNote 會在編輯器上再派送一次），第二次會看到已經搬好的版面而再分割一次，所以 `App.tsx` 以 `pendingSplitDragRef` 讓每次拖曳只處理第一個 drop。分頁移到另一個窗格時 React 會重新掛載 view，所以 `stageTabForPaneMove` 先把內容存進 `initialMarkdown`，並用 `restoreDirtyAfterLoad` 保留 dirty 狀態。
 - App 沒有側邊欄與儲存庫（已移除）。所有文件都要手動存檔：編輯後分頁出現未存檔圓點，關閉未存檔分頁時 `closeTabWithChecks` 會先詢問儲存／不儲存／取消（`file:confirmCloseDirty`），選「不儲存」時不再做 `.snote` 轉存詢問。圖片從 Finder 拖入時以絕對路徑引用，貼上的圖片以 data URL 存在文件內。
 - 啟動時一律只開一個未存檔的空白筆記。從 Finder 雙擊文件或以文件建立新視窗時，main 先將文件放入 `pendingOpenByWebContents`。`App.tsx` 註冊檔案事件後呼叫 `window.api.notifyReady()`（`renderer:ready` 使用 invoke / handle），main 才把排隊的文件送出；原本的空白分頁由 `openFileInTab` 移除。初始化以 ref 保護，避免 React StrictMode 重跑；main 快取每個視窗的啟動結果並在關閉時清除。
 - 從 Finder 一次開啟多個檔案時都開在同一個視窗的不同分頁：第一個視窗建立前 (`initialWindowCreated` 為 false) 收到的 `open-file` 都先進 `coldStartPaths`，不能只看 `app.isReady()`，否則 ready 之後、視窗建立之前到達的檔案會各自開新視窗。
@@ -113,10 +113,11 @@ Cmd+F 尋找、Opt+Cmd+F 尋找並取代、Cmd+G / Shift+Cmd+G 下一個／上�
 
 **右鍵選單與文字轉換 (`src/renderer/src/context-menu/`)**
 
-命令清單集中在 `commands.ts` 的 `MENU_COMMANDS`：簡轉繁（`opencc-js`）、半形標點轉全形、清除格式、移除超連結與注釋、段落／分行轉換、插入 Lorem Ipsum、依觀看數排序 YouTube、字數統計、拼音查詢（`pinyin-pro`）、嘸蝦米查碼、Google／Maps／YouTube 搜尋、劍橋詞典，以及中英互譯（透過 main 端 `openrouter.ts` 的 `ai:run` 呼叫 OpenRouter，需在偏好設定的 API Keys 填金鑰）。使用者可在偏好設定「右鍵選單」頁調整順序、顯示與名稱、插入分隔線，存在 `preferences.menuCommands`；新增命令時 `reconcileMenuCommands` 會把它插到原本順序中的相鄰位置。部分命令也能從 macOS 應用選單（編輯 → ...）叫出，兩者透過 `window.dispatchEvent(new CustomEvent('simple-note:command', ...))` 統一處理。右鍵選單開啟後會用 `useLayoutEffect` 量測尺寸並把位置夾進可視範圍，過長時靠 CSS `max-height` + `overflow-y` 捲動。
+命令清單集中在 `commands.ts` 的 `MENU_COMMANDS`：簡轉繁（`opencc-js`）、半形標點轉全形、清除格式、移除超連結（命令 key 仍是舊名 `stripLinksAndCitations`，保留使用者自訂的順序與名稱）、段落／分行轉換、字數統計、拼音查詢（`pinyin-pro`）、嘸蝦米查碼、Google 搜尋，以及中英互譯（透過 main 端 `openrouter.ts` 的 `ai:run` 呼叫 OpenRouter，需在偏好設定的 API Keys 填金鑰；結果一律取代選取文字）。使用者可在偏好設定「右鍵選單」頁調整順序、顯示與名稱、插入分隔線，存在 `preferences.menuCommands`；新增命令時 `reconcileMenuCommands` 會把它插到原本順序中的相鄰位置。部分命令也能從 macOS 應用選單（編輯 → ...）叫出，兩者透過 `window.dispatchEvent(new CustomEvent('simple-note:command', ...))` 統一處理。右鍵選單開啟後會用 `useLayoutEffect` 量測尺寸並把位置夾進可視範圍，過長時靠 CSS `max-height` + `overflow-y` 捲動。
 
 **樣式與排版**
 
 - 全域樣式：`src/renderer/src/theme.css`、`editor.css`。版面寬度／行高／段落間距／頂端 padding 都是 CSS 變數，由 `App.tsx` 從 preferences 動態設定（`--page-width`、`--line-height`、`--paragraph-spacing`、`--top-padding`）。
+- 版面寬度、段落間距、上方留白與標題大小的滑桿在「微調面板」(`preferences/TweaksPanel.tsx`，應用程式選單 → 微調面板⋯，沒有快捷鍵)，不在偏好設定裡。面板是沒有遮罩的浮動 div，拖曳標題列移動、CSS `resize: both` 縮放，滑桿用 auto-fill grid 隨寬度換欄；改動即時寫入 store 並 `prefs.set` 存檔，不走取消／確定。偏好設定面板因此只在按「確定」時寫回它自己管的欄位 (右鍵選單、API Keys)，避免舊 draft 蓋掉微調面板的改動。新增空白筆記的第一行一律是內文。
 - 視窗使用 `titleBarStyle: 'hiddenInset'`，拖曳視窗靠分頁列 `.tab-bar` 的 `-webkit-app-region: drag`（互動元件各自設 `no-drag`）；第一個窗格的分頁列 (`.clear-traffic-lights`) 左側固定讓出 78px 給紅綠燈按鈕。`theme.css` 裡的 `.drag-bar` 樣式已沒有元件使用。
 - 顏色以 `theme.css` `:root` 的 CSS 變數定義，深色模式跟隨系統 `prefers-color-scheme`；試算表另有自己的色票變數（`sheet/sheet.css`）。

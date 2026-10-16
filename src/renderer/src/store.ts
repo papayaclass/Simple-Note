@@ -3,7 +3,6 @@ import { DEFAULT_MENU_COMMANDS, MenuItemPref } from './context-menu/commands';
 import { isSheetPath } from './sheet/sheetFormat';
 
 export type BlankFirstLineFormat = 'heading1' | 'heading2' | 'heading3' | 'paragraph';
-export type TranslationResultMode = 'insertBelow' | 'replaceSelection';
 
 // Column layout as the article's position on a `[left] — center — [right]` track.
 // `center` is single-column; the other two reveal an independent blank column on
@@ -62,8 +61,6 @@ export interface Preferences {
   openRouterModel: string;
   aiGlobalInstruction: string;
   menuCommands: MenuItemPref[];
-  translationResultMode: TranslationResultMode;
-  blankNoteFirstLineFormat: BlankFirstLineFormat;
 }
 
 export const DEFAULT_PREFS: Preferences = {
@@ -80,8 +77,6 @@ export const DEFAULT_PREFS: Preferences = {
   openRouterModel: '',
   aiGlobalInstruction: '',
   menuCommands: DEFAULT_MENU_COMMANDS,
-  translationResultMode: 'insertBelow',
-  blankNoteFirstLineFormat: 'paragraph',
 };
 
 let tabCounter = 0;
@@ -121,7 +116,7 @@ export function makeTab(opts: NewTabOptions = {}): Tab {
     columnSplit: 0.5,
     initialMarkdown: opts.initialMarkdown,
     autoFocus: opts.autoFocus ?? true,
-    blankFirstLineFormat: opts.blankFirstLineFormat ?? DEFAULT_PREFS.blankNoteFirstLineFormat,
+    blankFirstLineFormat: opts.blankFirstLineFormat ?? 'paragraph',
     kind,
   };
 }
@@ -168,6 +163,7 @@ interface AppState {
   mathMode: boolean;
   preferences: Preferences;
   prefsPanelOpen: boolean;
+  tweaksPanelOpen: boolean;
   contextMenuOpen: boolean;
   wordCountPopover: { count: number; chars: number; charsNoSpace: number; chinese: number } | null;
 
@@ -180,6 +176,7 @@ interface AppState {
   reorderTabsInPane: (paneId: string, from: number, to: number) => void;
   moveTabToPane: (tabId: string, paneId: string, index: number) => void;
   splitTabToSide: (tabId: string, side: 'left' | 'right') => void;
+  swapPaneTabs: (paneA: string, paneB: string) => void;
   resizePanes: (leftId: string, leftSize: number, rightId: string, rightSize: number) => void;
   updateTab: (id: string, patch: Partial<Tab>) => void;
   // Repoint every open tab at oldPath to newPath (after a .md → .snote convert).
@@ -195,6 +192,7 @@ interface AppState {
   setMathMode: (on: boolean) => void;
   setPreferences: (p: Partial<Preferences>) => void;
   setPrefsPanelOpen: (open: boolean) => void;
+  setTweaksPanelOpen: (open: boolean) => void;
   setWordCountPopover: (v: AppState['wordCountPopover']) => void;
 
 }
@@ -210,6 +208,7 @@ export const useStore = create<AppState>((set) => ({
   mathMode: false,
   preferences: DEFAULT_PREFS,
   prefsPanelOpen: false,
+  tweaksPanelOpen: false,
   contextMenuOpen: false,
   wordCountPopover: null,
 
@@ -247,7 +246,7 @@ export const useStore = create<AppState>((set) => ({
       const tabs = s.tabs.filter((t) => t.id !== id);
       // Always keep at least one tab open.
       if (tabs.length === 0) {
-        const fresh = makeTab({ blankFirstLineFormat: s.preferences.blankNoteFirstLineFormat });
+        const fresh = makeTab();
         const pane = makePane(fresh.id);
         return { tabs: [fresh], panes: [pane], activePaneId: pane.id, activeTabId: fresh.id };
       }
@@ -397,6 +396,20 @@ export const useStore = create<AppState>((set) => ({
       }
       return { panes, activePaneId, activeTabId: tabId };
     }),
+  // Cmd-drag a tab onto another pane: the two panes trade places, so each
+  // pane's tabs show up where the other's were. Widths stay with the position.
+  // Reordering keyed panes moves their views instead of remounting them, so no
+  // content staging is needed.
+  swapPaneTabs: (paneA, paneB) =>
+    set((s) => {
+      const a = s.panes.findIndex((p) => p.id === paneA);
+      const b = s.panes.findIndex((p) => p.id === paneB);
+      if (a === -1 || b === -1 || a === b) return s;
+      const panes = s.panes.slice();
+      panes[a] = { ...s.panes[b], size: s.panes[a].size };
+      panes[b] = { ...s.panes[a], size: s.panes[b].size };
+      return { panes };
+    }),
   resizePanes: (leftId, leftSize, rightId, rightSize) =>
     set((s) => ({
       panes: s.panes.map((p) =>
@@ -449,6 +462,7 @@ export const useStore = create<AppState>((set) => ({
   setMathMode: (on) => set({ mathMode: on }),
   setPreferences: (p) => set((s) => ({ preferences: { ...s.preferences, ...p } })),
   setPrefsPanelOpen: (open) => set({ prefsPanelOpen: open }),
+  setTweaksPanelOpen: (open) => set({ tweaksPanelOpen: open }),
   setWordCountPopover: (v) => set({ wordCountPopover: v }),
 
 }));

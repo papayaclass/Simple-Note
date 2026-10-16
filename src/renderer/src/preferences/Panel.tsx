@@ -2,11 +2,9 @@ import { useEffect, useState, DragEvent } from 'react';
 import { useStore, Preferences } from '../store';
 import { MENU_COMMANDS, reconcileMenuCommands, isDivider } from '../context-menu/commands';
 
-type Category = 'general' | 'layout' | 'menu' | 'apikeys';
+type Category = 'menu' | 'apikeys';
 
 const CATEGORIES: { id: Category; label: string }[] = [
-  { id: 'general', label: '一般' },
-  { id: 'layout', label: '版面調整' },
   { id: 'menu', label: '右鍵選單' },
   { id: 'apikeys', label: 'API Keys' },
 ];
@@ -20,7 +18,7 @@ export function PreferencesPanel(): JSX.Element | null {
   const setPrefs = useStore((s) => s.setPreferences);
 
   const [draft, setDraft] = useState<Preferences>(committedPrefs);
-  const [category, setCategory] = useState<Category>('general');
+  const [category, setCategory] = useState<Category>('menu');
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   // Gap index (0..length) where the dragged row would land if dropped now.
   const [dropIndex, setDropIndex] = useState<number | null>(null);
@@ -28,20 +26,13 @@ export function PreferencesPanel(): JSX.Element | null {
   // label inputs remain clickable (a draggable parent would steal the click).
   const [dragEnabled, setDragEnabled] = useState(false);
 
-  // Re-seed draft each time the panel opens with the latest committed prefs,
-  // and apply draft to the live page while editing so changes are visible.
+  // Re-seed draft each time the panel opens with the latest committed prefs.
   useEffect(() => {
     if (open) {
       setDraft(committedPrefs);
-      setPrefs(committedPrefs);
-      setCategory('general');
+      setCategory('menu');
     }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (!open) return;
-    setPrefs(draft);
-  }, [draft, open, setPrefs]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -57,13 +48,18 @@ export function PreferencesPanel(): JSX.Element | null {
 
   if (!open) return null;
 
-  const cancel = () => {
-    setPrefs(committedPrefs); // revert live preview
-    setOpen(false);
-  };
+  const cancel = () => setOpen(false);
+  // Only commit the fields this panel edits, so layout values changed in the
+  // 微調面板 while this panel was open are not overwritten by a stale draft.
   const confirm = () => {
-    setPrefs(draft);
-    window.api.prefs.setAll(draft as unknown as Record<string, unknown>);
+    const patch: Partial<Preferences> = {
+      menuCommands: draft.menuCommands,
+      openRouterApiKey: draft.openRouterApiKey,
+      openRouterModel: draft.openRouterModel,
+      aiGlobalInstruction: draft.aiGlobalInstruction,
+    };
+    setPrefs(patch);
+    window.api.prefs.setAll(patch as Record<string, unknown>);
     setOpen(false);
   };
   const update = (patch: Partial<Preferences>) => setDraft((d) => ({ ...d, ...patch }));
@@ -144,112 +140,6 @@ export function PreferencesPanel(): JSX.Element | null {
 
         <div className="prefs-body">
           <div className="prefs-body-scroll">
-            {category === 'general' && (
-              <>
-                <div className="prefs-field">
-                  <label>新增空白筆記的第一行格式</label>
-                  <select
-                    value={draft.blankNoteFirstLineFormat}
-                    onChange={(e) =>
-                      update({
-                        blankNoteFirstLineFormat: e.target
-                          .value as Preferences['blankNoteFirstLineFormat'],
-                      })
-                    }
-                  >
-                    <option value="heading1">標題 1</option>
-                    <option value="heading2">標題 2</option>
-                    <option value="heading3">標題 3</option>
-                    <option value="paragraph">內文</option>
-                  </select>
-                </div>
-
-                <div className="prefs-field">
-                  <label>中英互譯結果</label>
-                  <select
-                    value={draft.translationResultMode}
-                    onChange={(e) =>
-                      update({
-                        translationResultMode: e.target
-                          .value as Preferences['translationResultMode'],
-                      })
-                    }
-                  >
-                    <option value="insertBelow">插入到下方</option>
-                    <option value="replaceSelection">取代選取文字</option>
-                  </select>
-                </div>
-              </>
-            )}
-
-            {category === 'layout' && (
-              <>
-                <Slider
-                  label="頁面寬度"
-                  value={draft.pageWidth}
-                  min={480}
-                  max={1200}
-                  step={20}
-                  unit="px"
-                  onChange={(v) => update({ pageWidth: v })}
-                />
-                <Slider
-                  label="雙欄頁寬"
-                  value={draft.twoColumnPageWidth}
-                  min={600}
-                  max={1600}
-                  step={20}
-                  unit="px"
-                  onChange={(v) => update({ twoColumnPageWidth: v })}
-                />
-                <Slider
-                  label="段落間距"
-                  value={draft.paragraphSpacing}
-                  min={0}
-                  max={32}
-                  step={1}
-                  unit="px"
-                  onChange={(v) => update({ paragraphSpacing: v })}
-                />
-                <Slider
-                  label="上方留白"
-                  value={draft.topPadding}
-                  min={0}
-                  max={200}
-                  step={4}
-                  unit="px"
-                  onChange={(v) => update({ topPadding: v })}
-                />
-                <Slider
-                  label="標題一大小"
-                  value={draft.heading1Scale}
-                  min={1}
-                  max={3}
-                  step={0.05}
-                  unit="×"
-                  onChange={(v) => update({ heading1Scale: v })}
-                />
-                <Slider
-                  label="標題二大小"
-                  value={draft.heading2Scale}
-                  min={1}
-                  max={3}
-                  step={0.05}
-                  unit="×"
-                  onChange={(v) => update({ heading2Scale: v })}
-                />
-                <Slider
-                  label="標題三大小"
-                  value={draft.heading3Scale}
-                  min={1}
-                  max={3}
-                  step={0.05}
-                  unit="×"
-                  onChange={(v) => update({ heading3Scale: v })}
-                />
-              </>
-            )}
-
             {category === 'menu' && (
               <>
                 <div
@@ -389,37 +279,6 @@ export function PreferencesPanel(): JSX.Element | null {
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-interface SliderProps {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  unit: string;
-  onChange: (v: number) => void;
-}
-
-function Slider({ label, value, min, max, step, unit, onChange }: SliderProps): JSX.Element {
-  return (
-    <div className="prefs-field">
-      <label>
-        <span>{label}</span>
-        <span className="prefs-value">
-          {Number.isInteger(value) ? value : value.toFixed(2)} {unit}
-        </span>
-      </label>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-      />
     </div>
   );
 }

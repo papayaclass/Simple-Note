@@ -21,6 +21,10 @@ export function buildMenu(h: MenuHandlers): void {
           accelerator: 'Alt+CmdOrCtrl+P',
           click: () => h.onPreferences(),
         },
+        {
+          label: '微調面板⋯',
+          click: () => h.onCommand('tweaks'),
+        },
         { type: 'separator' },
         { role: 'services' },
         { type: 'separator' },
@@ -104,10 +108,6 @@ export function buildMenu(h: MenuHandlers): void {
         {
           label: '移除段落符號',
           click: () => h.onCommand('remove-paragraph-breaks'),
-        },
-        {
-          label: '插入 Lorem Ipsum',
-          click: () => h.onCommand('lorem'),
         },
         {
           label: '字數統計',

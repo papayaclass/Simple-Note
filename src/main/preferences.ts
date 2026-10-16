@@ -13,9 +13,6 @@ export interface MenuDividerPref {
 
 export type MenuItemPref = MenuCommandPref | MenuDividerPref;
 
-export type BlankFirstLineFormat = 'heading1' | 'heading2' | 'heading3' | 'paragraph';
-export type TranslationResultMode = 'insertBelow' | 'replaceSelection';
-
 export interface Preferences {
   pageWidth: number;
   twoColumnPageWidth: number;
@@ -30,8 +27,6 @@ export interface Preferences {
   openRouterModel: string;
   aiGlobalInstruction: string;
   menuCommands: MenuItemPref[];
-  translationResultMode: TranslationResultMode;
-  blankNoteFirstLineFormat: BlankFirstLineFormat;
 }
 
 // Default order + visibility for the right-click menu commands. Kept in sync
@@ -44,15 +39,10 @@ const DEFAULT_MENU_COMMANDS: MenuCommandPref[] = [
   'stripLinksAndCitations',
   'mergeBreaks',
   'removeParagraphBreaks',
-  'lorem',
-  'sortYoutube',
   'wordCount',
   'pinyin',
   'boshiamy',
   'googleSearch',
-  'googleMaps',
-  'youtube',
-  'cambridge',
   'translate',
 ].map((key) => ({ key, visible: true }));
 
@@ -70,8 +60,6 @@ const DEFAULTS: Preferences = {
   openRouterModel: '',
   aiGlobalInstruction: '',
   menuCommands: DEFAULT_MENU_COMMANDS,
-  translationResultMode: 'insertBelow',
-  blankNoteFirstLineFormat: 'paragraph',
 };
 
 const store = new Store<Preferences>({ name: 'preferences', defaults: DEFAULTS });
@@ -91,14 +79,6 @@ export function getPreferences(): Preferences {
     openRouterModel: store.get('openRouterModel', DEFAULTS.openRouterModel),
     aiGlobalInstruction: store.get('aiGlobalInstruction', DEFAULTS.aiGlobalInstruction),
     menuCommands: store.get('menuCommands', DEFAULTS.menuCommands),
-    translationResultMode:
-      store.get('translationResultMode', DEFAULTS.translationResultMode) === 'replaceSelection'
-        ? 'replaceSelection'
-        : 'insertBelow',
-    blankNoteFirstLineFormat: store.get(
-      'blankNoteFirstLineFormat',
-      DEFAULTS.blankNoteFirstLineFormat
-    ),
   };
 }
 

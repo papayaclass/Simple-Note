@@ -11,10 +11,6 @@ interface OpenFileOptions {
   forceNew?: boolean;
 }
 
-function currentBlankFirstLineFormat(): BlankFirstLineFormat {
-  return useStore.getState().preferences.blankNoteFirstLineFormat;
-}
-
 function focusTabWhenReady(tabId: string): void {
   let tries = 0;
   const focus = (): void => {
@@ -125,7 +121,7 @@ export async function moveTabToNewWindow(tabId: string): Promise<void> {
 
 // "New tab": an untitled in-memory note. Used by Cmd+N and the tab bar's + button.
 export function createNewTab(): void {
-  const tabId = useStore.getState().addTab({ blankFirstLineFormat: currentBlankFirstLineFormat() });
+  const tabId = useStore.getState().addTab();
   focusTabWhenReady(tabId);
 }
 
