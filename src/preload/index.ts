@@ -60,6 +60,10 @@ export interface SimpleNoteAPI {
       suggestedName?: string
     ) => Promise<{ ok: boolean; path?: string }>;
     convertToSnote: (path: string, snote: string) => Promise<{ ok: boolean; path?: string }>;
+    rename: (
+      path: string,
+      newBase: string
+    ) => Promise<{ ok: boolean; path?: string; reason?: 'exists' | 'failed' }>;
     confirmLossy: (
       kind: 'convert' | 'export',
       name: string,
@@ -107,6 +111,7 @@ const api: SimpleNoteAPI = {
     exportMarkdown: (markdown, suggestedName) =>
       ipcRenderer.invoke('file:exportMarkdown', markdown, suggestedName),
     convertToSnote: (path, snote) => ipcRenderer.invoke('file:convertToSnote', path, snote),
+    rename: (path, newBase) => ipcRenderer.invoke('file:rename', path, newBase),
     confirmLossy: (kind, name, features, doc) =>
       ipcRenderer.invoke('file:confirmLossy', kind, name, features, doc),
     confirmCloseDirty: (name) => ipcRenderer.invoke('file:confirmCloseDirty', name),

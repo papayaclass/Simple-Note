@@ -345,11 +345,12 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
       const contents = { markdown: await buildMarkdown(), snote: await buildSnote() };
       const r = await window.api.file.save(contents, {
         path: tab?.filePath ?? null,
-        // Untitled notes are suggested under their first heading, in the app's
-        // own format so nothing is lost.
+        // Untitled notes are suggested under the name given via 重新命名, else
+        // their first heading, in the app's own format so nothing is lost.
         suggestedName: withSnoteExt(
-          sanitizeFileName(firstHeadingText(midHandleRef.current.editor.document)) ||
-            (tab?.fileName ?? '未命名筆記')
+          (tab && tab.fileName !== '未命名筆記' ? tab.fileName : '') ||
+            sanitizeFileName(firstHeadingText(midHandleRef.current.editor.document)) ||
+            '未命名筆記'
         ),
       });
       if (r.ok && r.path) {

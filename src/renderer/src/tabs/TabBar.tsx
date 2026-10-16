@@ -53,6 +53,7 @@ export function TabBar({
   const [menu, setMenu] = useState<PopMenuState | null>(null);
   const [dropGap, setDropGap] = useState<number | null>(null);
   const dragIndex = useRef<number | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (draggingTabId) return;
@@ -106,6 +107,36 @@ export function TabBar({
     await window.api.file.exportMarkdown(await view.buildMarkdown(), withCsvExt(tab.fileName));
   }, []);
 
+  // "重新命名": a saved tab renames its file on disk (same folder and
+  // extension); an untitled tab only changes its name, which the first save
+  // then suggests.
+  const commitRename = useCallback(async (tab: Tab, input: string) => {
+    setRenamingId(null);
+    const ext = tab.filePath?.match(/\.[^./]+$/)?.[0] ?? '';
+    let name = input.trim();
+    if (ext && name.toLowerCase().endsWith(ext.toLowerCase())) name = name.slice(0, -ext.length).trim();
+    if (!name || name === tab.fileName.replace(/\.csv$/i, '')) return;
+    if (/[/:]/.test(name)) {
+      window.alert('名稱不能包含「/」或「:」。');
+      return;
+    }
+    const { updateTab } = useStore.getState();
+    if (!tab.filePath) {
+      updateTab(tab.id, { fileName: name });
+      return;
+    }
+    const r = await window.api.file.rename(tab.filePath, name);
+    if (!r.ok || !r.path) {
+      window.alert(r.reason === 'exists' ? `同一個資料夾內已有「${name}${ext}」。` : '無法重新命名檔案。');
+      return;
+    }
+    const base = r.path.split('/').pop()!;
+    updateTab(tab.id, {
+      filePath: r.path,
+      fileName: /\.csv$/i.test(base) ? base : base.replace(/\.[^.]+$/, ''),
+    });
+  }, []);
+
   const openContext = useCallback(
     (e: React.MouseEvent, tab: Tab) => {
       e.preventDefault();
@@ -114,6 +145,7 @@ export function TabBar({
         y: e.clientY,
         items: [
           { label: '複製分頁', onClick: () => void duplicateTab(tab) },
+          { label: '重新命名', onClick: () => setRenamingId(tab.id) },
           { label: '關閉分頁', onClick: () => void closeTabWithChecks(tab.id) },
           { label: '開啟在新視窗', onClick: () => void moveTabToNewWindow(tab.id) },
           { label: '另存新檔…', onClick: () => void saveAsCopy(tab) },
@@ -184,7 +216,7 @@ export function TabBar({
             {showDropLine && dropGap === i && <div className="tab-drop-line" />}
             <div
               className={`tab${tab.id === activeTabId ? ' active' : ''}`}
-              draggable
+              draggable={renamingId !== tab.id}
               onClick={() => setActiveTab(tab.id)}
               onAuxClick={(e) => {
                 if (e.button === 1) void closeTabWithChecks(tab.id);
@@ -206,7 +238,30 @@ export function TabBar({
               }}
               title={tab.filePath ?? tab.fileName}
             >
-              <span className="tab-name">{tab.fileName}</span>
+              {renamingId === tab.id ? (
+                <input
+                  className="tab-rename"
+                  defaultValue={tab.fileName.replace(/\.csv$/i, '')}
+                  aria-label="分頁名稱"
+                  autoFocus
+                  spellCheck={false}
+                  size={Math.max(4, tab.fileName.length + 2)}
+                  onFocus={(e) => e.currentTarget.select()}
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.nativeEvent.isComposing) return;
+                    if (e.key === 'Enter') e.currentTarget.blur();
+                    if (e.key === 'Escape') {
+                      e.currentTarget.value = tab.fileName.replace(/\.csv$/i, '');
+                      e.currentTarget.blur();
+                    }
+                  }}
+                  onBlur={(e) => void commitRename(tab, e.currentTarget.value)}
+                />
+              ) : (
+                <span className="tab-name">{tab.fileName}</span>
+              )}
               {tab.dirty && <span className="dirty-dot" aria-hidden="true" />}
               <button
                 className="tab-close"

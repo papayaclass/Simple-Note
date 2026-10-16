@@ -104,6 +104,7 @@ Cmd+F 尋找、Opt+Cmd+F 尋找並取代、Cmd+G / Shift+Cmd+G 下一個／上�
 - 啟動時一律只開一個未存檔的空白筆記。從 Finder 雙擊文件或以文件建立新視窗時，main 先將文件放入 `pendingOpenByWebContents`。`App.tsx` 註冊檔案事件後呼叫 `window.api.notifyReady()`（`renderer:ready` 使用 invoke / handle），main 才把排隊的文件送出；原本的空白分頁由 `openFileInTab` 移除。初始化以 ref 保護，避免 React StrictMode 重跑；main 快取每個視窗的啟動結果並在關閉時清除。
 - 從 Finder 一次開啟多個檔案時都開在同一個視窗的不同分頁：第一個視窗建立前 (`initialWindowCreated` 為 false) 收到的 `open-file` 都先進 `coldStartPaths`，不能只看 `app.isReady()`，否則 ready 之後、視窗建立之前到達的檔案會各自開新視窗。
 - 分頁右鍵「開啟在新視窗」是「移動」：`moveTabToNewWindow` 把分頁的 snote 內容、路徑、dirty 狀態與 kind 經 `window:moveTab` 交給 main 開新視窗（新視窗以 `openDocumentPayload` + `restoreDirtyAfterLoad` 還原），再從原視窗移除該分頁；原視窗只剩它一個分頁時直接關閉原視窗。未命名分頁也可以移動。
+- 分頁右鍵「重新命名」在分頁上就地編輯名稱（Enter 確定、Esc 取消）：已存檔的分頁經 `file:rename` 在同一資料夾改檔名、保留副檔名，已有同名檔案時拒絕；未命名分頁只改 `fileName`，第一次存檔時優先用它當建議檔名（沒改過才用第一個標題）。
 - 分頁右鍵「全部儲存」：renderer 呼叫 `window.api.window.saveAll()`（`window:saveAll`），main 逐一對每個視窗執行 `window.__simpleNote_save()`（與關閉視窗時的「儲存」共用），一次只處理一個視窗，讓未命名分頁的存檔對話框不會同時跳出。踩過的坑：`file:save` 會把視窗標題改成剛寫入的檔名，存到背景分頁時標題會錯，所以 `__simpleNote_save` 結束時會把標題與 edited 圓點還原成作用中分頁。
 - 啟動時由 `src/renderer/src/main.tsx` 的 `bootstrap()` 先讀取偏好設定還原至 store，完成後才掛載 React。讀取失敗時會記錄錯誤並使用預設設定啟動。
 

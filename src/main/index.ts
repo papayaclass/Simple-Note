@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, screen } from 'electron';
-import { join } from 'node:path';
-import { readFile, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { access, readFile, rename, writeFile } from 'node:fs/promises';
 import { extname } from 'node:path';
 import Store from 'electron-store';
 import { buildMenu } from './menu.js';
@@ -501,6 +501,26 @@ app.whenReady().then(() => {
       return { ok: true, path };
     }
   );
+
+  // Tab context menu "重新命名": rename the file on disk, keeping its folder and
+  // extension. Refuses to overwrite an existing file.
+  ipcMain.handle('file:rename', async (_e, path: string, newBase: string) => {
+    const target = join(dirname(path), newBase + extname(path));
+    if (target === path) return { ok: true, path };
+    try {
+      await access(target);
+      return { ok: false, reason: 'exists' as const };
+    } catch {
+      // Target is free.
+    }
+    try {
+      await rename(path, target);
+      return { ok: true, path: target };
+    } catch (err) {
+      console.error('[rename] failed:', err);
+      return { ok: false, reason: 'failed' as const };
+    }
+  });
 
   // "另存新檔": export a copy of the note to an arbitrary location, defaulting to
   // the Downloads folder. Unlike file:save this never rebinds the tab (the
