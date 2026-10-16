@@ -1,16 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useStore, Tab } from '../store';
 import { getDocumentView } from '../DocumentView';
-import {
-  refreshVaultTree,
-  createNewTab,
-  rememberLastEditedFile,
-  forgetLastEditedFile,
-  stageTabForPaneMove,
-  isProtectedUnnamedNote,
-  ensureVaultHasNote,
-  closeTabWithChecks,
-} from '../fileActions';
+import { createNewTab, stageTabForPaneMove, closeTabWithChecks, moveTabToNewWindow } from '../fileActions';
 import { isSnotePath, withMarkdownExt, withSnoteExt } from '../noteFormat';
 import { isSsheetPath, withCsvExt, withSsheetExt } from '../sheet/sheetFormat';
 import { PopMenu, PopMenuState } from '../ui/PopMenu';
@@ -18,8 +9,8 @@ import './tabs.css';
 
 interface TabBarProps {
   paneId: string;
-  onToggleSidebar: () => void;
-  showSidebarToggle?: boolean;
+  // The first pane's tab bar sits under the macOS traffic lights.
+  clearTrafficLights?: boolean;
   draggingTabId?: string | null;
   activeDropPaneId?: string | null;
   onTabDragStart?: (tabId: string) => void;
@@ -36,8 +27,7 @@ function nativeFileName(tab: Tab): string {
 
 export function TabBar({
   paneId,
-  onToggleSidebar,
-  showSidebarToggle = true,
+  clearTrafficLights = true,
   draggingTabId,
   activeDropPaneId,
   onTabDragStart,
@@ -58,8 +48,6 @@ export function TabBar({
   const setActivePane = useStore((s) => s.setActivePane);
   const addTab = useStore((s) => s.addTab);
   const moveTabToPane = useStore((s) => s.moveTabToPane);
-  const setTabFile = useStore((s) => s.setTabFile);
-  const vaultPath = useStore((s) => s.vaultPath);
 
   const [menu, setMenu] = useState<PopMenuState | null>(null);
   const [dropGap, setDropGap] = useState<number | null>(null);
@@ -71,50 +59,12 @@ export function TabBar({
     dragIndex.current = null;
   }, [draggingTabId]);
 
-  const isInVault = useCallback(
-    (path: string | null): boolean =>
-      !!path && !!vaultPath && (path === vaultPath || path.startsWith(vaultPath + '/')),
-    [vaultPath]
-  );
-
+  // A copy opens as an untitled tab; saving it asks where to put the file.
   const duplicateTab = useCallback(async (tab: Tab) => {
-    if (tab.filePath) {
-      const r = await window.api.vault.duplicate(tab.filePath);
-      if (r.ok && r.path) {
-        await refreshVaultTree();
-        const md = (await window.api.vault.read(r.path)).content ?? '';
-        addTab({ filePath: r.path, initialMarkdown: md }, paneId);
-      }
-    } else {
-      const content = (await getDocumentView(tab.id)?.buildSnote()) ?? '';
-      addTab({ initialMarkdown: content, kind: tab.kind }, paneId);
-    }
+    const content = (await getDocumentView(tab.id)?.buildSnote()) ?? '';
+    const id = addTab({ initialMarkdown: content, kind: tab.kind }, paneId);
+    useStore.getState().updateTab(id, { restoreDirtyAfterLoad: true });
   }, [addTab, paneId]);
-
-  const deleteDocument = useCallback(
-    async (tab: Tab) => {
-      if (!tab.filePath || !isInVault(tab.filePath)) return;
-      if (isProtectedUnnamedNote(tab.filePath)) return;
-      const path = tab.filePath;
-      getDocumentView(tab.id)?.cancelPendingAutoSave();
-      const r = await window.api.vault.delete(path);
-      if (!r.ok) {
-        void getDocumentView(tab.id)?.save();
-        return;
-      }
-
-      const s = useStore.getState();
-      forgetLastEditedFile(path);
-      if (s.selectedPath === path) s.setSelectedPath(null);
-      const tabsToClose = s.tabs.filter((t) => t.filePath === path).map((t) => t.id);
-      for (const id of tabsToClose) {
-        useStore.getState().closeTab(id);
-      }
-      await refreshVaultTree();
-      await ensureVaultHasNote();
-    },
-    [isInVault]
-  );
 
   // Both serializations of a tab's document; the chosen file extension decides
   // which one is written. For a sheet, `markdown` carries the CSV text.
@@ -127,8 +77,7 @@ export function TabBar({
   }, []);
 
   // "另存新檔": export a copy (defaults to the Downloads folder, in the app's own
-  // format). The tab keeps pointing at its original file, so later Cmd+S still
-  // saves to the vault.
+  // format). The tab keeps pointing at its original file.
   const saveAsCopy = useCallback(
     async (tab: Tab) => {
       await window.api.file.saveAs(await contentsOf(tab), nativeFileName(tab));
@@ -156,42 +105,17 @@ export function TabBar({
     await window.api.file.exportMarkdown(await view.buildMarkdown(), withCsvExt(tab.fileName));
   }, []);
 
-  const saveToVault = useCallback(
-    async (tab: Tab) => {
-      const r = await window.api.vault.moveToVault(
-        await contentsOf(tab),
-        nativeFileName(tab)
-      );
-      if (r.ok && r.path) {
-        setTabFile(tab.id, r.path);
-        rememberLastEditedFile(r.path);
-        await refreshVaultTree();
-      }
-    },
-    [contentsOf, setTabFile]
-  );
-
   const openContext = useCallback(
     (e: React.MouseEvent, tab: Tab) => {
       e.preventDefault();
-      const outsideVault = !isInVault(tab.filePath);
       setMenu({
         x: e.clientX,
         y: e.clientY,
         items: [
           { label: '複製分頁', onClick: () => void duplicateTab(tab) },
           { label: '關閉分頁', onClick: () => void closeTabWithChecks(tab.id) },
-          {
-            label: '開啟在新視窗',
-            disabled: !tab.filePath,
-            onClick: () => tab.filePath && window.api.window.openInNewWindow(tab.filePath),
-          },
+          { label: '開啟在新視窗', onClick: () => void moveTabToNewWindow(tab.id) },
           { label: '另存新檔…', onClick: () => void saveAsCopy(tab) },
-          {
-            label: '另存到儲存庫',
-            disabled: !outsideVault,
-            onClick: () => void saveToVault(tab),
-          },
           tab.kind === 'sheet'
             ? {
                 label: '匯出成 CSV 文件…',
@@ -203,17 +127,10 @@ export function TabBar({
                 disabled: !isSnotePath(tab.filePath),
                 onClick: () => void exportMarkdown(tab),
               },
-          { divider: true },
-          {
-            label: '刪除文件',
-            danger: true,
-            disabled: outsideVault || isProtectedUnnamedNote(tab.filePath),
-            onClick: () => void deleteDocument(tab),
-          },
         ],
       });
     },
-    [isInVault, duplicateTab, saveAsCopy, exportMarkdown, exportCsv, saveToVault, deleteDocument]
+    [duplicateTab, saveAsCopy, exportMarkdown, exportCsv]
   );
 
   const onDragOver = useCallback((e: React.DragEvent, index: number) => {
@@ -252,12 +169,7 @@ export function TabBar({
   const showDropLine = draggingTabId && activeDropPaneId === paneId;
 
   return (
-    <div className={`tab-bar${showSidebarToggle ? ' with-sidebar-control' : ''}`}>
-      {showSidebarToggle && (
-        <button className="sidebar-toggle" title="切換側邊欄 (⇧⌘F)" onClick={onToggleSidebar}>
-          <PanelLeftIcon />
-        </button>
-      )}
+    <div className={`tab-bar${clearTrafficLights ? ' clear-traffic-lights' : ''}`}>
       <div className="tab-strip" onDragOver={onStripDragOver} onDrop={onDrop}>
         {tabs.map((tab, i) => (
           <div className="tab-slot" key={tab.id}>
@@ -309,7 +221,7 @@ export function TabBar({
           title="新分頁"
           onClick={() => {
             setActivePane(paneId);
-            void createNewTab();
+            createNewTab();
           }}
         >
           <PlusIcon />
@@ -331,14 +243,6 @@ function PlusIcon(): JSX.Element {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
       <path d="M12 5v14M5 12h14" />
-    </svg>
-  );
-}
-function PanelLeftIcon(): JSX.Element {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="4" width="18" height="16" rx="2" />
-      <path d="M9 4v16" />
     </svg>
   );
 }

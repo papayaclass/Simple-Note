@@ -1,8 +1,8 @@
 /* Simple Sheet — the spreadsheet surface for .ssheet / .csv tabs. Borrows the
-   app's tokens: headers sit on the sidebar tone, selection uses the accent. */
+   app's tokens: headers sit on the tab-bar tone, selection uses the accent. */
 :root {
   --sheet-grid: rgba(0, 0, 0, 0.075);
-  --sheet-head-bg: var(--sidebar-bg);
+  --sheet-head-bg: var(--chrome-bg);
   --sheet-head-fg: #8a8a86;
   --sheet-head-sel-bg: rgba(37, 99, 235, 0.1);
   --sheet-head-sel-fg: var(--accent);

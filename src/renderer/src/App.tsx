@@ -1,18 +1,12 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore, useActiveTab } from './store';
 import { DocumentView, getDocumentView } from './DocumentView';
-import { ImageView } from './ImageView';
 import { SheetView } from './sheet/SheetView';
-import { Sidebar } from './sidebar/Sidebar';
 import { TabBar } from './tabs/TabBar';
 import {
-  openFileInTab,
-  refreshVaultTree,
+  openDocumentPayload,
   createNewTab,
   createNewSheet,
-  createBlankVaultNote,
-  isPathInVault,
-  forgetLastEditedFile,
   stageTabForPaneMove,
   closeTabWithChecks,
   convertLossyMarkdownTabs,
@@ -26,7 +20,6 @@ import './preferences/panel.css';
 export function App(): JSX.Element {
   const tabs = useStore((s) => s.tabs);
   const panes = useStore((s) => s.panes);
-  const activeTabId = useStore((s) => s.activeTabId);
   const activePaneId = useStore((s) => s.activePaneId);
   const activeTab = useActiveTab();
   const splitRatio = useStore((s) => s.splitRatio);
@@ -38,8 +31,6 @@ export function App(): JSX.Element {
   const preferences = useStore((s) => s.preferences);
   const setPreferences = useStore((s) => s.setPreferences);
   const setPrefsOpen = useStore((s) => s.setPrefsPanelOpen);
-  const sidebarOpen = useStore((s) => s.sidebarOpen);
-  const vaultPath = useStore((s) => s.vaultPath);
   const wordCountPopover = useStore((s) => s.wordCountPopover);
   const setWordCountPopover = useStore((s) => s.setWordCountPopover);
   const [draggedTabId, setDraggedTabId] = useState<string | null>(null);
@@ -176,11 +167,12 @@ export function App(): JSX.Element {
     r.setProperty('--side-menu-heading-1-height', `${preferences.heading1Scale * 1.25}em`);
     r.setProperty('--side-menu-heading-2-height', `${preferences.heading2Scale * 1.3}em`);
     r.setProperty('--side-menu-heading-3-height', `${preferences.heading3Scale * 1.35}em`);
-    r.setProperty('--sidebar-width', `${preferences.sidebarWidth}px`);
     document.documentElement.setAttribute('data-code-wrap', preferences.codeWrap ? 'true' : 'false');
   }, [preferences]);
 
-  // Preferences are restored before mount; normalize commands and load the vault.
+  // Preferences are restored before mount; normalize the command list, then
+  // tell main this window is ready for any queued Finder opens. Without one the
+  // window keeps its starter tab: a blank, unsaved note.
   useEffect(() => {
     // StrictMode remounts effects; initialization must only run once per window.
     if (startupInitialized.current) return;
@@ -190,8 +182,7 @@ export function App(): JSX.Element {
       const menuCommands = reconcileMenuCommands(stored.menuCommands);
       const menuCommandsChanged =
         JSON.stringify(menuCommands) !== JSON.stringify(stored.menuCommands ?? []);
-      const normalized = { ...stored, menuCommands };
-      setPreferences(normalized);
+      setPreferences({ ...stored, menuCommands });
       // Persist registry additions immediately so they become real rows in the
       // customizable preferences list, not temporary context-menu-only items.
       if (menuCommandsChanged) await window.api.prefs.set('menuCommands', menuCommands);
@@ -205,35 +196,7 @@ export function App(): JSX.Element {
           });
         }
       }
-      const vp = await window.api.vault.get();
-      useStore.getState().setVaultPath(vp);
-      if (vp) await refreshVaultTree();
-      // File listeners are mounted by now. Finish queued Finder opens before
-      // deciding whether this window needs a default startup document.
-      if (await window.api.notifyReady()) return;
-      const createStartupBlankVaultNote = async (): Promise<void> => {
-        await new Promise((resolve) => window.setTimeout(resolve, 0));
-        const s = useStore.getState();
-        const stillBlank =
-          s.tabs.length === 1 && !s.tabs[0]?.filePath && !s.tabs[0]?.dirty;
-        if (stillBlank) await createBlankVaultNote();
-      };
-      if (stored.startupBehavior === 'lastEdited') {
-        await new Promise((resolve) => window.setTimeout(resolve, 0));
-        const s = useStore.getState();
-        const stillBlank =
-          s.tabs.length === 1 && !s.tabs[0]?.filePath && !s.tabs[0]?.dirty;
-        if (stillBlank && stored.lastEditedFilePath) {
-          const opened = await openFileInTab(stored.lastEditedFilePath, undefined, {
-            autoFocus: true,
-          });
-          if (opened) return;
-          forgetLastEditedFile(stored.lastEditedFilePath);
-        }
-        await createStartupBlankVaultNote();
-      } else {
-        await createStartupBlankVaultNote();
-      }
+      await window.api.notifyReady();
     })();
   }, [setPreferences]);
 
@@ -242,14 +205,6 @@ export function App(): JSX.Element {
     window.api.window.setDirty(activeTab.dirty);
     window.api.window.setTitle(activeTab.fileName);
   }, [activeTab.dirty, activeTab.fileName]);
-
-  // Switching to a tab whose file lives in the vault also selects that file in
-  // the sidebar (which reveals + highlights it).
-  useEffect(() => {
-    if (activeTab.filePath && isPathInVault(activeTab.filePath)) {
-      useStore.getState().setSelectedPath(activeTab.filePath);
-    }
-  }, [activeTabId, activeTab.filePath, vaultPath]);
 
   // Expose dirty/save for native close confirmation, across all tabs.
   useEffect(() => {
@@ -280,28 +235,11 @@ export function App(): JSX.Element {
     };
   });
 
-  const handleToggleSidebar = useCallback(() => {
-    const next = !useStore.getState().sidebarOpen;
-    useStore.getState().setSidebarOpen(next);
-    void window.api.prefs.set('sidebarOpen', next);
-  }, []);
-
-  // Files pushed in by main (Finder open / File → Open / new window) open as tabs.
+  // Documents pushed in by main (Finder open / File → Open / a tab moved from
+  // another window) open as tabs.
   useEffect(() => {
-    const offExternal = window.api.onExternalOpen(({ path, content }) => {
-      void openFileInTab(path, content, { autoFocus: true });
-    });
-    const offInTab = window.api.onOpenInTab(({ path, content }) => {
-      void openFileInTab(path, content, { autoFocus: true });
-    });
-    return () => {
-      offExternal();
-      offInTab();
-    };
+    return window.api.onOpenInTab((doc) => void openDocumentPayload(doc));
   }, []);
-
-  // Refresh the file tree when the vault changes on disk.
-  useEffect(() => window.api.onVaultChanged(() => void refreshVaultTree()), []);
 
   // Wire menu commands.
   useEffect(() => {
@@ -313,17 +251,14 @@ export function App(): JSX.Element {
           void getDocumentView(id)?.save();
           break;
         case 'new-tab':
-          void createNewTab();
+          createNewTab();
           break;
         case 'new-sheet':
-          void createNewSheet();
+          createNewSheet();
           break;
         case 'close-tab-or-window':
           if (s.tabs.length > 1) void closeTabWithChecks(id);
           else window.api.window.close();
-          break;
-        case 'toggle-sidebar':
-          handleToggleSidebar();
           break;
         case 'preferences':
           setPrefsOpen(true);
@@ -367,13 +302,10 @@ export function App(): JSX.Element {
       }
     });
     return off;
-  }, [setPrefsOpen, toggleMathMode, handleToggleSidebar]);
+  }, [setPrefsOpen, toggleMathMode]);
 
   return (
-    <div className={`window-root${sidebarOpen ? '' : ' sidebar-collapsed'}`}>
-      <div className={`sidebar-shell${sidebarOpen ? ' open' : ''}`}>
-        <Sidebar />
-      </div>
+    <div className="window-root">
       <div className="main-area">
         <div
           className={`workspace-shell${panes.length > 1 ? ' split' : ''}`}
@@ -402,8 +334,7 @@ export function App(): JSX.Element {
               >
                 <TabBar
                   paneId={pane.id}
-                  onToggleSidebar={handleToggleSidebar}
-                  showSidebarToggle={index === 0}
+                  clearTrafficLights={index === 0}
                   draggingTabId={draggedTabId}
                   activeDropPaneId={activeDropPaneId}
                   onTabDragStart={(tabId) => {
@@ -425,9 +356,7 @@ export function App(): JSX.Element {
                   {pane.tabIds.map((tabId) => {
                     const t = tabById.get(tabId);
                     if (!t) return null;
-                    return t.kind === 'image' ? (
-                      <ImageView key={t.id} tabId={t.id} active={t.id === pane.activeTabId} />
-                    ) : t.kind === 'sheet' ? (
+                    return t.kind === 'sheet' ? (
                       <SheetView key={t.id} tabId={t.id} active={t.id === pane.activeTabId} />
                     ) : (
                       <DocumentView key={t.id} tabId={t.id} active={t.id === pane.activeTabId} />

@@ -8,15 +8,11 @@ import '@blocknote/mantine/style.css';
 import './editor.css';
 
 async function bootstrap(): Promise<void> {
-  // Restore the persisted layout before mounting the shell, so a closed
-  // sidebar never paints open or animates closed during startup.
+  // Restore the persisted preferences before mounting the shell, so the first
+  // paint already uses the user's layout.
   try {
     const stored = (await window.api.prefs.get()) as Partial<Preferences>;
-    const state = useStore.getState();
-    state.setPreferences(stored);
-    state.setSidebarOpen(stored.sidebarOpen ?? state.preferences.sidebarOpen);
-    state.setSortMode(stored.sortMode ?? state.preferences.sortMode);
-    state.setSortAsc(stored.sortAsc ?? state.preferences.sortAsc);
+    useStore.getState().setPreferences(stored);
   } catch (error) {
     console.error('Failed to restore startup preferences', error);
   }

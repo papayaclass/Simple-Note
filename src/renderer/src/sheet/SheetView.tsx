@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../store';
 import { DocumentViewHandle, registerDocumentView } from '../DocumentView';
-import { isPathInVault, rememberLastEditedFile } from '../fileActions';
 import {
   cellKey,
   colName,
@@ -205,7 +204,6 @@ export function SheetView({ tabId, active }: Props): JSX.Element {
   const cellsRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const barRef = useRef<HTMLInputElement | null>(null);
-  const autoSaveTimer = useRef<number | null>(null);
   const initialAutoFocus = useRef(
     active && (useStore.getState().tabs.find((t) => t.id === tabId)?.autoFocus ?? true)
   );
@@ -326,7 +324,7 @@ export function SheetView({ tabId, active }: Props): JSX.Element {
   );
 
   // ---------------------------------------------------------------------------
-  // Saving (mirrors DocumentView: vault files auto-save, others mark dirty)
+  // Saving (mirrors DocumentView: edits mark the tab dirty until saved)
   // ---------------------------------------------------------------------------
 
   const tabNow = useCallback(() => useStore.getState().tabs.find((t) => t.id === tabId), [tabId]);
@@ -343,44 +341,12 @@ export function SheetView({ tabId, active }: Props): JSX.Element {
     const cur = tabNow();
     if (cur?.filePath !== r.path) setTabFile(tabId, r.path);
     else if (cur?.dirty) setTabDirty(tabId, false);
-    rememberLastEditedFile(r.path);
     return true;
   }, [setTabDirty, setTabFile, tabId, tabNow]);
-  const saveRef = useRef(save);
-  saveRef.current = save;
-
-  const cancelPendingAutoSave = useCallback(() => {
-    if (autoSaveTimer.current) {
-      window.clearTimeout(autoSaveTimer.current);
-      autoSaveTimer.current = null;
-    }
-  }, []);
-
-  const flushAutoSave = useCallback(() => {
-    if (autoSaveTimer.current) {
-      cancelPendingAutoSave();
-      void saveRef.current();
-    }
-  }, [cancelPendingAutoSave]);
-
   const markChanged = useCallback(() => {
     const tab = tabNow();
-    if (!tab) return;
-    if (isPathInVault(tab.filePath)) {
-      cancelPendingAutoSave();
-      autoSaveTimer.current = window.setTimeout(() => {
-        autoSaveTimer.current = null;
-        void saveRef.current();
-      }, 600);
-    } else if (!tab.dirty) {
-      setTabDirty(tabId, true);
-    }
-  }, [cancelPendingAutoSave, setTabDirty, tabId, tabNow]);
-
-  useEffect(() => {
-    if (!active) flushAutoSave();
-  }, [active, flushAutoSave]);
-  useEffect(() => () => flushAutoSave(), [flushAutoSave]);
+    if (tab && !tab.dirty) setTabDirty(tabId, true);
+  }, [setTabDirty, tabId, tabNow]);
 
   // Every edit goes through here so it lands on the undo stack.
   const apply = useCallback(
@@ -441,7 +407,7 @@ export function SheetView({ tabId, active }: Props): JSX.Element {
       loadText(text);
       finish();
     } else if (tab.filePath) {
-      void window.api.vault.read(tab.filePath).then((r) => {
+      void window.api.file.read(tab.filePath).then((r) => {
         if (r.ok && r.content != null) loadText(r.content);
         finish();
       });
@@ -829,7 +795,7 @@ export function SheetView({ tabId, active }: Props): JSX.Element {
     [cancelEdit, commitEdit, onStyleShortcut]
   );
 
-  // Leaving the sheet (sidebar click, another pane) commits a pending edit.
+  // Leaving the sheet (another tab or pane) commits a pending edit.
   const onRootBlur = useCallback((e: React.FocusEvent) => {
     const next = e.relatedTarget as Node | null;
     if (next && rootRef.current?.contains(next)) return;
@@ -1045,13 +1011,6 @@ export function SheetView({ tabId, active }: Props): JSX.Element {
     buildSnote: async () => serializeSsheet(dataRef.current),
     lossyFeatures: () => lossySheetFeatures(dataRef.current),
     hasContent: () => Object.values(dataRef.current.cells).some((c) => !!c.v),
-    cancelPendingAutoSave,
-    replaceWithContent: async (text: string, opts: { focus?: boolean } = {}) => {
-      cancelPendingAutoSave();
-      loadText(text);
-      setTabDirty(tabId, false);
-      if (opts.focus) focusGrid();
-    },
     pastePlainText: () => pasteFromClipboard(true),
     removeParagraphBreaks: () => {},
     focusLastBlock: focusGrid,

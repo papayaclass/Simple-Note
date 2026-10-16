@@ -119,12 +119,6 @@ export function buildMenu(h: MenuHandlers): void {
       label: '檢視',
       submenu: [
         {
-          label: '切換側邊欄',
-          accelerator: 'Shift+CmdOrCtrl+F',
-          click: () => h.onCommand('toggle-sidebar'),
-        },
-        { type: 'separator' },
-        {
           label: '將文章推往左側',
           accelerator: 'Shift+CmdOrCtrl+Left',
           click: () => h.onCommand('push-article-left'),

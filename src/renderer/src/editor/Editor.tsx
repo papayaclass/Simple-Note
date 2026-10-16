@@ -41,8 +41,6 @@ export interface EditorHandle {
   editor: ReturnType<typeof useCreateBlockNote>;
 }
 
-const SIDEBAR_PATH_MIME = 'application/x-simple-note-path';
-
 function blankContentForFormat(format: BlankFirstLineFormat): PartialBlock<any, any, any>[] {
   switch (format) {
     case 'heading1':
@@ -245,8 +243,6 @@ export function Editor({
   const mathMode = useStore((s) => s.mathMode);
   const codeWrap = useStore((s) => s.preferences.codeWrap);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const notePathRef = useRef<string | null>(notePath);
-  notePathRef.current = notePath;
   const initialContent = useRef(blankContentForFormat(blankFirstLineFormat)).current;
 
   // Custom ProseMirror extensions (math overlay + two-stage Cmd-A) registered via BlockNote's extension API
@@ -553,7 +549,7 @@ export function Editor({
       e.preventDefault();
       e.stopPropagation();
       const ref = editor.getTextCursorPosition().block.id;
-      void insertImageFiles(editor, files, ref, notePathRef.current);
+      void insertImageFiles(editor, files, ref);
     };
 
     // Toggle List from Simple Canvas (<details>) or Notion (its private block
@@ -629,20 +625,19 @@ export function Editor({
     const onDrop = (e: DragEvent): void => {
       const images = imageFilesFrom(e.dataTransfer);
       const textPaths = textNoteFilesFrom(e.dataTransfer);
-      const sidebarImagePaths = sidebarImagePathsFrom(e.dataTransfer);
-      if (images.length === 0 && textPaths.length === 0 && sidebarImagePaths.length === 0) return;
+      if (images.length === 0 && textPaths.length === 0) return;
       e.preventDefault();
       e.stopPropagation();
 
       // md/txt dropped from Finder open as new tabs (storage location unchanged).
       for (const p of textPaths) {
-        void window.api.vault.read(p).then((r) => {
+        void window.api.file.read(p).then((r) => {
           if (r.ok) void openFileInTab(p, r.content ?? '');
           else console.error('[editor] failed to read dropped file:', p);
         });
       }
 
-      if (images.length > 0 || sidebarImagePaths.length > 0) {
+      if (images.length > 0) {
         const view = (editor as any)._tiptapEditor.view;
         clearDropCursor(view);
         let afterId: string | null = null;
@@ -652,21 +647,12 @@ export function Editor({
           const blocks = editor.document;
           afterId = blocks.length ? blocks[blocks.length - 1].id : null;
         }
-        if (images.length > 0) {
-          void insertImageFiles(editor, images, afterId, notePathRef.current);
-        }
-        if (sidebarImagePaths.length > 0) {
-          void insertImagePaths(editor, sidebarImagePaths, afterId, notePathRef.current);
-        }
+        void insertImageFiles(editor, images, afterId);
       }
     };
 
     const onDragOver = (e: DragEvent): void => {
-      if (
-        e.dataTransfer &&
-        (Array.from(e.dataTransfer.types).includes('Files') ||
-          Array.from(e.dataTransfer.types).includes(SIDEBAR_PATH_MIME))
-      ) {
+      if (e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files')) {
         e.preventDefault();
       }
     };
@@ -862,13 +848,6 @@ function textNoteFilesFrom(data: DataTransfer | null): string[] {
     .filter((p) => Boolean(p) && /\.(md|txt)$/i.test(p));
 }
 
-function sidebarImagePathsFrom(data: DataTransfer | null): string[] {
-  if (!data) return [];
-  const path = data.getData(SIDEBAR_PATH_MIME);
-  if (!path.startsWith('/')) return [];
-  return isImagePath(path) ? [path] : [];
-}
-
 function filePathFor(file: File): string {
   try {
     return window.api.file.getPathForFile(file);
@@ -890,52 +869,18 @@ function readAsDataURL(file: File): Promise<string> {
   });
 }
 
-// Insert each image as an `image` block. For each file we ask main where it
-// should live: in-vault notes back the image into <vault>/Assets and store a
-// relative path; out-of-vault notes store an absolute path; pasted screenshots
-// without a source file fall back to an in-memory data URL when not in a vault.
+// Insert each image as an `image` block. A file on disk (dragged from Finder)
+// is referenced by its absolute path; a pasted image with no source file is
+// kept inline as a data URL.
 async function insertImageFiles(
   editor: any,
   files: File[],
-  afterId: string | null,
-  notePath: string | null
+  afterId: string | null
 ): Promise<void> {
   let ref = afterId ?? editor.document[editor.document.length - 1]?.id ?? null;
   for (const file of files) {
     if (!ref) return;
-    const sourcePath = filePathFor(file);
-    let blockSrc: string | null = null;
-    if (sourcePath) {
-      const r = await window.api.vault.saveImageForNote({ notePath, sourcePath });
-      blockSrc = r.ok ? r.persistSrc || null : null;
-    } else {
-      const dataUrl = await readAsDataURL(file);
-      const r = await window.api.vault.saveImageForNote({ notePath, dataUrl });
-      blockSrc = r.ok ? (r.memoryOnly ? dataUrl : r.persistSrc || null) : dataUrl;
-    }
-    if (!blockSrc) {
-      console.warn('[editor] image insert skipped:', sourcePath || '(clipboard image)');
-      continue;
-    }
-    ref = insertImageBlock(editor, ref, blockSrc) ?? ref;
-  }
-}
-
-async function insertImagePaths(
-  editor: any,
-  paths: string[],
-  afterId: string | null,
-  notePath: string | null
-): Promise<void> {
-  let ref = afterId ?? editor.document[editor.document.length - 1]?.id ?? null;
-  for (const sourcePath of paths) {
-    if (!ref) return;
-    const r = await window.api.vault.saveImageForNote({ notePath, sourcePath });
-    const blockSrc = r.ok ? r.persistSrc || null : null;
-    if (!blockSrc) {
-      console.warn('[editor] image insert skipped:', sourcePath);
-      continue;
-    }
+    const blockSrc = filePathFor(file) || (await readAsDataURL(file));
     ref = insertImageBlock(editor, ref, blockSrc) ?? ref;
   }
 }

@@ -2,20 +2,6 @@ import { create } from 'zustand';
 import { DEFAULT_MENU_COMMANDS, MenuItemPref } from './context-menu/commands';
 import { isSheetPath } from './sheet/sheetFormat';
 
-// Mirrors VaultNode in src/preload/index.ts (kept local so the renderer's
-// tsconfig project stays self-contained). window.api.vault.list() returns the
-// structurally-identical preload type, which assigns to this freely.
-export interface VaultNode {
-  name: string;
-  path: string;
-  type: 'file' | 'folder';
-  mtimeMs: number;
-  birthtimeMs: number;
-  children?: VaultNode[];
-}
-
-export type SortMode = 'manual' | 'name' | 'created' | 'modified';
-export type StartupBehavior = 'newBlankInVault' | 'lastEdited';
 export type BlankFirstLineFormat = 'heading1' | 'heading2' | 'heading3' | 'paragraph';
 export type TranslationResultMode = 'insertBelow' | 'replaceSelection';
 
@@ -24,7 +10,7 @@ export type TranslationResultMode = 'insertBelow' | 'replaceSelection';
 // the opposite side (article-left reveals the right column, and vice versa).
 export type ColumnLayout = 'center' | 'article-left' | 'article-right';
 
-export type TabKind = 'editor' | 'image' | 'sheet';
+export type TabKind = 'editor' | 'sheet';
 
 export interface TabPane {
   id: string;
@@ -45,20 +31,14 @@ export interface Tab {
   // Markdown to load into the editor once on first mount (set when a tab is
   // opened from a file). Cleared by DocumentView after it loads.
   initialMarkdown?: string;
-  // Whether the editor grabs focus when this tab first mounts. Blank/new tabs
-  // focus immediately; sidebar-opened files leave focus in the sidebar so its
-  // Enter/Delete shortcuts keep working.
+  // Whether the editor grabs focus when this tab first mounts.
   autoFocus: boolean;
-  // True for freshly-created untitled files: the filename auto-follows the
-  // document's first heading until the user manually renames it.
-  autoName: boolean;
   blankFirstLineFormat: BlankFirstLineFormat;
-  // Used when a tab is moved between split panes. React remounts the document
-  // under its new pane, so the current editor Markdown is staged here once and
-  // the previous dirty state is restored after that load.
+  // Used when a tab is moved between split panes or windows. The document is
+  // remounted, so the current content is staged here once and the previous
+  // dirty state is restored after that load.
   restoreDirtyAfterLoad?: boolean;
-  // 'editor' (default) renders a DocumentView; 'image' renders a read-only
-  // ImageView previewing the file at filePath; 'sheet' renders a SheetView
+  // 'editor' (default) renders a DocumentView; 'sheet' renders a SheetView
   // (.ssheet / .csv spreadsheets).
   kind: TabKind;
 }
@@ -78,17 +58,7 @@ export interface Preferences {
   aiGlobalInstruction: string;
   menuCommands: MenuItemPref[];
   translationResultMode: TranslationResultMode;
-  startupBehavior: StartupBehavior;
   blankNoteFirstLineFormat: BlankFirstLineFormat;
-  lastEditedFilePath: string;
-  // File-management prefs (mirrored in src/main/preferences.ts).
-  vaultPath: string;
-  sidebarOpen: boolean;
-  sidebarWidth: number;
-  sortMode: SortMode;
-  sortAsc: boolean;
-  foldersOnTop: boolean;
-  manualOrder: Record<string, string[]>;
 }
 
 export const DEFAULT_PREFS: Preferences = {
@@ -106,16 +76,7 @@ export const DEFAULT_PREFS: Preferences = {
   aiGlobalInstruction: '',
   menuCommands: DEFAULT_MENU_COMMANDS,
   translationResultMode: 'insertBelow',
-  startupBehavior: 'newBlankInVault',
   blankNoteFirstLineFormat: 'paragraph',
-  lastEditedFilePath: '',
-  vaultPath: '',
-  sidebarOpen: true,
-  sidebarWidth: 250,
-  sortMode: 'manual',
-  sortAsc: true,
-  foldersOnTop: true,
-  manualOrder: {},
 };
 
 let tabCounter = 0;
@@ -139,7 +100,6 @@ export interface NewTabOptions {
   filePath?: string | null;
   initialMarkdown?: string;
   autoFocus?: boolean;
-  autoName?: boolean;
   blankFirstLineFormat?: BlankFirstLineFormat;
   kind?: TabKind;
 }
@@ -156,7 +116,6 @@ export function makeTab(opts: NewTabOptions = {}): Tab {
     columnSplit: 0.5,
     initialMarkdown: opts.initialMarkdown,
     autoFocus: opts.autoFocus ?? true,
-    autoName: opts.autoName ?? false,
     blankFirstLineFormat: opts.blankFirstLineFormat ?? DEFAULT_PREFS.blankNoteFirstLineFormat,
     kind,
   };
@@ -206,13 +165,6 @@ interface AppState {
   prefsPanelOpen: boolean;
   contextMenuOpen: boolean;
   wordCountPopover: { count: number; chars: number; charsNoSpace: number; chinese: number } | null;
-  // Sidebar / vault UI state (persisted to preferences on change).
-  vaultPath: string | null;
-  sidebarOpen: boolean;
-  sortMode: SortMode;
-  sortAsc: boolean;
-  fileTree: VaultNode[];
-  selectedPath: string | null;
 
   // Tab actions
   addTab: (opts?: NewTabOptions, paneId?: string) => string;
@@ -225,11 +177,8 @@ interface AppState {
   splitTabToSide: (tabId: string, side: 'left' | 'right') => void;
   setSplitRatio: (ratio: number) => void;
   updateTab: (id: string, patch: Partial<Tab>) => void;
-  // Follow a file/folder rename or move: any open tab whose path is (or is
-  // under) oldPath is repointed to the new path + filename.
+  // Repoint every open tab at oldPath to newPath (after a .md → .snote convert).
   retargetTabs: (oldPath: string, newPath: string) => void;
-  // Stop auto-naming the tab(s) at this path (called on a manual rename).
-  clearAutoName: (path: string) => void;
   setTabFile: (id: string, path: string | null) => void;
   setTabDirty: (id: string, dirty: boolean) => void;
   setTabColumnLayout: (id: string, layout: ColumnLayout) => void;
@@ -243,14 +192,6 @@ interface AppState {
   setPrefsPanelOpen: (open: boolean) => void;
   setWordCountPopover: (v: AppState['wordCountPopover']) => void;
 
-  // Sidebar / vault actions
-  setVaultPath: (path: string | null) => void;
-  setSidebarOpen: (open: boolean) => void;
-  toggleSidebar: () => void;
-  setSortMode: (mode: SortMode) => void;
-  setSortAsc: (asc: boolean) => void;
-  setFileTree: (tree: VaultNode[]) => void;
-  setSelectedPath: (path: string | null) => void;
 }
 
 const FIRST_TAB = makeTab();
@@ -267,12 +208,6 @@ export const useStore = create<AppState>((set) => ({
   prefsPanelOpen: false,
   contextMenuOpen: false,
   wordCountPopover: null,
-  vaultPath: null,
-  sidebarOpen: true,
-  sortMode: 'manual',
-  sortAsc: true,
-  fileTree: [],
-  selectedPath: null,
 
   addTab: (opts, paneId) => {
     const tab = makeTab(opts);
@@ -466,10 +401,6 @@ export const useStore = create<AppState>((set) => ({
         return t;
       }),
     })),
-  clearAutoName: (path) =>
-    set((s) => ({
-      tabs: s.tabs.map((t) => (t.filePath === path ? { ...t, autoName: false } : t)),
-    })),
   setTabFile: (id, path) =>
     set((s) => ({
       tabs: s.tabs.map((t) =>
@@ -502,13 +433,6 @@ export const useStore = create<AppState>((set) => ({
   setPrefsPanelOpen: (open) => set({ prefsPanelOpen: open }),
   setWordCountPopover: (v) => set({ wordCountPopover: v }),
 
-  setVaultPath: (path) => set({ vaultPath: path }),
-  setSidebarOpen: (open) => set({ sidebarOpen: open }),
-  toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
-  setSortMode: (mode) => set({ sortMode: mode }),
-  setSortAsc: (asc) => set({ sortAsc: asc }),
-  setFileTree: (tree) => set({ fileTree: tree }),
-  setSelectedPath: (path) => set({ selectedPath: path }),
 }));
 
 // Convenience selector: the currently active tab (always defined — there's

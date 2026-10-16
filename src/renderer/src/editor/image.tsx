@@ -81,7 +81,7 @@ function ImageBlockView({ block, editor }: { block: any; editor: any }): JSX.Ele
       return;
     }
     let cancelled = false;
-    void window.api.vault.readImageAsDataUrl(noteDir, src).then((r) => {
+    void window.api.file.readImage(noteDir, src).then((r) => {
       if (cancelled || !r.ok || !r.dataUrl) return;
       setResolvedImage(cacheKey, r.dataUrl);
       setDisplaySrc(r.dataUrl);

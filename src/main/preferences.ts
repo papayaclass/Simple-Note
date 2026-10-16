@@ -13,22 +13,10 @@ export interface MenuDividerPref {
 
 export type MenuItemPref = MenuCommandPref | MenuDividerPref;
 
-export type SortMode = 'manual' | 'name' | 'created' | 'modified';
-export type StartupBehavior = 'newBlankInVault' | 'lastEdited';
 export type BlankFirstLineFormat = 'heading1' | 'heading2' | 'heading3' | 'paragraph';
 export type TranslationResultMode = 'insertBelow' | 'replaceSelection';
 
 export interface Preferences {
-  vaultPath: string;
-  sidebarOpen: boolean;
-  sidebarWidth: number;
-  sortMode: SortMode;
-  sortAsc: boolean;
-  // When true, folders form an implicit group above files in the sidebar; the
-  // chosen sort (manual or keyed) then only applies within each group.
-  foldersOnTop: boolean;
-  // Per-folder manual ordering: folder path → ordered array of child paths.
-  manualOrder: Record<string, string[]>;
   pageWidth: number;
   twoColumnPageWidth: number;
   lineHeight: number;
@@ -43,9 +31,7 @@ export interface Preferences {
   aiGlobalInstruction: string;
   menuCommands: MenuItemPref[];
   translationResultMode: TranslationResultMode;
-  startupBehavior: StartupBehavior;
   blankNoteFirstLineFormat: BlankFirstLineFormat;
-  lastEditedFilePath: string;
 }
 
 // Default order + visibility for the right-click menu commands. Kept in sync
@@ -71,13 +57,6 @@ const DEFAULT_MENU_COMMANDS: MenuCommandPref[] = [
 ].map((key) => ({ key, visible: true }));
 
 const DEFAULTS: Preferences = {
-  vaultPath: '',
-  sidebarOpen: true,
-  sidebarWidth: 250,
-  sortMode: 'manual',
-  sortAsc: true,
-  foldersOnTop: true,
-  manualOrder: {},
   pageWidth: 720,
   twoColumnPageWidth: 1080,
   lineHeight: 1.6,
@@ -92,26 +71,13 @@ const DEFAULTS: Preferences = {
   aiGlobalInstruction: '',
   menuCommands: DEFAULT_MENU_COMMANDS,
   translationResultMode: 'insertBelow',
-  startupBehavior: 'newBlankInVault',
   blankNoteFirstLineFormat: 'paragraph',
-  lastEditedFilePath: '',
 };
 
 const store = new Store<Preferences>({ name: 'preferences', defaults: DEFAULTS });
 
-function normalizeStartupBehavior(value: unknown): StartupBehavior {
-  return value === 'lastEdited' ? 'lastEdited' : 'newBlankInVault';
-}
-
 export function getPreferences(): Preferences {
   return {
-    vaultPath: store.get('vaultPath', DEFAULTS.vaultPath),
-    sidebarOpen: store.get('sidebarOpen', DEFAULTS.sidebarOpen),
-    sidebarWidth: store.get('sidebarWidth', DEFAULTS.sidebarWidth),
-    sortMode: store.get('sortMode', DEFAULTS.sortMode),
-    sortAsc: store.get('sortAsc', DEFAULTS.sortAsc),
-    foldersOnTop: store.get('foldersOnTop', DEFAULTS.foldersOnTop),
-    manualOrder: store.get('manualOrder', DEFAULTS.manualOrder),
     pageWidth: store.get('pageWidth', DEFAULTS.pageWidth),
     twoColumnPageWidth: store.get('twoColumnPageWidth', DEFAULTS.twoColumnPageWidth),
     lineHeight: store.get('lineHeight', DEFAULTS.lineHeight),
@@ -129,14 +95,10 @@ export function getPreferences(): Preferences {
       store.get('translationResultMode', DEFAULTS.translationResultMode) === 'replaceSelection'
         ? 'replaceSelection'
         : 'insertBelow',
-    startupBehavior: normalizeStartupBehavior(
-      store.get('startupBehavior', DEFAULTS.startupBehavior)
-    ),
     blankNoteFirstLineFormat: store.get(
       'blankNoteFirstLineFormat',
       DEFAULTS.blankNoteFirstLineFormat
     ),
-    lastEditedFilePath: store.get('lastEditedFilePath', DEFAULTS.lastEditedFilePath),
   };
 }
 

@@ -1,6 +1,5 @@
 import { useEffect, useState, DragEvent } from 'react';
 import { useStore, Preferences } from '../store';
-import { refreshVaultTree } from '../fileActions';
 import { MENU_COMMANDS, reconcileMenuCommands, isDivider } from '../context-menu/commands';
 
 type Category = 'general' | 'layout' | 'menu' | 'apikeys';
@@ -68,24 +67,6 @@ export function PreferencesPanel(): JSX.Element | null {
     setOpen(false);
   };
   const update = (patch: Partial<Preferences>) => setDraft((d) => ({ ...d, ...patch }));
-
-  // Vault selection acts immediately (the native dialog already persists it in
-  // main), so mirror it into the draft + live store and refresh the tree.
-  const pickVaultFolder = async () => {
-    const path = await window.api.vault.pick();
-    if (!path) return;
-    update({ vaultPath: path });
-    setPrefs({ vaultPath: path });
-    useStore.getState().setVaultPath(path);
-    await refreshVaultTree();
-  };
-  const clearVaultFolder = async () => {
-    await window.api.vault.clear();
-    update({ vaultPath: '' });
-    setPrefs({ vaultPath: '' });
-    useStore.getState().setVaultPath(null);
-    useStore.getState().setFileTree([]);
-  };
 
   // Always work with a reconciled (complete, ordered) command list so newly
   // added commands appear and the saved order/visibility stays in sync.
@@ -165,41 +146,6 @@ export function PreferencesPanel(): JSX.Element | null {
           <div className="prefs-body-scroll">
             {category === 'general' && (
               <>
-                <div className="prefs-field">
-                  <label>儲存庫資料夾</label>
-                  <div className="vault-path">{draft.vaultPath || '尚未設定'}</div>
-                  <div className="vault-actions">
-                    <button className="vault-btn" onClick={() => void pickVaultFolder()}>
-                      選擇資料夾…
-                    </button>
-                    {draft.vaultPath && (
-                      <button className="vault-btn" onClick={() => void clearVaultFolder()}>
-                        清除
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <p className="prefs-hint">
-                  放在儲存庫內的 Markdown 檔會顯示在左側側邊欄。儲存庫之外的檔案仍可開啟編輯，但不會出現在側邊欄。
-                </p>
-
-                <div className="prefs-section-divider" />
-
-                <div className="prefs-field">
-                  <label>程式開啟時的預設行為</label>
-                  <select
-                    value={draft.startupBehavior}
-                    onChange={(e) =>
-                      update({
-                        startupBehavior: e.target.value as Preferences['startupBehavior'],
-                      })
-                    }
-                  >
-                    <option value="newBlankInVault">在儲存庫內新增空白文件</option>
-                    <option value="lastEdited">開啟上次編輯的文件</option>
-                  </select>
-                </div>
-
                 <div className="prefs-field">
                   <label>新增空白筆記的第一行格式</label>
                   <select

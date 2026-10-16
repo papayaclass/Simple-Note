@@ -7,27 +7,7 @@ import { buildMenu } from './menu.js';
 import { getPreferences, setPreference, setAllPreferences } from './preferences.js';
 import { getYouTubePreview } from './youtube-preview.js';
 import { runAI } from './openrouter.js';
-import {
-  pickVault,
-  getVault,
-  clearVault,
-  listVault,
-  readMarkdown,
-  createFile,
-  createBlankNote,
-  createFolder,
-  renameEntry,
-  deleteEntry,
-  duplicateEntry,
-  moveEntry,
-  revealEntry,
-  moveToVault,
-  startWatching,
-  importExternal,
-  saveImageForNote,
-  readImageAsDataUrl,
-  openSelf,
-} from './vault.js';
+import { readImageAsDataUrl } from './images.js';
 
 app.setName('Simple Note');
 
@@ -88,43 +68,78 @@ let lastActiveWindow: BrowserWindow | null = null;
 // possibly before app.whenReady — we buffer them and open them as tabs once the
 // app is ready.
 const coldStartPaths: string[] = [];
+// Set once the first window exists. 'open-file' events that land after
+// app.isReady() but before that window is created (several files opened at
+// once from Finder) still go to coldStartPaths so they share one window.
+let initialWindowCreated = false;
 
-// File paths waiting to be loaded into a specific window, keyed by that
+// Documents waiting to be loaded into a specific window, keyed by that
 // window's webContents id. We can't push the content until the renderer has
 // mounted its listeners; it flushes when the renderer sends 'renderer:ready'.
-const pendingOpenByWebContents = new Map<number, string[]>();
+// A Finder open carries only a path (read at delivery time); a tab moved from
+// another window carries its serialized content, dirty state and kind.
+interface PendingDocument {
+  path: string | null;
+  content?: string;
+  dirty?: boolean;
+  kind?: 'editor' | 'sheet';
+}
+
+const pendingOpenByWebContents = new Map<number, PendingDocument[]>();
 const readyWebContents = new Set<number>();
 const startupOpenResults = new Map<number, Promise<boolean>>();
 
-function queuePathForWindow(win: BrowserWindow, path: string): void {
+function queueDocumentForWindow(win: BrowserWindow, doc: PendingDocument): void {
   const wcId = win.webContents.id;
   const pending = pendingOpenByWebContents.get(wcId) ?? [];
-  pending.push(path);
+  pending.push(doc);
   pendingOpenByWebContents.set(wcId, pending);
 }
 
-async function deliverPathToWindow(win: BrowserWindow | null, path: string): Promise<boolean> {
+function queuePathForWindow(win: BrowserWindow, path: string): void {
+  queueDocumentForWindow(win, { path });
+}
+
+async function deliverDocumentToWindow(
+  win: BrowserWindow | null,
+  doc: PendingDocument
+): Promise<boolean> {
   if (!win || win.isDestroyed()) return false;
-  try {
-    const content = await readFile(path, 'utf-8');
-    win.setRepresentedFilename(path);
-    win.setTitle(path.split('/').pop() ?? 'Simple Note');
-    win.webContents.send('file:openInTab', { path, content });
-    return true;
-  } catch (err) {
-    console.error('Failed to read external file:', path, err);
-    return false;
+  let content = doc.content;
+  if (content === undefined) {
+    if (!doc.path) return false;
+    try {
+      content = await readFile(doc.path, 'utf-8');
+    } catch (err) {
+      console.error('Failed to read external file:', doc.path, err);
+      return false;
+    }
   }
+  if (doc.path) {
+    win.setRepresentedFilename(doc.path);
+    win.setTitle(doc.path.split('/').pop() ?? 'Simple Note');
+  }
+  win.webContents.send('file:openInTab', {
+    path: doc.path,
+    content,
+    dirty: doc.dirty ?? false,
+    kind: doc.kind,
+  });
+  return true;
+}
+
+function deliverPathToWindow(win: BrowserWindow | null, path: string): Promise<boolean> {
+  return deliverDocumentToWindow(win, { path });
 }
 
 async function flushPendingPaths(win: BrowserWindow | null): Promise<boolean> {
   if (!win || win.isDestroyed()) return false;
   const wcId = win.webContents.id;
-  const paths = pendingOpenByWebContents.get(wcId) ?? [];
+  const docs = pendingOpenByWebContents.get(wcId) ?? [];
   pendingOpenByWebContents.delete(wcId);
   let opened = false;
-  for (const path of paths) {
-    if (await deliverPathToWindow(win, path)) opened = true;
+  for (const doc of docs) {
+    if (await deliverDocumentToWindow(win, doc)) opened = true;
   }
   return opened;
 }
@@ -160,7 +175,7 @@ function openPathInExistingWindow(path: string): void {
 app.on('will-finish-launching', () => {
   app.on('open-file', (event, path) => {
     event.preventDefault();
-    if (app.isReady()) {
+    if (initialWindowCreated) {
       openPathInExistingWindow(path);
     } else {
       coldStartPaths.push(path);
@@ -426,46 +441,26 @@ app.whenReady().then(() => {
   ipcMain.handle('prefs:set', (_e, key: string, value: unknown) => setPreference(key, value));
   ipcMain.handle('prefs:setAll', (_e, prefs: Record<string, unknown>) => setAllPreferences(prefs));
 
-  // Vault / file-management IPC.
-  ipcMain.handle('vault:pick', (e) => pickVault(BrowserWindow.fromWebContents(e.sender)));
-  ipcMain.handle('vault:get', () => getVault());
-  ipcMain.handle('vault:clear', () => clearVault());
-  ipcMain.handle('vault:list', () => listVault());
-  ipcMain.handle('vault:read', (_e, path: string) => readMarkdown(path));
-  ipcMain.handle('vault:createFile', (_e, dir?: string | null, kind?: 'note' | 'sheet') =>
-    createFile(dir, kind)
-  );
-  ipcMain.handle('vault:createBlankNote', () => createBlankNote());
-  ipcMain.handle('vault:createFolder', (_e, dir?: string | null) => createFolder(dir));
-  ipcMain.handle('vault:rename', (_e, path: string, newName: string) => renameEntry(path, newName));
-  ipcMain.handle('vault:delete', (_e, path: string) => deleteEntry(path));
-  ipcMain.handle('vault:duplicate', (_e, path: string) => duplicateEntry(path));
-  ipcMain.handle('vault:move', (_e, src: string, destDir: string) => moveEntry(src, destDir));
-  ipcMain.handle('vault:reveal', (_e, path: string) => revealEntry(path));
-  ipcMain.handle('vault:moveToVault', (e, contents: NoteContents, suggestedName?: string) =>
-    moveToVault(BrowserWindow.fromWebContents(e.sender), contents, suggestedName)
-  );
-  ipcMain.handle('vault:importExternal', (_e, paths: string[], destDir: string | null) =>
-    importExternal(paths, destDir)
-  );
-  ipcMain.handle(
-    'vault:saveImageForNote',
-    (_e, args: { notePath: string | null; sourcePath?: string; dataUrl?: string }) =>
-      saveImageForNote(args)
-  );
-  ipcMain.handle('vault:readImageAsDataUrl', (_e, noteDir: string | null, src: string) =>
+  ipcMain.handle('file:read', async (_e, path: string) => {
+    try {
+      return { ok: true, content: await readFile(path, 'utf-8') };
+    } catch {
+      return { ok: false };
+    }
+  });
+  ipcMain.handle('file:readImage', (_e, noteDir: string | null, src: string) =>
     readImageAsDataUrl(noteDir, src)
   );
-  ipcMain.handle('vault:openSelf', () => openSelf());
-  // "Open in new window" from a tab's context menu.
-  ipcMain.on('window:openFile', (_e, path: string) => createWindow(path));
+  // "開啟在新視窗" from a tab's context menu: the renderer hands over the tab's
+  // content and closes its own copy, so the tab moves rather than duplicates.
+  ipcMain.on('window:moveTab', (_e, doc: PendingDocument) => {
+    const win = createWindow();
+    queueDocumentForWindow(win, doc);
+  });
 
   ipcMain.on('window:close', (e) => {
     BrowserWindow.fromWebContents(e.sender)?.close();
   });
-
-  // Start watching the saved vault (if any) so external changes push updates.
-  startWatching(getVault());
 
   ipcMain.handle('youtube:preview', async (_e, videoId: string) => getYouTubePreview(videoId));
 
@@ -481,7 +476,7 @@ app.whenReady().then(() => {
       let path = options?.path ?? null;
       if (!path) {
         const saveOptions = {
-          defaultPath: options?.suggestedName ?? '未命名筆記.snote',
+          defaultPath: join(app.getPath('downloads'), options?.suggestedName ?? '未命名筆記.snote'),
           filters: filtersFor(options?.suggestedName),
         };
         const r = win
@@ -600,6 +595,23 @@ app.whenReady().then(() => {
     }
   );
 
+  // Closing a tab with unsaved changes: 0 = save, 1 = don't save, 2 = cancel.
+  ipcMain.handle('file:confirmCloseDirty', async (e, name: string) => {
+    const win = BrowserWindow.fromWebContents(e.sender);
+    const options = {
+      type: 'warning' as const,
+      buttons: ['儲存', '不儲存', '取消'],
+      defaultId: 0,
+      cancelId: 2,
+      message: `是否要儲存「${name}」的變更？`,
+      detail: '若不儲存，這個分頁未儲存的變更會遺失。',
+    };
+    const r = win
+      ? await dialog.showMessageBox(win, options)
+      : await dialog.showMessageBox(options);
+    return r.response;
+  });
+
   // Save an in-editor image (a data URL) to disk. Images are never persisted in
   // the .md, so this is the only way to keep one — invoked from the preview
   // lightbox's "另存新檔…" command.
@@ -642,6 +654,7 @@ app.whenReady().then(() => {
 
   // Open files double-clicked before launch as tabs in a single window;
   // otherwise start with a single blank window.
+  initialWindowCreated = true;
   if (coldStartPaths.length > 0) {
     const [firstPath, ...restPaths] = coldStartPaths;
     const win = createWindow(firstPath);

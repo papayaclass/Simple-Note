@@ -17,9 +17,9 @@ export interface PopMenuState {
   items: PopMenuItem[];
 }
 
-// A small fixed-position popover menu used for sidebar/tab context menus and the
-// sort dropdown. Measures itself and clamps into the viewport; closes on any
-// outside mousedown or window blur.
+// A small fixed-position popover menu used for tab context menus. Measures
+// itself and clamps into the viewport; closes on any outside mousedown or
+// window blur.
 export function PopMenu({
   state,
   onClose,

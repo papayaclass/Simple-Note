@@ -2,7 +2,6 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { Editor, EditorHandle } from './editor/Editor';
 import { attachMarquee } from './editor/marquee';
 import { useStore, ColumnLayout } from './store';
-import { isPathInVault, refreshVaultTree, rememberLastEditedFile } from './fileActions';
 import {
   lossyFeatures,
   parseSnote,
@@ -24,8 +23,6 @@ export interface DocumentViewHandle {
   // Formatting in this document that a Markdown save would discard.
   lossyFeatures: () => string[];
   hasContent: () => boolean;
-  cancelPendingAutoSave: () => void;
-  replaceWithContent: (text: string, opts?: { focus?: boolean }) => Promise<void>;
   pastePlainText: () => void;
   removeParagraphBreaks: () => void;
   focusLastBlock: () => void;
@@ -99,10 +96,6 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
   const loadingRef = useRef(false);
   // Raw YAML front matter of the loaded Markdown file, re-attached on save.
   const frontMatterRef = useRef('');
-  // Latest save()/sync closures + the pending auto-save timer (in-vault tabs).
-  const saveRef = useRef<() => Promise<boolean>>(async () => false);
-  const syncRef = useRef<() => void>(() => {});
-  const autoSaveTimer = useRef<number | null>(null);
   // Initial editor focus is decided once at mount from the tab's autoFocus flag.
   const initialAutoFocus = useRef(
     active && (useStore.getState().tabs.find((t) => t.id === tabId)?.autoFocus ?? true)
@@ -291,37 +284,12 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
     prevLayoutRef.current = cur;
   }, [columnLayout, active]);
 
-  // On edit: in-vault files auto-save (debounced) and never show a dirty dot;
-  // files stored elsewhere (and untitled buffers) mark dirty for manual save.
+  // Any edit marks the tab dirty until it is saved.
   const onEditorChange = useCallback(() => {
     if (loadingRef.current) return;
     const tab = useStore.getState().tabs.find((t) => t.id === tabId);
-    if (!tab) return;
-    if (isPathInVault(tab.filePath)) {
-      if (autoSaveTimer.current) window.clearTimeout(autoSaveTimer.current);
-      autoSaveTimer.current = window.setTimeout(() => {
-        autoSaveTimer.current = null;
-        syncRef.current();
-      }, 600);
-    } else if (!tab.dirty) {
-      setTabDirty(tabId, true);
-    }
+    if (tab && !tab.dirty) setTabDirty(tabId, true);
   }, [setTabDirty, tabId]);
-
-  const flushAutoSave = useCallback(() => {
-    if (autoSaveTimer.current) {
-      window.clearTimeout(autoSaveTimer.current);
-      autoSaveTimer.current = null;
-      syncRef.current();
-    }
-  }, []);
-
-  const cancelPendingAutoSave = useCallback(() => {
-    if (autoSaveTimer.current) {
-      window.clearTimeout(autoSaveTimer.current);
-      autoSaveTimer.current = null;
-    }
-  }, []);
 
   // Merge the visible columns into one Markdown string (top-to-bottom by the
   // on-screen left→right order). Empty scratch columns are dropped.
@@ -377,14 +345,17 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
       const contents = { markdown: await buildMarkdown(), snote: await buildSnote() };
       const r = await window.api.file.save(contents, {
         path: tab?.filePath ?? null,
-        // Untitled notes default to the app's own format so nothing is lost.
-        suggestedName: withSnoteExt(tab?.fileName ?? '未命名筆記'),
+        // Untitled notes are suggested under their first heading, in the app's
+        // own format so nothing is lost.
+        suggestedName: withSnoteExt(
+          sanitizeFileName(firstHeadingText(midHandleRef.current.editor.document)) ||
+            (tab?.fileName ?? '未命名筆記')
+        ),
       });
       if (r.ok && r.path) {
         const cur = useStore.getState().tabs.find((t) => t.id === tabId);
         if (cur?.filePath !== r.path) setTabFile(tabId, r.path);
         else if (cur?.dirty) setTabDirty(tabId, false);
-        rememberLastEditedFile(r.path);
         return true;
       }
       return false;
@@ -393,39 +364,6 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
       return false;
     }
   }, [buildMarkdown, buildSnote, setTabFile, setTabDirty, tabId]);
-  saveRef.current = save;
-
-  // In-vault debounced action: auto-name an untitled file from its first
-  // heading (keeping in sync until manually renamed), otherwise just save.
-  const syncInVault = useCallback(async () => {
-    const tab = useStore.getState().tabs.find((t) => t.id === tabId);
-    if (!tab || !isPathInVault(tab.filePath) || !tab.filePath) return;
-    if (tab.autoName) {
-      const heading = sanitizeFileName(
-        firstHeadingText(midHandleRef.current?.editor.document ?? [])
-      );
-      const nextName = heading || '未命名筆記';
-      if (nextName !== tab.fileName) {
-        await save(); // flush current content before moving the file
-        const path = await renameAutoNamedFile(tab.filePath, tab.fileName, nextName);
-        if (path && path !== tab.filePath) {
-          useStore.getState().retargetTabs(tab.filePath, path);
-          rememberLastEditedFile(path);
-          await refreshVaultTree();
-        }
-        return;
-      }
-    }
-    await save();
-  }, [save, tabId]);
-  syncRef.current = () => void syncInVault();
-
-  // Flush any pending in-vault auto-save when the tab is switched away or torn
-  // down, so the last edits aren't stranded in the debounce window.
-  useEffect(() => {
-    if (!active) flushAutoSave();
-  }, [active, flushAutoSave]);
-  useEffect(() => () => flushAutoSave(), [flushAutoSave]);
 
   const focusedHandle = useCallback((): EditorHandle | null => {
     if (leftHandleRef.current?.hasFocus()) return leftHandleRef.current;
@@ -509,22 +447,6 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
     [setTabColumnLayout, setTabColumnSplit, tabId]
   );
 
-  const replaceWithContent = useCallback(
-    async (text: string, opts: { focus?: boolean } = {}): Promise<void> => {
-      cancelPendingAutoSave();
-      loadingRef.current = true;
-      try {
-        await loadContent(text, opts);
-        setTabDirty(tabId, false);
-      } finally {
-        window.setTimeout(() => {
-          loadingRef.current = false;
-        }, 0);
-      }
-    },
-    [cancelPendingAutoSave, loadContent, setTabDirty, tabId]
-  );
-
   // Register this view's imperative API (stable object, mutated each render).
   const viewApiRef = useRef<DocumentViewHandle>({
     save: async () => false,
@@ -532,8 +454,6 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
     buildSnote: async () => '',
     lossyFeatures: () => [],
     hasContent: () => false,
-    cancelPendingAutoSave: () => {},
-    replaceWithContent: async () => {},
     pastePlainText: () => {},
     removeParagraphBreaks: () => {},
     focusLastBlock: () => {},
@@ -547,8 +467,6 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
   viewApiRef.current.buildSnote = buildSnote;
   viewApiRef.current.lossyFeatures = documentLossyFeatures;
   viewApiRef.current.hasContent = hasContent;
-  viewApiRef.current.cancelPendingAutoSave = cancelPendingAutoSave;
-  viewApiRef.current.replaceWithContent = replaceWithContent;
   viewApiRef.current.pastePlainText = () => focusedHandle()?.pastePlainText();
   viewApiRef.current.removeParagraphBreaks = () => focusedHandle()?.removeParagraphBreaks();
   viewApiRef.current.focusLastBlock = () => midHandleRef.current?.focusLastBlock();
@@ -591,7 +509,7 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
       void loadContent(text).then(finish);
     } else if (tab.filePath) {
       loadingRef.current = true;
-      void window.api.vault.read(tab.filePath).then((r) => {
+      void window.api.file.read(tab.filePath).then((r) => {
         if (r.ok && r.content != null) {
           void loadContent(r.content).then(finish);
         } else {
@@ -735,21 +653,6 @@ function sanitizeFileName(s: string): string {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 100);
-}
-
-async function renameAutoNamedFile(
-  path: string,
-  currentName: string,
-  baseName: string
-): Promise<string | null> {
-  for (let i = 0; i < 100; i += 1) {
-    const name = i === 0 ? baseName : `${baseName} ${i}`;
-    if (name === currentName) return path;
-    const r = await window.api.vault.rename(path, name);
-    if (r.ok && r.path) return r.path;
-    if (r.reason !== 'exists') return null;
-  }
-  return null;
 }
 
 // BlockNote always carries at least one paragraph; "empty" means no meaningful

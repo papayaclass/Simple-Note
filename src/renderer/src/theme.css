@@ -18,9 +18,8 @@
   --math-tag-fg: #1a1a1a;
   --result-fg: #6b7280;
   --column-divider: rgba(0, 0, 0, 0.12);
-  --sidebar-bg: #f3f3f1;
+  --chrome-bg: #f3f3f1;
   --hover-bg: rgba(0, 0, 0, 0.05);
-  --sidebar-width: 250px;
 
   /* dynamic, controlled by preferences */
   --page-width: 720px;
@@ -51,7 +50,7 @@
     --math-tag-fg: #e8e8e8;
     --result-fg: #9ca3af;
     --column-divider: rgba(255, 255, 255, 0.12);
-    --sidebar-bg: #242424;
+    --chrome-bg: #242424;
     --hover-bg: rgba(255, 255, 255, 0.07);
   }
 }
@@ -100,35 +99,12 @@ body,
   background: var(--selection);
 }
 
-/* Top-level shell: sidebar | main area (tab bar + tab content). */
+/* Top-level shell: main area (tab bar + tab content). */
 .window-root {
   display: flex;
   height: 100%;
   width: 100%;
   overflow: hidden;
-}
-
-/* Collapsible sidebar wrapper: animates width so the sidebar slides in/out.
-   The inner .sidebar keeps its full width and is clipped, so its content
-   doesn't reflow during the slide. */
-.sidebar-shell {
-  flex: 0 0 auto;
-  width: var(--sidebar-width);
-  height: 100%;
-  overflow: hidden;
-  transition: width 220ms cubic-bezier(0.32, 0.72, 0, 1);
-}
-.sidebar-shell:not(.open) {
-  width: 0;
-}
-/* No transition while dragging the resize handle — track the pointer instantly. */
-.window-root.resizing-sidebar .sidebar-shell {
-  transition: none;
-}
-@media (prefers-reduced-motion: reduce) {
-  .sidebar-shell {
-    transition: none;
-  }
 }
 
 .main-area {
@@ -223,29 +199,6 @@ body,
 }
 .document-view[hidden] {
   display: none;
-}
-
-.image-view {
-  height: 100%;
-  width: 100%;
-  overflow: auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.image-view[hidden] {
-  display: none;
-}
-.image-view-img {
-  max-width: 92%;
-  max-height: 92%;
-  object-fit: contain;
-  cursor: zoom-in;
-  box-shadow: 0 2px 18px rgba(0, 0, 0, 0.12);
-}
-.image-view-empty {
-  color: var(--fg-muted);
-  font-size: 14px;
 }
 
 /* Three-column "push" layout: the article lives in the MIDDLE slot and never
@@ -514,8 +467,7 @@ body,
     position: static !important;
   }
 
-  .document-view:not([hidden]),
-  .image-view:not([hidden]) {
+  .document-view:not([hidden]) {
     display: block !important;
     height: auto !important;
     min-height: 0 !important;
@@ -524,12 +476,10 @@ body,
     position: static !important;
   }
 
-  .document-view[hidden],
-  .image-view[hidden] {
+  .document-view[hidden] {
     display: none !important;
   }
 
-  .sidebar-shell,
   .tab-bar,
   .split-divider,
   .split-drop-overlay,

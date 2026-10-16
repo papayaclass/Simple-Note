@@ -28,7 +28,7 @@ Simple Note 是一款 macOS 為主的極簡 Block 式筆記桌面應用，採用
 
 **IPC 約定**
 
-main 端在 `app.whenReady` 內註冊 handler，命名採 `namespace:action`（例：`prefs:get`、`file:save`、`vault:read`）。雙向呼叫用 `ipcMain.handle` / `ipcRenderer.invoke`；單向用 `ipcMain.on` / `ipcRenderer.send`（如 `window:setDirty`）。
+main 端在 `app.whenReady` 內註冊 handler，命名採 `namespace:action`（例：`prefs:get`、`file:save`、`file:read`）。雙向呼叫用 `ipcMain.handle` / `ipcRenderer.invoke`；單向用 `ipcMain.on` / `ipcRenderer.send`（如 `window:setDirty`）。
 
 選單事件走另一條路：main 端 `menu.ts` 在點擊時 `webContents.send('menu:<cmd>')`，preload 把這些事件聚合成 `window.api.onMenu(handler)`，由 `App.tsx` 在 `useEffect` 內 dispatch。要新增選單命令時，三個地方都要動：`src/main/menu.ts`、`src/preload/index.ts`（加到 `wrap()` 或走 `menu:command`）、`src/renderer/src/App.tsx` 的 switch。
 
@@ -40,7 +40,7 @@ main 端在 `app.whenReady` 內註冊 handler，命名採 `namespace:action`（�
 - `.md` / `.txt`：純 Markdown，內容由 `editor.blocksToMarkdownLossy` 產生。雙欄展開時 `buildMarkdown` 依「畫面左欄在上、右欄在下」合併兩欄，空白欄略過。
 - Markdown 開頭的 YAML front matter（第一行 `---`、第二行是 `key:`）由 `splitFrontMatter` 在載入時切出來存在 `DocumentView` 的 `frontMatterRef`，不進編輯器，`buildMarkdown` 時原文接回最前面。原因是 BlockNote 會把 `---` 解析成分隔線與 setext 標題，存回去變成 `***` 與一長串 `-`，弄壞 Claude Code Skill 的 `SKILL.md` 這類靠 front matter 運作的檔案。因此 front matter 在 App 內看不到也改不了。
 
-Renderer 每次存檔都同時算出兩種內容（`{ markdown, snote }`）交給 main，**由目標檔案的副檔名決定寫入哪一份**（`contentForPath`，`.md`/`.txt`/`.csv` 走純文字那份，其餘走 snote）。`file:save`、`file:saveAs`、`vault:moveToVault` 都是這個約定；存檔對話框依建議檔名的副檔名決定篩選器（筆記 `.snote`/`.md`，試算表 `.ssheet`/`.csv`），筆記新檔／另存預設 `.snote`。儲存庫內新建的空白筆記也是 `未命名筆記.snote`。
+Renderer 每次存檔都同時算出兩種內容（`{ markdown, snote }`）交給 main，**由目標檔案的副檔名決定寫入哪一份**（`contentForPath`，`.md`/`.txt`/`.csv` 走純文字那份，其餘走 snote）。`file:save`、`file:saveAs` 都是這個約定；存檔對話框依建議檔名的副檔名決定篩選器（筆記 `.snote`/`.md`，試算表 `.ssheet`/`.csv`），筆記新檔／另存預設 `.snote`，對話框預設位置是下載資料夾，未命名筆記以第一個標題當建議檔名。
 
 `lossyFeatures()`（noteFormat.ts）掃描 block tree 找出 Markdown 存不下的東西（紅字、底線、文字顏色／底色、折疊清單、圖片），`DocumentView` 再補上「雙欄版面」。用在兩處：
 
@@ -95,20 +95,19 @@ Renderer 每次存檔都同時算出兩種內容（`{ markdown, snote }`）交�
 
 Cmd+F 尋找、Opt+Cmd+F 尋找並取代、Cmd+G / Shift+Cmd+G 下一個／上一個（編輯選單命令，經 `DocumentViewHandle.openFind` 等轉給目前分頁）。`FindBar` 只搜尋目前版面上看得到的欄位，依畫面左到右排序；一行以內的選取文字會自動帶入搜尋欄。試算表分頁目前不支援尋找。
 
-**分頁、分割窗格與儲存庫**
+**分頁、分割窗格與視窗**
 
-- 每個分頁是 `store.ts` 的一個 `Tab`，`kind` 為 `editor`（`DocumentView`）、`sheet`（`SheetView`）或 `image`（唯讀圖片預覽 `ImageView`）。分頁的 view 一直掛著、非作用中時只是隱藏，所以各自保有復原紀錄、游標與捲動位置。App shell 透過 `getDocumentView(tabId)` 取得 `DocumentViewHandle` 操作特定分頁。
+- 每個分頁是 `store.ts` 的一個 `Tab`，`kind` 為 `editor`（`DocumentView`）或 `sheet`（`SheetView`）。分頁的 view 一直掛著、非作用中時只是隱藏，所以各自保有復原紀錄、游標與捲動位置。App shell 透過 `getDocumentView(tabId)` 取得 `DocumentViewHandle` 操作特定分頁。
 - 最多兩個分割窗格（`panes`）：把分頁拖到工作區左右邊緣即可分割，中間的分隔線可拖曳調整比例。分頁移到另一個窗格時 React 會重新掛載 view，所以 `stageTabForPaneMove` 先把內容存進 `initialMarkdown`，並用 `restoreDirtyAfterLoad` 保留 dirty 狀態。
-- 儲存庫 (vault) 是使用者選定的資料夾（main 端 `vault.ts` 負責 IO 與 `fs.watch` 監看，變動時送 `vault:changed`）。側邊欄 `sidebar/Sidebar.tsx` 列出檔案樹，支援手動／名稱／建立／修改時間排序、拖曳移動、從 Finder 拖入匯入、多選刪除（移到垃圾桶）。
-- **儲存庫內的檔案編輯後約 600ms 自動存檔，不會出現未存檔圓點**；儲存庫外的檔案與未命名分頁才標 dirty、需要手動存檔。
-- 新建的 `未命名筆記` 會自動以第一個標題命名（`autoName`，直到使用者手動改名為止）。儲存庫永遠至少保留一則筆記：刪光時會補一個 `未命名筆記.snote`，而唯一剩下的那個未命名筆記不能刪（`isProtectedUnnamedNote`）。
-- 啟動行為由偏好設定 `startupBehavior` 決定：在儲存庫新增空白筆記，或重新開啟上次編輯的檔案（`lastEditedFilePath`）。
-- 從 Finder 雙擊文件或以文件建立新視窗時，main 先將路徑放入 `pendingOpenByWebContents`。`App.tsx` 註冊檔案事件並載入儲存庫後，會等待 `window.api.notifyReady()`（`renderer:ready` 使用 invoke / handle，回傳是否成功送出啟動文件）。有啟動文件就略過 `startupBehavior`，避免額外建立未命名筆記或讓上次文件搶走焦點。檔案事件以 `autoFocus: true` 開啟；原本的空白分頁由 `openFileInTab` 移除。初始化以 ref 保護，避免 React StrictMode 重跑；main 快取每個視窗的啟動結果並在關閉時清除。不可把啟動判斷改回未等待檔案讀取的計時器。
-- 啟動時由 `src/renderer/src/main.tsx` 的 `bootstrap()` 先讀取偏好設定，將 `preferences`、`sidebarOpen` 與排序狀態還原至 store，完成後才掛載 React。不可在 `App.tsx` 掛載後才還原側邊欄狀態，否則已關閉的側邊欄會先顯示再收合；`App.tsx` 只沿用已載入的偏好設定，處理命令清單同步與儲存庫初始化。讀取失敗時會記錄錯誤並使用預設設定啟動。
+- App 沒有側邊欄與儲存庫（已移除）。所有文件都要手動存檔：編輯後分頁出現未存檔圓點，關閉未存檔分頁時 `closeTabWithChecks` 會先詢問儲存／不儲存／取消（`file:confirmCloseDirty`），選「不儲存」時不再做 `.snote` 轉存詢問。圖片從 Finder 拖入時以絕對路徑引用，貼上的圖片以 data URL 存在文件內。
+- 啟動時一律只開一個未存檔的空白筆記。從 Finder 雙擊文件或以文件建立新視窗時，main 先將文件放入 `pendingOpenByWebContents`。`App.tsx` 註冊檔案事件後呼叫 `window.api.notifyReady()`（`renderer:ready` 使用 invoke / handle），main 才把排隊的文件送出；原本的空白分頁由 `openFileInTab` 移除。初始化以 ref 保護，避免 React StrictMode 重跑；main 快取每個視窗的啟動結果並在關閉時清除。
+- 從 Finder 一次開啟多個檔案時都開在同一個視窗的不同分頁：第一個視窗建立前 (`initialWindowCreated` 為 false) 收到的 `open-file` 都先進 `coldStartPaths`，不能只看 `app.isReady()`，否則 ready 之後、視窗建立之前到達的檔案會各自開新視窗。
+- 分頁右鍵「開啟在新視窗」是「移動」：`moveTabToNewWindow` 把分頁的 snote 內容、路徑、dirty 狀態與 kind 經 `window:moveTab` 交給 main 開新視窗（新視窗以 `openDocumentPayload` + `restoreDirtyAfterLoad` 還原），再從原視窗移除該分頁；原視窗只剩它一個分頁時直接關閉原視窗。未命名分頁也可以移動。
+- 啟動時由 `src/renderer/src/main.tsx` 的 `bootstrap()` 先讀取偏好設定還原至 store，完成後才掛載 React。讀取失敗時會記錄錯誤並使用預設設定啟動。
 
 **狀態管理 (`src/renderer/src/store.ts`)**
 
-使用 Zustand，存放分頁、窗格、偏好設定與側邊欄狀態。`dirty` 旗標由編輯器（或試算表）的變更觸發，但儲存庫內的檔案改走自動存檔，不會標 dirty；`fileName` 從 `filePath` 衍生（去掉 `.md` / `.snote` / `.ssheet`，`.csv` 刻意保留，讓使用者看得出是會遺失格式的格式）。`Preferences` 同時定義於 `src/renderer/src/store.ts` 與 `src/main/preferences.ts`，**新增偏好欄位時兩邊都要改**，並且要更新 `App.tsx` 內把 preference 套用到 CSS variable 的 `useEffect`。
+使用 Zustand，存放分頁、窗格與偏好設定。`dirty` 旗標由編輯器（或試算表）的變更觸發；`fileName` 從 `filePath` 衍生（去掉 `.md` / `.snote` / `.ssheet`，`.csv` 刻意保留，讓使用者看得出是會遺失格式的格式）。`Preferences` 同時定義於 `src/renderer/src/store.ts` 與 `src/main/preferences.ts`，**新增偏好欄位時兩邊都要改**，並且要更新 `App.tsx` 內把 preference 套用到 CSS variable 的 `useEffect`。
 
 **右鍵選單與文字轉換 (`src/renderer/src/context-menu/`)**
 
@@ -117,5 +116,5 @@ Cmd+F 尋找、Opt+Cmd+F 尋找並取代、Cmd+G / Shift+Cmd+G 下一個／上�
 **樣式與排版**
 
 - 全域樣式：`src/renderer/src/theme.css`、`editor.css`。版面寬度／行高／段落間距／頂端 padding 都是 CSS 變數，由 `App.tsx` 從 preferences 動態設定（`--page-width`、`--line-height`、`--paragraph-spacing`、`--top-padding`）。
-- 視窗使用 `titleBarStyle: 'hiddenInset'`，拖曳視窗靠分頁列 `.tab-bar` 的 `-webkit-app-region: drag`（互動元件各自設 `no-drag`）；側邊欄收合時分頁列左側會讓出紅綠燈按鈕的空間。`theme.css` 裡的 `.drag-bar` 樣式已沒有元件使用。
+- 視窗使用 `titleBarStyle: 'hiddenInset'`，拖曳視窗靠分頁列 `.tab-bar` 的 `-webkit-app-region: drag`（互動元件各自設 `no-drag`）；第一個窗格的分頁列 (`.clear-traffic-lights`) 左側固定讓出 78px 給紅綠燈按鈕。`theme.css` 裡的 `.drag-bar` 樣式已沒有元件使用。
 - 顏色以 `theme.css` `:root` 的 CSS 變數定義，深色模式跟隨系統 `prefers-color-scheme`；試算表另有自己的色票變數（`sheet/sheet.css`）。
