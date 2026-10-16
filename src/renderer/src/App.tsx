@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useStore, useActiveTab } from './store';
+import { useStore, useActiveTab, MAX_PANES } from './store';
 import { DocumentView, getDocumentView } from './DocumentView';
 import { SheetView } from './sheet/SheetView';
 import { TabBar } from './tabs/TabBar';
@@ -17,13 +17,20 @@ import { YouTubePreviewHover } from './editor/youtubePreview';
 import { reconcileMenuCommands } from './context-menu/commands';
 import './preferences/panel.css';
 
+// Matches `.workspace-shell.split .editor-pane { min-width }` in theme.css.
+const MIN_PANE_WIDTH = 220;
+
+interface SplitDrop {
+  side: 'left' | 'right';
+  width: number;
+}
+
 export function App(): JSX.Element {
   const tabs = useStore((s) => s.tabs);
   const panes = useStore((s) => s.panes);
   const activePaneId = useStore((s) => s.activePaneId);
   const activeTab = useActiveTab();
-  const splitRatio = useStore((s) => s.splitRatio);
-  const setSplitRatio = useStore((s) => s.setSplitRatio);
+  const resizePanes = useStore((s) => s.resizePanes);
   const setActiveTab = useStore((s) => s.setActiveTab);
   const splitTabToSide = useStore((s) => s.splitTabToSide);
   const mathMode = useStore((s) => s.mathMode);
@@ -35,25 +42,21 @@ export function App(): JSX.Element {
   const setWordCountPopover = useStore((s) => s.setWordCountPopover);
   const [draggedTabId, setDraggedTabId] = useState<string | null>(null);
   const [activeDropPaneId, setActiveDropPaneId] = useState<string | null>(null);
-  const [splitDropSide, setSplitDropSide] = useState<'left' | 'right' | null>(null);
+  const [splitDrop, setSplitDrop] = useState<SplitDrop | null>(null);
+  // One drop can reach the workspace twice (BlockNote re-dispatches a drop
+  // that lands on the editor), and the second run would split the already-moved
+  // layout again. Set when a tab drag starts and consumed by the first drop.
+  const pendingSplitDragRef = useRef<string | null>(null);
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const startupInitialized = useRef(false);
 
   const tabById = useMemo(() => new Map(tabs.map((tab) => [tab.id, tab])), [tabs]);
 
-  const canDropTabToSide = useCallback((tabId: string, side: 'left' | 'right'): boolean => {
-    const s = useStore.getState();
-    if (s.panes.length === 1) {
-      const pane = s.panes[0];
-      return pane.tabIds.includes(tabId) && pane.tabIds.length > 1;
-    }
-    const targetPane = side === 'left' ? s.panes[0] : s.panes[s.panes.length - 1];
-    const sourcePane = s.panes.find((p) => p.tabIds.includes(tabId));
-    return !!targetPane && !!sourcePane && targetPane.id !== sourcePane.id;
-  }, []);
-
-  const splitSideForPoint = useCallback(
-    (clientX: number, tabId: string | null): 'left' | 'right' | null => {
+  // Where a tab dropped at clientX would go: a new pane on that side while
+  // there is room for another column, otherwise the outermost pane on that side.
+  // `width` sizes the preview overlay to the column the tab will end up in.
+  const splitDropForPoint = useCallback(
+    (clientX: number, tabId: string | null): SplitDrop | null => {
       const workspace = workspaceRef.current;
       if (!workspace || !tabId) return null;
       const rect = workspace.getBoundingClientRect();
@@ -64,68 +67,98 @@ export function App(): JSX.Element {
           : clientX >= rect.right - edgeWidth
             ? 'right'
             : null;
-      return side && canDropTabToSide(tabId, side) ? side : null;
+      if (!side) return null;
+      const s = useStore.getState();
+      const sourcePane = s.panes.find((p) => p.tabIds.includes(tabId));
+      if (!sourcePane) return null;
+      const edgeIndex = side === 'left' ? 0 : s.panes.length - 1;
+      const edgePane = s.panes[edgeIndex];
+      if (s.panes.length < MAX_PANES) {
+        const sourceEmpties = sourcePane.tabIds.length <= 1;
+        if (sourcePane.id === edgePane.id && sourceEmpties) return null;
+        const count = s.panes.length + (sourceEmpties ? 0 : 1);
+        return { side, width: rect.width / count };
+      }
+      if (sourcePane.id === edgePane.id) return null;
+      const paneEls = workspace.querySelectorAll<HTMLElement>(':scope > .editor-pane');
+      const width = paneEls[edgeIndex]?.getBoundingClientRect().width ?? rect.width / s.panes.length;
+      return { side, width };
     },
-    [canDropTabToSide]
+    []
   );
 
   const handleWorkspaceDragOver = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {
       if (!draggedTabId) {
-        setSplitDropSide(null);
+        setSplitDrop(null);
         return;
       }
-      const side = splitSideForPoint(e.clientX, draggedTabId);
-      setSplitDropSide(side);
-      if (side) {
+      const drop = splitDropForPoint(e.clientX, draggedTabId);
+      setSplitDrop((prev) =>
+        prev?.side === drop?.side && prev?.width === drop?.width ? prev : drop
+      );
+      if (drop) {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
       }
     },
-    [draggedTabId, splitSideForPoint]
+    [draggedTabId, splitDropForPoint]
   );
 
   const handleWorkspaceDrop = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {
-      if (!draggedTabId) return;
-      const side = splitDropSide ?? splitSideForPoint(e.clientX, draggedTabId);
+      if (!draggedTabId || pendingSplitDragRef.current !== draggedTabId) return;
+      const side = (splitDrop ?? splitDropForPoint(e.clientX, draggedTabId))?.side;
       if (!side) return;
       e.preventDefault();
       e.stopPropagation();
+      pendingSplitDragRef.current = null;
       void (async () => {
         await stageTabForPaneMove(draggedTabId);
         splitTabToSide(draggedTabId, side);
       })();
       setDraggedTabId(null);
       setActiveDropPaneId(null);
-      setSplitDropSide(null);
+      setSplitDrop(null);
     },
-    [draggedTabId, splitDropSide, splitSideForPoint, splitTabToSide]
+    [draggedTabId, splitDrop, splitDropForPoint, splitTabToSide]
   );
 
   const handleWorkspaceDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     const next = e.relatedTarget;
     if (!next || !(next instanceof Node) || !e.currentTarget.contains(next)) {
-      setSplitDropSide(null);
+      setSplitDrop(null);
     }
   }, []);
 
+  // Dragging a divider trades width between the two panes it separates; the
+  // other pane (in a three-column split) keeps its size.
   const handleSplitDividerPointerDown = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
+    (e: React.PointerEvent<HTMLDivElement>, leftId: string, rightId: string) => {
       if (e.button !== 0) return;
       const workspace = workspaceRef.current;
-      if (!workspace) return;
+      const divider = e.currentTarget;
+      const leftEl = divider.previousElementSibling;
+      const rightEl = divider.nextElementSibling;
+      if (!workspace || !leftEl || !rightEl) return;
+      const panesNow = useStore.getState().panes;
+      const leftPane = panesNow.find((p) => p.id === leftId);
+      const rightPane = panesNow.find((p) => p.id === rightId);
+      if (!leftPane || !rightPane) return;
       e.preventDefault();
       e.stopPropagation();
-      const divider = e.currentTarget;
+      const start = leftEl.getBoundingClientRect().left;
+      const total = rightEl.getBoundingClientRect().right - start;
+      const sizeSum = leftPane.size + rightPane.size;
+      if (total <= MIN_PANE_WIDTH * 2) return;
       divider.setPointerCapture(e.pointerId);
       workspace.classList.add('resizing-split');
       document.body.style.cursor = 'col-resize';
 
       const onMove = (ev: PointerEvent): void => {
-        const rect = workspace.getBoundingClientRect();
-        if (rect.width <= 0) return;
-        setSplitRatio((ev.clientX - rect.left) / rect.width);
+        const leftPx = Math.min(total - MIN_PANE_WIDTH, Math.max(MIN_PANE_WIDTH, ev.clientX - start));
+        const frac = leftPx / total;
+        resizePanes(leftId, sizeSum * frac, rightId, sizeSum * (1 - frac));
       };
       const onUp = (): void => {
         window.removeEventListener('pointermove', onMove, true);
@@ -141,7 +174,7 @@ export function App(): JSX.Element {
       window.addEventListener('pointermove', onMove, true);
       window.addEventListener('pointerup', onUp, true);
     },
-    [setSplitRatio]
+    [resizePanes]
   );
 
   const activatePane = useCallback(
@@ -321,14 +354,16 @@ export function App(): JSX.Element {
                   className="split-divider"
                   role="separator"
                   aria-orientation="vertical"
-                  onPointerDown={handleSplitDividerPointerDown}
+                  onPointerDown={(e) =>
+                    handleSplitDividerPointerDown(e, panes[index - 1].id, pane.id)
+                  }
                 />
               )}
               <section
                 className={`editor-pane${pane.id === activePaneId ? ' active-pane' : ''}`}
                 style={
                   panes.length > 1
-                    ? { flexGrow: index === 0 ? splitRatio : 1 - splitRatio, flexBasis: 0 }
+                    ? { flexGrow: pane.size, flexBasis: 0 }
                     : undefined
                 }
               >
@@ -338,6 +373,7 @@ export function App(): JSX.Element {
                   draggingTabId={draggedTabId}
                   activeDropPaneId={activeDropPaneId}
                   onTabDragStart={(tabId) => {
+                    pendingSplitDragRef.current = tabId;
                     setDraggedTabId(tabId);
                     setActiveDropPaneId(pane.id);
                   }}
@@ -345,7 +381,7 @@ export function App(): JSX.Element {
                   onTabDragEnd={() => {
                     setDraggedTabId(null);
                     setActiveDropPaneId(null);
-                    setSplitDropSide(null);
+                    setSplitDrop(null);
                   }}
                 />
                 <div
@@ -366,7 +402,12 @@ export function App(): JSX.Element {
               </section>
             </Fragment>
           ))}
-          {splitDropSide && <div className={`split-drop-overlay ${splitDropSide}`} />}
+          {splitDrop && (
+            <div
+              className={`split-drop-overlay ${splitDrop.side}`}
+              style={{ width: Math.max(0, splitDrop.width - 12) }}
+            />
+          )}
         </div>
       </div>
 

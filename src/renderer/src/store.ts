@@ -12,10 +12,15 @@ export type ColumnLayout = 'center' | 'article-left' | 'article-right';
 
 export type TabKind = 'editor' | 'sheet';
 
+export const MAX_PANES = 3;
+
 export interface TabPane {
   id: string;
   tabIds: string[];
   activeTabId: string;
+  // Relative width (flex-grow). Panes are reset to equal sizes when a split
+  // adds one; dragging a divider trades size between its two neighbours.
+  size: number;
 }
 
 // One open document. The editor itself (and its undo history / scroll / caret)
@@ -126,6 +131,7 @@ function makePane(tabId: string): TabPane {
     id: nextPaneId(),
     tabIds: [tabId],
     activeTabId: tabId,
+    size: 1,
   };
 }
 
@@ -159,7 +165,6 @@ interface AppState {
   activeTabId: string;
   panes: TabPane[];
   activePaneId: string;
-  splitRatio: number;
   mathMode: boolean;
   preferences: Preferences;
   prefsPanelOpen: boolean;
@@ -175,7 +180,7 @@ interface AppState {
   reorderTabsInPane: (paneId: string, from: number, to: number) => void;
   moveTabToPane: (tabId: string, paneId: string, index: number) => void;
   splitTabToSide: (tabId: string, side: 'left' | 'right') => void;
-  setSplitRatio: (ratio: number) => void;
+  resizePanes: (leftId: string, leftSize: number, rightId: string, rightSize: number) => void;
   updateTab: (id: string, patch: Partial<Tab>) => void;
   // Repoint every open tab at oldPath to newPath (after a .md → .snote convert).
   retargetTabs: (oldPath: string, newPath: string) => void;
@@ -202,7 +207,6 @@ export const useStore = create<AppState>((set) => ({
   activeTabId: FIRST_TAB.id,
   panes: [FIRST_PANE],
   activePaneId: FIRST_PANE.id,
-  splitRatio: 0.5,
   mathMode: false,
   preferences: DEFAULT_PREFS,
   prefsPanelOpen: false,
@@ -218,7 +222,7 @@ export const useStore = create<AppState>((set) => ({
         const pane = makePane(tab.id);
         return {
           tabs: [...s.tabs, tab],
-          panes: [...s.panes, pane].slice(0, 2),
+          panes: [...s.panes, pane].slice(0, MAX_PANES),
           activePaneId: pane.id,
           activeTabId: tab.id,
         };
@@ -342,49 +346,63 @@ export const useStore = create<AppState>((set) => ({
   splitTabToSide: (tabId, side) =>
     set((s) => {
       if (!s.tabs.some((t) => t.id === tabId)) return s;
-      if (s.panes.length === 1) {
-        const source = s.panes[0];
-        if (!source.tabIds.includes(tabId) || source.tabIds.length <= 1) return s;
-        const movedPane = makePane(tabId);
-        const remainingIds = source.tabIds.filter((id) => id !== tabId);
-        const remainingPane = paneWithActiveTab(
-          {
-            ...source,
-            tabIds: remainingIds,
-            activeTabId: source.activeTabId === tabId ? remainingIds[0] : source.activeTabId,
-          },
-          remainingIds[0]
-        );
-        const panes = side === 'left' ? [movedPane, remainingPane] : [remainingPane, movedPane];
-        return { panes, activePaneId: movedPane.id, activeTabId: tabId };
-      }
-      const targetPane = side === 'left' ? s.panes[0] : s.panes[s.panes.length - 1];
-      if (!targetPane) return s;
       const sourcePane = s.panes.find((p) => p.tabIds.includes(tabId));
-      if (sourcePane?.id === targetPane.id) {
-        return {
-          panes: s.panes.map((p) => (p.id === targetPane.id ? { ...p, activeTabId: tabId } : p)),
-          activePaneId: targetPane.id,
-          activeTabId: tabId,
-        };
-      }
-      let panes = s.panes.map((p) => {
-        const withoutMoved = p.tabIds.filter((id) => id !== tabId);
-        if (p.id !== targetPane.id) {
+      if (!sourcePane) return s;
+      const edgePane = side === 'left' ? s.panes[0] : s.panes[s.panes.length - 1];
+      let panes: TabPane[];
+      let activePaneId: string;
+      if (s.panes.length < MAX_PANES) {
+        // Room for another column: the tab opens a new pane on that side and
+        // every pane goes back to an equal width.
+        if (sourcePane.id === edgePane.id && sourcePane.tabIds.length <= 1) return s;
+        const movedPane = makePane(tabId);
+        const rest = s.panes
+          .map((p) => {
+            if (p.id !== sourcePane.id) return p;
+            const remaining = p.tabIds.filter((id) => id !== tabId);
+            return paneWithActiveTab({
+              ...p,
+              tabIds: remaining,
+              activeTabId: p.activeTabId === tabId ? (remaining[0] ?? '') : p.activeTabId,
+            });
+          })
+          .filter((p) => p.tabIds.length > 0);
+        panes = (side === 'left' ? [movedPane, ...rest] : [...rest, movedPane]).map((p) => ({
+          ...p,
+          size: 1,
+        }));
+        activePaneId = movedPane.id;
+      } else {
+        // All columns in use: the tab joins the outermost pane on that side.
+        if (sourcePane.id === edgePane.id) {
           return {
-            ...p,
-            tabIds: withoutMoved,
-            activeTabId: p.activeTabId === tabId ? (withoutMoved[0] ?? '') : p.activeTabId,
+            panes: s.panes.map((p) => (p.id === edgePane.id ? { ...p, activeTabId: tabId } : p)),
+            activePaneId: edgePane.id,
+            activeTabId: tabId,
           };
         }
-        return { ...p, tabIds: [...withoutMoved, tabId], activeTabId: tabId };
-      });
-      panes = panes.filter((p) => p.tabIds.length > 0).map((p) => paneWithActiveTab(p));
-      const activePane = activePaneForTab(panes, tabId) ?? panes[0];
-      return { panes, activePaneId: activePane.id, activeTabId: tabId };
+        panes = s.panes.map((p) => {
+          const withoutMoved = p.tabIds.filter((id) => id !== tabId);
+          if (p.id !== edgePane.id) {
+            return {
+              ...p,
+              tabIds: withoutMoved,
+              activeTabId: p.activeTabId === tabId ? (withoutMoved[0] ?? '') : p.activeTabId,
+            };
+          }
+          return { ...p, tabIds: [...withoutMoved, tabId], activeTabId: tabId };
+        });
+        panes = panes.filter((p) => p.tabIds.length > 0).map((p) => paneWithActiveTab(p));
+        activePaneId = (activePaneForTab(panes, tabId) ?? panes[0]).id;
+      }
+      return { panes, activePaneId, activeTabId: tabId };
     }),
-  setSplitRatio: (ratio) =>
-    set({ splitRatio: Math.min(0.8, Math.max(0.2, ratio)) }),
+  resizePanes: (leftId, leftSize, rightId, rightSize) =>
+    set((s) => ({
+      panes: s.panes.map((p) =>
+        p.id === leftId ? { ...p, size: leftSize } : p.id === rightId ? { ...p, size: rightSize } : p
+      ),
+    })),
   updateTab: (id, patch) =>
     set((s) => ({ tabs: s.tabs.map((t) => (t.id === id ? { ...t, ...patch } : t)) })),
   retargetTabs: (oldPath, newPath) =>

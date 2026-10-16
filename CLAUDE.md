@@ -99,7 +99,7 @@ Cmd+F 尋找、Opt+Cmd+F 尋找並取代、Cmd+G / Shift+Cmd+G 下一個／上�
 **分頁、分割窗格與視窗**
 
 - 每個分頁是 `store.ts` 的一個 `Tab`，`kind` 為 `editor`（`DocumentView`）或 `sheet`（`SheetView`）。分頁的 view 一直掛著、非作用中時只是隱藏，所以各自保有復原紀錄、游標與捲動位置。App shell 透過 `getDocumentView(tabId)` 取得 `DocumentViewHandle` 操作特定分頁。
-- 最多兩個分割窗格（`panes`）：把分頁拖到工作區左右邊緣即可分割，中間的分隔線可拖曳調整比例。分頁移到另一個窗格時 React 會重新掛載 view，所以 `stageTabForPaneMove` 先把內容存進 `initialMarkdown`，並用 `restoreDirtyAfterLoad` 保留 dirty 狀態。
+- 最多三個分割窗格（`panes`，上限 `MAX_PANES`）：把分頁拖到工作區左右邊緣，還沒滿三欄時在該側新增一欄並把所有窗格重設為等寬，滿三欄時則移入最外側那一欄。每個窗格的寬度存在 `TabPane.size`（flex-grow），拖曳分隔線只在相鄰兩欄之間調整（`resizePanes`）。分頁移到另一個窗格時 React 會重新掛載 view，所以 `stageTabForPaneMove` 先把內容存進 `initialMarkdown`，並用 `restoreDirtyAfterLoad` 保留 dirty 狀態。
 - App 沒有側邊欄與儲存庫（已移除）。所有文件都要手動存檔：編輯後分頁出現未存檔圓點，關閉未存檔分頁時 `closeTabWithChecks` 會先詢問儲存／不儲存／取消（`file:confirmCloseDirty`），選「不儲存」時不再做 `.snote` 轉存詢問。圖片從 Finder 拖入時以絕對路徑引用，貼上的圖片以 data URL 存在文件內。
 - 啟動時一律只開一個未存檔的空白筆記。從 Finder 雙擊文件或以文件建立新視窗時，main 先將文件放入 `pendingOpenByWebContents`。`App.tsx` 註冊檔案事件後呼叫 `window.api.notifyReady()`（`renderer:ready` 使用 invoke / handle），main 才把排隊的文件送出；原本的空白分頁由 `openFileInTab` 移除。初始化以 ref 保護，避免 React StrictMode 重跑；main 快取每個視窗的啟動結果並在關閉時清除。
 - 從 Finder 一次開啟多個檔案時都開在同一個視窗的不同分頁：第一個視窗建立前 (`initialWindowCreated` 為 false) 收到的 `open-file` 都先進 `coldStartPaths`，不能只看 `app.isReady()`，否則 ready 之後、視窗建立之前到達的檔案會各自開新視窗。
