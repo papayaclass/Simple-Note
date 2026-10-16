@@ -259,6 +259,14 @@ export function App(): JSX.Element {
           if (!ok) allOk = false;
         }
       }
+      // file:save retitles the window after whichever tab it wrote; put the
+      // active tab's title back.
+      const s = useStore.getState();
+      const active = s.tabs.find((t) => t.id === s.activeTabId);
+      if (active) {
+        window.api.window.setTitle(active.fileName);
+        window.api.window.setDirty(active.dirty);
+      }
       return allOk;
     };
     return () => {

@@ -458,6 +458,15 @@ app.whenReady().then(() => {
     queueDocumentForWindow(win, doc);
   });
 
+  // "全部儲存" from a tab's context menu: save every dirty tab in every window,
+  // one window at a time so save dialogs for untitled tabs don't overlap.
+  ipcMain.handle('window:saveAll', async () => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (win.isDestroyed()) continue;
+      await win.webContents.executeJavaScript('window.__simpleNote_save?.()');
+    }
+  });
+
   ipcMain.on('window:close', (e) => {
     BrowserWindow.fromWebContents(e.sender)?.close();
   });

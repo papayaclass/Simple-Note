@@ -81,6 +81,7 @@ export interface SimpleNoteAPI {
     setTitle: (title: string) => void;
     close: () => void;
     moveTabToNewWindow: (doc: OpenDocumentPayload) => void;
+    saveAll: () => Promise<void>;
   };
   onMenu: (handler: (command: string) => void) => () => void;
   onOpenInTab: (handler: (payload: OpenDocumentPayload) => void) => () => void;
@@ -123,6 +124,7 @@ const api: SimpleNoteAPI = {
     setTitle: (title) => ipcRenderer.send('window:setTitle', title),
     close: () => ipcRenderer.send('window:close'),
     moveTabToNewWindow: (doc) => ipcRenderer.send('window:moveTab', doc),
+    saveAll: () => ipcRenderer.invoke('window:saveAll'),
   },
   onMenu: (handler) => {
     type Listener = Parameters<typeof ipcRenderer.on>[1];

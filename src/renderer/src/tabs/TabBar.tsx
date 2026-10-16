@@ -116,6 +116,7 @@ export function TabBar({
           { label: '關閉分頁', onClick: () => void closeTabWithChecks(tab.id) },
           { label: '開啟在新視窗', onClick: () => void moveTabToNewWindow(tab.id) },
           { label: '另存新檔…', onClick: () => void saveAsCopy(tab) },
+          { label: '全部儲存', onClick: () => void window.api.window.saveAll() },
           tab.kind === 'sheet'
             ? {
                 label: '匯出成 CSV 文件…',
