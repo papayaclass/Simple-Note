@@ -13,7 +13,7 @@ Simple Note 是一款 macOS 為主的極簡 Block 式筆記桌面應用，採用
 - `npm start`：執行 `electron-vite preview`，預覽已 build 的版本。
 - `npm run pack`：build 後以 `electron-builder --dir` 產生未打包的 app 目錄（測試用，不簽章）。
 - `npm run dist`：build 後以 `electron-builder` 產生可散布的安裝檔，輸出到 `dist/`electron-builder 會自動用鑰匙圈裡的 Developer ID 憑證簽章（含 hardened runtime 與時間戳記），但 `notarize` 設為 `false`，發布時要另外把 `dist/mac-universal/Simple Note.app` 壓成 zip 用 `notarytool` 公證再 `stapler staple`。第一次打包需要下載 x64 與 arm64 兩份 Electron（各約 100 MB），會花好幾分鐘。
-- `npm run icons`：從根目錄的 `Simple Note.png` 產生 `build/icons/` 內所有平台圖示。
+- `npm run icons`：從根目錄的 `Simple Note.png` 產生 `build/icons/` 內所有平台圖示。`build/icons/` 不在 git 裡，在 worktree 內打包前要先從主 checkout 複製過來（或執行 `npm run icons`），否則 electron-builder 找不到 `icon.icns` 而失敗。
 - 指定 electron-builder 的 `CSC_NAME` 時使用 `Mu-Hua Wang (7Y3SNMCD34)`，不要加上 `Developer ID Application:` 前綴，否則 builder 會拒絕。正式 App 公證並 staple 後，需重新製作最終 DMG，確保其中包含已附票證的 App；DMG 先以 `hdiutil verify` 驗證，再簽章、公證與 staple。
 - 目前沒有測試框架、ESLint 或 Prettier 設定；型別檢查只透過 `electron-vite build` 進行。要單獨檢查型別可執行 `npx tsc --noEmit -p tsconfig.web.json` 或 `tsconfig.node.json`。
 
@@ -63,6 +63,7 @@ Renderer 每次存檔都同時算出兩種內容（`{ markdown, snote }`）交�
   - `registerDocumentView` 的 cleanup 要比對 handle 是否仍是自己：分頁從筆記切成試算表 (同一個 tab id) 時，新 view 可能先註冊、舊 view 後卸載。
   - Browser pane 模擬按鍵時 `e.code` 是空字串，快捷鍵用 `isKey()`：有 code 比 code，沒有才退回 `e.key`。
 - 驗證 UI：`.claude/launch.json` 的 `renderer-only` 只跑 Vite，沒有 preload，`window.api` 不存在會直接壞掉。可暫時在 `src/renderer/` 放一個 harness html，先用 inline script 塞假的 `window.api` (記下 `onOpenInTab` / `onMenu` 的 handler 以便從 console 開檔、送選單命令) 再載入 `./src/main.tsx`，測完刪除。
+- 驗證整個 App（含 main 端、多視窗、Finder 開檔）：`npx electron-builder --dir --mac --arm64 -c.mac.identity=null` 快速打包，`open -a "dist/mac-arm64/Simple Note.app" <檔案...> --args --remote-debugging-port=9555` 啟動後，用 Node 的 `fetch('http://127.0.0.1:9555/json')` + `WebSocket` 送 `Runtime.evaluate` 檢查 DOM 與操作。不要用 9333，那個 port 是 Simple Gmail 在用。原生對話框（儲存提醒）可用 System Events 的 `sheet 1 of window 1` 讀文字與按按鈕，但存檔面板讀不到。
 
 **編輯器核心 (`src/renderer/src/editor/`)**
 
