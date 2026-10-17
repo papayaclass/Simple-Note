@@ -4,7 +4,7 @@ This file provides guidance to Codex when working with code in this repository.
 
 **專案概述**
 
-Simple Note 是一款 macOS 為主的極簡 Block 式筆記桌面應用，採用 Electron + Vite + React + TypeScript 建置，編輯器核心使用 BlockNote (TipTap / ProseMirror)。筆記**預設以 App 專用的 `.snote` 格式儲存**（BlockNote block tree 的 JSON，完整保留紅字、Toggle、圖片與雙欄版面）；`.md` 檔仍可直接開啟並以 Markdown 儲存，但 Markdown 不支援的標記會在存檔時被捨棄。另外內建簡易試算表，可開啟 `.csv` 與 App 專用的 `.ssheet`（見「試算表」一節）。介面語言為繁體中文。
+Simple Note 是一款 macOS 為主的極簡 Block 式筆記桌面應用，採用 Electron + Vite + React + TypeScript 建置，編輯器核心使用 BlockNote (TipTap / ProseMirror)。筆記**預設以 App 專用的 `.snote` 格式儲存**（BlockNote block tree 的 JSON，完整保留紅字、Toggle 與圖片）；`.md` 檔仍可直接開啟並以 Markdown 儲存，但 Markdown 不支援的標記會在存檔時被捨棄。另外內建簡易試算表，可開啟 `.csv` 與 App 專用的 `.ssheet`（見「試算表」一節）。介面語言為繁體中文。
 
 **常用指令**
 
@@ -37,13 +37,13 @@ main 端在 `app.whenReady` 內註冊 handler，命名採 `namespace:action`（�
 
 格式的判斷邏輯集中在 `src/renderer/src/noteFormat.ts`：
 
-- `.snote`（預設）：JSON，內容為 `{ format: 'simple-note', version, columnLayout, columnSplit, columns: { left, middle, right } }`，三欄各存一份 BlockNote block tree。由 `DocumentView.buildSnote()` 產生、`loadContent()` 還原（`parseSnote` 回傳 null 就當成 Markdown 解析，所以載入時不需要看副檔名）。
-- `.md` / `.txt`：純 Markdown，內容由 `editor.blocksToMarkdownLossy` 產生。雙欄展開時 `buildMarkdown` 依「畫面左欄在上、右欄在下」合併兩欄，空白欄略過。
+- `.snote`（預設）：JSON，內容為 `{ format: 'simple-note', version: 2, blocks }`，存一份 BlockNote block tree。由 `DocumentView.buildSnote()` 產生、`loadContent()` 還原（`parseSnote` 回傳 null 就當成 Markdown 解析，所以載入時不需要看副檔名）。舊的雙欄版面（Shift+Cmd+方向鍵把文章推往左／右側）已移除；version 1 的檔案存的是 `columns: { left, middle, right }`，`parseSnote` 會把非空白的欄位依「左、中、右」順序合併成一份（只含空段落的欄位略過），下次存檔就寫成 version 2。
+- `.md` / `.txt`：純 Markdown，內容由 `editor.blocksToMarkdownLossy` 產生。
 - Markdown 開頭的 YAML front matter（第一行 `---`、第二行是 `key:`）由 `splitFrontMatter` 在載入時切出來存在 `DocumentView` 的 `frontMatterRef`，不進編輯器，`buildMarkdown` 時原文接回最前面。原因是 BlockNote 會把 `---` 解析成分隔線與 setext 標題，存回去變成 `***` 與一長串 `-`，弄壞 Claude Code Skill 的 `SKILL.md` 這類靠 front matter 運作的檔案。因此 front matter 在 App 內看不到也改不了。
 
 Renderer 每次存檔都同時算出兩種內容（`{ markdown, snote }`）交給 main，**由目標檔案的副檔名決定寫入哪一份**（`contentForPath`，`.md`/`.txt`/`.csv` 走純文字那份，其餘走 snote）。`file:save`、`file:saveAs` 都是這個約定；存檔對話框依建議檔名的副檔名決定篩選器（筆記 `.snote`/`.md`，試算表 `.ssheet`/`.csv`），筆記新檔／另存預設 `.snote`，對話框預設位置是下載資料夾，未命名筆記以第一個標題當建議檔名。
 
-`lossyFeatures()`（noteFormat.ts）掃描 block tree 找出 Markdown 存不下的東西（紅字、底線、文字顏色／底色、折疊清單、圖片），`DocumentView` 再補上「雙欄版面」。用在兩處：
+`lossyFeatures()`（noteFormat.ts）掃描 block tree 找出 Markdown 存不下的東西（紅字、底線、文字顏色／底色、折疊清單、圖片）。用在兩處：
 
 - 關閉含特殊格式的 `.md` 分頁時（`closeTabWithChecks` / 視窗關閉前的 `window.__simpleNote_beforeClose`）詢問是否轉存成 `.snote`；答「轉存」會寫出同名 `.snote` 並把原 `.md` 移到垃圾桶（`file:convertToSnote`），答「維持 Markdown」則特殊格式就此遺失。
 - 分頁右鍵的「匯出成 MD 文件…」（僅 `.snote` 分頁可用）匯出前提醒，預設存到下載資料夾（`file:exportMarkdown`）。
@@ -106,7 +106,7 @@ Cmd+F 尋找、Opt+Cmd+F 尋找並取代、Cmd+G / Shift+Cmd+G 下一個／上�
 - 啟動時一律只開一個未存檔的空白筆記。從 Finder 雙擊文件或以文件建立新視窗時，main 先將文件放入 `pendingOpenByWebContents`。`App.tsx` 註冊檔案事件後呼叫 `window.api.notifyReady()`（`renderer:ready` 使用 invoke / handle），main 才把排隊的文件送出；原本的空白分頁由 `openFileInTab` 移除。初始化以 ref 保護，避免 React StrictMode 重跑；main 快取每個視窗的啟動結果並在關閉時清除。
 - 從 Finder 一次開啟多個檔案時都開在同一個視窗的不同分頁：第一個視窗建立前 (`initialWindowCreated` 為 false) 收到的 `open-file` 都先進 `coldStartPaths`，不能只看 `app.isReady()`，否則 ready 之後、視窗建立之前到達的檔案會各自開新視窗。
 - 分頁右鍵「開啟在新視窗」是「移動」：`moveTabToNewWindow` 把分頁的 snote 內容、路徑、dirty 狀態與 kind 經 `window:moveTab` 交給 main 開新視窗（新視窗以 `openDocumentPayload` + `restoreDirtyAfterLoad` 還原），再從原視窗移除該分頁；原視窗只剩它一個分頁時直接關閉原視窗。未命名分頁也可以移動。
-- 分頁也能拖到另一個視窗的分頁列合併，依藍色插入線決定位置。`src/main/tab-transfer.ts` 以拖曳 token 找到來源視窗，透過 renderer 的 `snapshotTabForTransfer`／`receiveTransferredTab`／`finishTabTransfer` 完成搬移；目標確認內容載入後才移除來源，來源只剩一個分頁時自動關閉視窗。保留自訂分頁名稱、檔案路徑、dirty、三欄內容、折疊／格式、試算表公式與樣式，以及 Markdown 的 YAML front matter（`initialFrontMatter`，載入後回到 `frontMatterRef`）。跨視窗合併不覆蓋目標原有分頁，也不合併同路徑的文件。拖曳期間 main 廣播 `window:tabDragState`，暫時把所有分頁列的空白區改成 `no-drag`，讓原本可拖動視窗的區域也能接收分頁；放開後恢復。分頁列同樣忽略 BlockNote 重送的非 trusted 拖放事件。
+- 分頁也能拖到另一個視窗的分頁列合併，依藍色插入線決定位置。`src/main/tab-transfer.ts` 以拖曳 token 找到來源視窗，透過 renderer 的 `snapshotTabForTransfer`／`receiveTransferredTab`／`finishTabTransfer` 完成搬移；目標確認內容載入後才移除來源，來源只剩一個分頁時自動關閉視窗。保留自訂分頁名稱、檔案路徑、dirty、內容、折疊／格式、試算表公式與樣式，以及 Markdown 的 YAML front matter（`initialFrontMatter`，載入後回到 `frontMatterRef`）。跨視窗合併不覆蓋目標原有分頁，也不合併同路徑的文件。拖曳期間 main 廣播 `window:tabDragState`，暫時把所有分頁列的空白區改成 `no-drag`，讓原本可拖動視窗的區域也能接收分頁；放開後恢復。分頁列同樣忽略 BlockNote 重送的非 trusted 拖放事件。
 - 分頁右鍵「重新命名」在分頁上就地編輯名稱（Enter 確定、Esc 取消）：已存檔的分頁經 `file:rename` 在同一資料夾改檔名、保留副檔名，已有同名檔案時拒絕；未命名分頁只改 `fileName`，第一次存檔時優先用它當建議檔名（沒改過才用第一個標題）。
 - 分頁右鍵「全部儲存」：renderer 呼叫 `window.api.window.saveAll()`（`window:saveAll`），main 逐一對每個視窗執行 `window.__simpleNote_save()`（與關閉視窗時的「儲存」共用），一次只處理一個視窗，讓未命名分頁的存檔對話框不會同時跳出。踩過的坑：`file:save` 會把視窗標題改成剛寫入的檔名，存到背景分頁時標題會錯，所以 `__simpleNote_save` 結束時會把標題與 edited 圓點還原成作用中分頁。
 - 啟動時由 `src/renderer/src/main.tsx` 的 `bootstrap()` 先讀取偏好設定還原至 store，完成後才掛載 React。讀取失敗時會記錄錯誤並使用預設設定啟動。
