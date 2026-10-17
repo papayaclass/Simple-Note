@@ -175,14 +175,6 @@ body,
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
 }
 
-.split-drop-overlay.left {
-  left: 8px;
-}
-
-.split-drop-overlay.right {
-  right: 8px;
-}
-
 /* Holds every tab's DocumentView; only the active one is shown. */
 .tab-content {
   flex: 1 1 auto;

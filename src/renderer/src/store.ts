@@ -175,7 +175,7 @@ interface AppState {
   reorderTabs: (from: number, to: number) => void;
   reorderTabsInPane: (paneId: string, from: number, to: number) => void;
   moveTabToPane: (tabId: string, paneId: string, index: number) => void;
-  splitTabToSide: (tabId: string, side: 'left' | 'right') => void;
+  splitTabBesidePane: (tabId: string, anchorPaneId: string, side: 'left' | 'right') => void;
   swapPaneTabs: (paneA: string, paneB: string) => void;
   resizePanes: (leftId: string, leftSize: number, rightId: string, rightSize: number) => void;
   updateTab: (id: string, patch: Partial<Tab>) => void;
@@ -342,61 +342,37 @@ export const useStore = create<AppState>((set) => ({
       const activePane = activePaneForTab(panes, tabId) ?? panes[0];
       return { panes, activePaneId: activePane.id, activeTabId: tabId };
     }),
-  splitTabToSide: (tabId, side) =>
+  // Opens the tab in a new pane on `side` of the anchor pane; every pane goes
+  // back to an equal width. A source pane left empty disappears.
+  splitTabBesidePane: (tabId, anchorPaneId, side) =>
     set((s) => {
-      if (!s.tabs.some((t) => t.id === tabId)) return s;
       const sourcePane = s.panes.find((p) => p.tabIds.includes(tabId));
-      if (!sourcePane) return s;
-      const edgePane = side === 'left' ? s.panes[0] : s.panes[s.panes.length - 1];
-      let panes: TabPane[];
-      let activePaneId: string;
-      if (s.panes.length < MAX_PANES) {
-        // Room for another column: the tab opens a new pane on that side and
-        // every pane goes back to an equal width.
-        if (sourcePane.id === edgePane.id && sourcePane.tabIds.length <= 1) return s;
-        const movedPane = makePane(tabId);
-        const rest = s.panes
-          .map((p) => {
-            if (p.id !== sourcePane.id) return p;
-            const remaining = p.tabIds.filter((id) => id !== tabId);
-            return paneWithActiveTab({
-              ...p,
-              tabIds: remaining,
-              activeTabId: p.activeTabId === tabId ? (remaining[0] ?? '') : p.activeTabId,
-            });
-          })
-          .filter((p) => p.tabIds.length > 0);
-        panes = (side === 'left' ? [movedPane, ...rest] : [...rest, movedPane]).map((p) => ({
-          ...p,
-          size: 1,
-        }));
-        activePaneId = movedPane.id;
-      } else {
-        // All columns in use: the tab joins the outermost pane on that side.
-        if (sourcePane.id === edgePane.id) {
-          return {
-            panes: s.panes.map((p) => (p.id === edgePane.id ? { ...p, activeTabId: tabId } : p)),
-            activePaneId: edgePane.id,
-            activeTabId: tabId,
-          };
+      if (!sourcePane || !s.panes.some((p) => p.id === anchorPaneId)) return s;
+      if (sourcePane.id === anchorPaneId && sourcePane.tabIds.length <= 1) return s;
+      if (s.panes.length >= MAX_PANES) return s;
+      const movedPane = makePane(tabId);
+      const panes: TabPane[] = [];
+      for (const p of s.panes) {
+        let pane = p;
+        if (p.id === sourcePane.id) {
+          const remaining = p.tabIds.filter((id) => id !== tabId);
+          pane = paneWithActiveTab({
+            ...p,
+            tabIds: remaining,
+            activeTabId: p.activeTabId === tabId ? (remaining[0] ?? '') : p.activeTabId,
+          });
         }
-        panes = s.panes.map((p) => {
-          const withoutMoved = p.tabIds.filter((id) => id !== tabId);
-          if (p.id !== edgePane.id) {
-            return {
-              ...p,
-              tabIds: withoutMoved,
-              activeTabId: p.activeTabId === tabId ? (withoutMoved[0] ?? '') : p.activeTabId,
-            };
-          }
-          return { ...p, tabIds: [...withoutMoved, tabId], activeTabId: tabId };
-        });
-        panes = panes.filter((p) => p.tabIds.length > 0).map((p) => paneWithActiveTab(p));
-        activePaneId = (activePaneForTab(panes, tabId) ?? panes[0]).id;
+        if (p.id === anchorPaneId && side === 'left') panes.push(movedPane);
+        if (pane.tabIds.length > 0) panes.push(pane);
+        if (p.id === anchorPaneId && side === 'right') panes.push(movedPane);
       }
-      return { panes, activePaneId, activeTabId: tabId };
+      return {
+        panes: panes.map((p) => ({ ...p, size: 1 })),
+        activePaneId: movedPane.id,
+        activeTabId: tabId,
+      };
     }),
-  // Cmd-drag a tab onto another pane: the two panes trade places, so each
+  // Dropping a tab on the left half of another pane: the two panes trade places, so each
   // pane's tabs show up where the other's were. Widths stay with the position.
   // Reordering keyed panes moves their views instead of remounting them, so no
   // content staging is needed.

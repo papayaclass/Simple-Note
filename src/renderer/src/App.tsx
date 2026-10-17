@@ -21,18 +21,53 @@ import './preferences/panel.css';
 // Matches `.workspace-shell.split .editor-pane { min-width }` in theme.css.
 const MIN_PANE_WIDTH = 220;
 
-interface SplitDrop {
+// What dropping a dragged tab on a pane's content does. The left half of
+// another pane swaps the two panes; the right half opens the tab in a new pane
+// to the right of it, or swaps when all columns are in use. On the tab's own
+// pane, either half splits the tab out to that side. `left`/`width` place the
+// preview overlay in workspace coordinates.
+interface PaneDrop {
+  kind: 'swap' | 'split';
+  sourceId: string;
+  targetId: string;
   side: 'left' | 'right';
+  left: number;
   width: number;
 }
 
-// The pane under a Cmd-drag and the dragged tab's own pane, when they differ.
-function swapTargetPane(target: EventTarget, tabId: string) {
-  const paneEl = target instanceof Element ? target.closest<HTMLElement>('.editor-pane') : null;
+function paneDropForPoint(
+  workspace: HTMLElement,
+  target: EventTarget,
+  clientX: number,
+  tabId: string
+): PaneDrop | null {
+  if (!(target instanceof Element) || target.closest('.tab-bar')) return null;
+  const paneEl = target.closest<HTMLElement>('.editor-pane');
   const targetId = paneEl?.dataset.paneId;
-  const source = useStore.getState().panes.find((p) => p.tabIds.includes(tabId))?.id;
-  return targetId && source && targetId !== source ? { source, target: targetId } : null;
+  if (!paneEl || !targetId || !workspace.contains(paneEl)) return null;
+  const { panes } = useStore.getState();
+  const source = panes.find((p) => p.tabIds.includes(tabId));
+  if (!source) return null;
+  const rect = paneEl.getBoundingClientRect();
+  const x = rect.left - workspace.getBoundingClientRect().left;
+  const side = clientX < rect.left + rect.width / 2 ? 'left' : 'right';
+  const half = { left: side === 'left' ? x : x + rect.width / 2, width: rect.width / 2 };
+  const full = { left: x, width: rect.width };
+  const canSplit = panes.length < MAX_PANES;
+  if (source.id === targetId) {
+    if (!canSplit || source.tabIds.length <= 1) return null;
+    return { kind: 'split', sourceId: source.id, targetId, side, ...half };
+  }
+  if (side === 'right' && canSplit) {
+    return { kind: 'split', sourceId: source.id, targetId, side, ...half };
+  }
+  return { kind: 'swap', sourceId: source.id, targetId, side, ...full };
 }
+
+const samePaneDrop = (a: PaneDrop | null, b: PaneDrop | null) =>
+  a === b ||
+  (!!a && !!b && a.kind === b.kind && a.targetId === b.targetId && a.side === b.side &&
+    a.left === b.left && a.width === b.width);
 
 export function App(): JSX.Element {
   const tabs = useStore((s) => s.tabs);
@@ -41,7 +76,7 @@ export function App(): JSX.Element {
   const activeTab = useActiveTab();
   const resizePanes = useStore((s) => s.resizePanes);
   const setActiveTab = useStore((s) => s.setActiveTab);
-  const splitTabToSide = useStore((s) => s.splitTabToSide);
+  const splitTabBesidePane = useStore((s) => s.splitTabBesidePane);
   const swapPaneTabs = useStore((s) => s.swapPaneTabs);
   const mathMode = useStore((s) => s.mathMode);
   const toggleMathMode = useStore((s) => s.toggleMathMode);
@@ -52,7 +87,7 @@ export function App(): JSX.Element {
   const setWordCountPopover = useStore((s) => s.setWordCountPopover);
   const [draggedTabId, setDraggedTabId] = useState<string | null>(null);
   const [activeDropPaneId, setActiveDropPaneId] = useState<string | null>(null);
-  const [splitDrop, setSplitDrop] = useState<SplitDrop | null>(null);
+  const [splitDrop, setSplitDrop] = useState<PaneDrop | null>(null);
   // One drop can reach the workspace twice (BlockNote re-dispatches a drop
   // that lands on the editor), and the second run would split the already-moved
   // layout again. Set when a tab drag starts and consumed by the first drop.
@@ -62,97 +97,45 @@ export function App(): JSX.Element {
 
   const tabById = useMemo(() => new Map(tabs.map((tab) => [tab.id, tab])), [tabs]);
 
-  // Where a tab dropped at clientX would go: a new pane on that side while
-  // there is room for another column, otherwise the outermost pane on that side.
-  // `width` sizes the preview overlay to the column the tab will end up in.
-  const splitDropForPoint = useCallback(
-    (clientX: number, tabId: string | null): SplitDrop | null => {
-      const workspace = workspaceRef.current;
-      if (!workspace || !tabId) return null;
-      const rect = workspace.getBoundingClientRect();
-      const edgeWidth = Math.min(240, Math.max(120, rect.width * 0.24));
-      const side =
-        clientX <= rect.left + edgeWidth
-          ? 'left'
-          : clientX >= rect.right - edgeWidth
-            ? 'right'
-            : null;
-      if (!side) return null;
-      const s = useStore.getState();
-      const sourcePane = s.panes.find((p) => p.tabIds.includes(tabId));
-      if (!sourcePane) return null;
-      const edgeIndex = side === 'left' ? 0 : s.panes.length - 1;
-      const edgePane = s.panes[edgeIndex];
-      if (s.panes.length < MAX_PANES) {
-        const sourceEmpties = sourcePane.tabIds.length <= 1;
-        if (sourcePane.id === edgePane.id && sourceEmpties) return null;
-        const count = s.panes.length + (sourceEmpties ? 0 : 1);
-        return { side, width: rect.width / count };
-      }
-      if (sourcePane.id === edgePane.id) return null;
-      const paneEls = workspace.querySelectorAll<HTMLElement>(':scope > .editor-pane');
-      const width = paneEls[edgeIndex]?.getBoundingClientRect().width ?? rect.width / s.panes.length;
-      return { side, width };
-    },
-    []
-  );
-
   const handleWorkspaceDragOver = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {
-      if (!draggedTabId) {
-        setSplitDrop(null);
-        return;
-      }
-      // Cmd-drag onto any part of another pane swaps the two panes, so no edge split.
-      if (e.metaKey) {
-        setSplitDrop(null);
-        if (swapTargetPane(e.target, draggedTabId)) {
-          e.preventDefault();
-          e.dataTransfer.dropEffect = 'move';
-        }
-        return;
-      }
-      const drop = splitDropForPoint(e.clientX, draggedTabId);
-      setSplitDrop((prev) =>
-        prev?.side === drop?.side && prev?.width === drop?.width ? prev : drop
-      );
+      const workspace = workspaceRef.current;
+      const drop =
+        draggedTabId && workspace
+          ? paneDropForPoint(workspace, e.target, e.clientX, draggedTabId)
+          : null;
+      setSplitDrop((prev) => (samePaneDrop(prev, drop) ? prev : drop));
       if (drop) {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
       }
     },
-    [draggedTabId, splitDropForPoint]
+    [draggedTabId]
   );
 
   const handleWorkspaceDrop = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {
-      if (!draggedTabId || pendingSplitDragRef.current !== draggedTabId) return;
-      if (e.metaKey) {
-        const panes = swapTargetPane(e.target, draggedTabId);
-        if (!panes) return;
-        e.preventDefault();
-        e.stopPropagation();
-        pendingSplitDragRef.current = null;
-        swapPaneTabs(panes.source, panes.target);
-        setDraggedTabId(null);
-        setActiveDropPaneId(null);
-        setSplitDrop(null);
-        return;
-      }
-      const side = (splitDrop ?? splitDropForPoint(e.clientX, draggedTabId))?.side;
-      if (!side) return;
+      const workspace = workspaceRef.current;
+      if (!workspace || !draggedTabId || pendingSplitDragRef.current !== draggedTabId) return;
+      const drop = paneDropForPoint(workspace, e.target, e.clientX, draggedTabId);
+      if (!drop) return;
       e.preventDefault();
       e.stopPropagation();
       pendingSplitDragRef.current = null;
-      void (async () => {
-        await stageTabForPaneMove(draggedTabId);
-        splitTabToSide(draggedTabId, side);
-      })();
+      if (drop.kind === 'swap') {
+        swapPaneTabs(drop.sourceId, drop.targetId);
+      } else {
+        const tabId = draggedTabId;
+        void (async () => {
+          await stageTabForPaneMove(tabId);
+          splitTabBesidePane(tabId, drop.targetId, drop.side);
+        })();
+      }
       setDraggedTabId(null);
       setActiveDropPaneId(null);
       setSplitDrop(null);
     },
-    [draggedTabId, splitDrop, splitDropForPoint, splitTabToSide, swapPaneTabs]
+    [draggedTabId, splitTabBesidePane, swapPaneTabs]
   );
 
   const handleWorkspaceDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
@@ -437,8 +420,8 @@ export function App(): JSX.Element {
           ))}
           {splitDrop && (
             <div
-              className={`split-drop-overlay ${splitDrop.side}`}
-              style={{ width: Math.max(0, splitDrop.width - 12) }}
+              className="split-drop-overlay"
+              style={{ left: splitDrop.left + 6, width: Math.max(0, splitDrop.width - 12) }}
             />
           )}
         </div>
