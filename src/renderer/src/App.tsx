@@ -88,10 +88,6 @@ export function App(): JSX.Element {
   const [draggedTabId, setDraggedTabId] = useState<string | null>(null);
   const [activeDropPaneId, setActiveDropPaneId] = useState<string | null>(null);
   const [splitDrop, setSplitDrop] = useState<PaneDrop | null>(null);
-  // One drop can reach the workspace twice (BlockNote re-dispatches a drop
-  // that lands on the editor), and the second run would split the already-moved
-  // layout again. Set when a tab drag starts and consumed by the first drop.
-  const pendingSplitDragRef = useRef<string | null>(null);
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const startupInitialized = useRef(false);
 
@@ -99,6 +95,10 @@ export function App(): JSX.Element {
 
   const handleWorkspaceDragOver = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {
+      // BlockNote re-dispatches drag events onto the editor with the pointer
+      // clamped inside it (even for a drop on a tab strip, before the strip
+      // handles it), so only real pointer events count.
+      if (!e.nativeEvent.isTrusted) return;
       const workspace = workspaceRef.current;
       const drop =
         draggedTabId && workspace
@@ -116,12 +116,11 @@ export function App(): JSX.Element {
   const handleWorkspaceDrop = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {
       const workspace = workspaceRef.current;
-      if (!workspace || !draggedTabId || pendingSplitDragRef.current !== draggedTabId) return;
+      if (!e.nativeEvent.isTrusted || !workspace || !draggedTabId) return;
       const drop = paneDropForPoint(workspace, e.target, e.clientX, draggedTabId);
       if (!drop) return;
       e.preventDefault();
       e.stopPropagation();
-      pendingSplitDragRef.current = null;
       if (drop.kind === 'swap') {
         swapPaneTabs(drop.sourceId, drop.targetId);
       } else {
@@ -389,7 +388,6 @@ export function App(): JSX.Element {
                   draggingTabId={draggedTabId}
                   activeDropPaneId={activeDropPaneId}
                   onTabDragStart={(tabId) => {
-                    pendingSplitDragRef.current = tabId;
                     setDraggedTabId(tabId);
                     setActiveDropPaneId(pane.id);
                   }}
