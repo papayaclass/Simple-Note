@@ -83,7 +83,7 @@ function closeIfPristineStarter(tab: Tab | undefined): void {
 // A document pushed in by main: a file opened from Finder / File → Open, or a
 // tab moved here from another window (possibly untitled and unsaved).
 export async function openDocumentPayload(doc: OpenDocumentPayload): Promise<void> {
-  if (doc.path && !doc.dirty) {
+  if (doc.path && !doc.dirty && doc.fileName === undefined) {
     await openFileInTab(doc.path, doc.content, { autoFocus: true });
     return;
   }
@@ -92,6 +92,8 @@ export async function openDocumentPayload(doc: OpenDocumentPayload): Promise<voi
   const tabId = s.addTab({
     filePath: doc.path,
     initialMarkdown: doc.content,
+    initialFrontMatter: doc.frontMatter,
+    fileName: doc.fileName,
     kind: doc.kind,
     autoFocus: true,
   });
@@ -100,20 +102,79 @@ export async function openDocumentPayload(doc: OpenDocumentPayload): Promise<voi
   closeIfPristineStarter(prev);
 }
 
-// "開啟在新視窗": hand the tab's current content to a new window and drop it
-// from this one. A window left with nothing else closes.
-export async function moveTabToNewWindow(tabId: string): Promise<void> {
-  const s = useStore.getState();
-  const tab = s.tabs.find((t) => t.id === tabId);
+// Capture from the live view, never from disk: an untitled or dirty document
+// must carry all three columns, formatting and sheet formulas to the new window.
+export async function snapshotTabForTransfer(tabId: string): Promise<OpenDocumentPayload | null> {
+  const tab = useStore.getState().tabs.find((t) => t.id === tabId);
   const view = getDocumentView(tabId);
-  if (!tab || !view) return;
-  window.api.window.moveTabToNewWindow({
+  if (!tab || !view || view.isReady?.() === false || tab.restoreDirtyAfterLoad !== undefined) return null;
+  return {
     path: tab.filePath,
-    // The app's own format, so red text, toggles and columns survive the move.
     content: await view.buildSnote(),
     dirty: tab.dirty,
     kind: tab.kind,
+    fileName: tab.fileName,
+    frontMatter: view.getFrontMatter?.(),
+  };
+}
+
+export async function receiveTransferredTab(
+  doc: OpenDocumentPayload,
+  paneId: string,
+  index: number
+): Promise<boolean> {
+  const s = useStore.getState();
+  if (!s.panes.some((p) => p.id === paneId)) return false;
+  // A merge adds a distinct tab, even if this window already has the same
+  // file open or contains an empty untitled tab.
+  const tabId = s.addTab({
+    filePath: doc.path,
+    fileName: doc.fileName,
+    initialMarkdown: doc.content,
+    initialFrontMatter: doc.frontMatter,
+    kind: doc.kind,
+    autoFocus: true,
+  }, paneId);
+  s.updateTab(tabId, { dirty: !!doc.dirty, restoreDirtyAfterLoad: !!doc.dirty });
+  s.moveTabToPane(tabId, paneId, index);
+
+  // Both note and sheet views clear restoreDirtyAfterLoad only after loading
+  // the content. Acknowledge that point before main removes the source tab.
+  const loaded = await new Promise<boolean>((resolve) => {
+    const deadline = Date.now() + 10000;
+    const check = (): void => {
+      const tab = useStore.getState().tabs.find((t) => t.id === tabId);
+      const view = getDocumentView(tabId);
+      if (!tab || Date.now() >= deadline) resolve(false);
+      else if (view && view.isReady?.() !== false && tab.restoreDirtyAfterLoad === undefined) resolve(true);
+      else window.setTimeout(check, 16);
+    };
+    window.setTimeout(check, 0);
   });
+  if (!loaded) useStore.getState().closeTab(tabId);
+  return loaded;
+}
+
+export async function finishTabTransfer(
+  tabId: string,
+  snapshot: OpenDocumentPayload
+): Promise<{ empty: boolean } | null> {
+  // If the user edited or closed the source while the target was loading,
+  // retain it rather than discarding changes made after the snapshot.
+  const current = await snapshotTabForTransfer(tabId);
+  if (!current || JSON.stringify(current) !== JSON.stringify(snapshot)) return null;
+  const s = useStore.getState();
+  const empty = s.tabs.length === 1;
+  s.closeTab(tabId);
+  return { empty };
+}
+
+// "開啟在新視窗": hand the tab's current content to a new window and drop it
+// from this one. A window left with nothing else closes.
+export async function moveTabToNewWindow(tabId: string): Promise<void> {
+  const doc = await snapshotTabForTransfer(tabId);
+  if (!doc) return;
+  window.api.window.moveTabToNewWindow(doc);
   const wasOnlyTab = useStore.getState().tabs.length === 1;
   useStore.getState().closeTab(tabId);
   if (wasOnlyTab) window.api.window.close();

@@ -12,13 +12,15 @@ interface TabBarProps {
   // The first pane's tab bar sits under the macOS traffic lights.
   clearTrafficLights?: boolean;
   draggingTabId?: string | null;
+  tabDragActive?: boolean;
   activeDropPaneId?: string | null;
   onTabDragStart?: (tabId: string) => void;
-  onTabDragOverPane?: (paneId: string) => void;
+  onTabDragOverPane?: (paneId: string | null) => void;
   onTabDragEnd?: () => void;
 }
 
 export const TAB_DRAG_TYPE = 'application/x-simple-note-tab';
+const WINDOW_TAB_DRAG_TYPE = 'application/x-simple-note-window-tab';
 
 // The app's own lossless file name for a tab (.snote note / .ssheet sheet).
 function nativeFileName(tab: Tab): string {
@@ -29,6 +31,7 @@ export function TabBar({
   paneId,
   clearTrafficLights = true,
   draggingTabId,
+  tabDragActive = false,
   activeDropPaneId,
   onTabDragStart,
   onTabDragOverPane,
@@ -51,14 +54,14 @@ export function TabBar({
 
   const [menu, setMenu] = useState<PopMenuState | null>(null);
   const [dropGap, setDropGap] = useState<number | null>(null);
-  const dragIndex = useRef<number | null>(null);
+  const stripRef = useRef<HTMLDivElement | null>(null);
+  const dragToken = useRef<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (draggingTabId) return;
+    if (draggingTabId || tabDragActive) return;
     setDropGap(null);
-    dragIndex.current = null;
-  }, [draggingTabId]);
+  }, [draggingTabId, tabDragActive]);
 
   // A copy opens as an untitled tab; saving it asks where to put the file.
   const duplicateTab = useCallback(async (tab: Tab) => {
@@ -166,44 +169,64 @@ export function TabBar({
     [duplicateTab, saveAsCopy, exportMarkdown, exportCsv]
   );
 
-  const onDragOver = useCallback((e: React.DragEvent, index: number) => {
-    if (!e.dataTransfer.types.includes(TAB_DRAG_TYPE) && dragIndex.current === null) return;
-    e.preventDefault();
-    e.stopPropagation();
-    onTabDragOverPane?.(paneId);
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const gap = e.clientX < rect.left + rect.width / 2 ? index : index + 1;
-    setDropGap(gap);
-  }, [onTabDragOverPane, paneId]);
+  const gapAt = useCallback((clientX: number): number => {
+    const elements = stripRef.current?.querySelectorAll<HTMLElement>('.tab');
+    if (elements) {
+      for (let i = 0; i < elements.length; i += 1) {
+        const rect = elements[i].getBoundingClientRect();
+        if (clientX < rect.left + rect.width / 2) return i;
+      }
+    }
+    return tabs.length;
+  }, [tabs.length]);
 
   const onStripDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    if (!e.dataTransfer.types.includes(TAB_DRAG_TYPE) && dragIndex.current === null) return;
+    if (!e.nativeEvent.isTrusted || !e.dataTransfer.types.includes(TAB_DRAG_TYPE)) return;
     e.preventDefault();
     e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
     onTabDragOverPane?.(paneId);
-    setDropGap(tabs.length);
-  }, [onTabDragOverPane, paneId, tabs.length]);
+    setDropGap(gapAt(e.clientX));
+  }, [gapAt, onTabDragOverPane, paneId]);
 
   const onDrop = useCallback((e: React.DragEvent) => {
+    if (!e.nativeEvent.isTrusted || !e.dataTransfer.types.includes(TAB_DRAG_TYPE)) return;
     e.preventDefault();
     e.stopPropagation();
     const tabId = e.dataTransfer.getData(TAB_DRAG_TYPE);
+    const token = e.dataTransfer.getData(WINDOW_TAB_DRAG_TYPE);
+    const index = gapAt(e.clientX);
     setDropGap(null);
-    dragIndex.current = null;
     onTabDragEnd?.();
-    if (tabId) {
-      void (async () => {
-        await stageTabForPaneMove(tabId);
-        moveTabToPane(tabId, paneId, dropGap ?? tabs.length);
-      })();
-    }
-  }, [dropGap, moveTabToPane, onTabDragEnd, paneId, tabs.length]);
+    void (async () => {
+      const s = useStore.getState();
+      if (s.tabs.some((t) => t.id === tabId)) {
+        const source = s.panes.find((p) => p.tabIds.includes(tabId));
+        if (source?.id !== paneId) await stageTabForPaneMove(tabId);
+        moveTabToPane(tabId, paneId, index);
+      } else if (token) {
+        try {
+          if (await window.api.window.moveTabHere(token, paneId, index)) return;
+        } catch (error) {
+          console.error('Failed to merge tab into this window:', error);
+        }
+        window.alert('分頁未能完成移動，來源分頁仍保留在原視窗。');
+      }
+    })();
+  }, [gapAt, moveTabToPane, onTabDragEnd, paneId]);
 
-  const showDropLine = draggingTabId && activeDropPaneId === paneId;
+  const showDropLine = dropGap !== null && activeDropPaneId === paneId;
 
   return (
-    <div className={`tab-bar${clearTrafficLights ? ' clear-traffic-lights' : ''}`}>
-      <div className="tab-strip" onDragOver={onStripDragOver} onDrop={onDrop}>
+    <div
+      className={`tab-bar${clearTrafficLights ? ' clear-traffic-lights' : ''}${tabDragActive ? ' tab-drag-active' : ''}`}
+      onDragLeave={(e) => {
+        if (e.relatedTarget instanceof Node && e.currentTarget.contains(e.relatedTarget)) return;
+        setDropGap(null);
+        onTabDragOverPane?.(null);
+      }}
+    >
+      <div className="tab-strip" ref={stripRef} onDragOver={onStripDragOver} onDrop={onDrop}>
         {tabs.map((tab, i) => (
           <div className="tab-slot" key={tab.id}>
             {showDropLine && dropGap === i && <div className="tab-drop-line" />}
@@ -216,17 +239,19 @@ export function TabBar({
               }}
               onContextMenu={(e) => openContext(e, tab)}
               onDragStart={(e) => {
-                dragIndex.current = i;
+                const token = crypto.randomUUID();
+                dragToken.current = token;
                 setActiveTab(tab.id);
                 e.dataTransfer.effectAllowed = 'move';
                 e.dataTransfer.setData(TAB_DRAG_TYPE, tab.id);
+                e.dataTransfer.setData(WINDOW_TAB_DRAG_TYPE, token);
+                window.api.window.beginTabDrag(token, tab.id);
                 onTabDragStart?.(tab.id);
               }}
-              onDragOver={(e) => onDragOver(e, i)}
-              onDrop={onDrop}
               onDragEnd={() => {
+                if (dragToken.current) window.api.window.endTabDrag(dragToken.current);
+                dragToken.current = null;
                 setDropGap(null);
-                dragIndex.current = null;
                 onTabDragEnd?.();
               }}
               title={tab.filePath ?? tab.fileName}

@@ -20,6 +20,8 @@ export interface DocumentViewHandle {
   save: () => Promise<boolean>;
   buildMarkdown: () => Promise<string>;
   buildSnote: () => Promise<string>;
+  getFrontMatter?: () => string;
+  isReady?: () => boolean;
   // Formatting in this document that a Markdown save would discard.
   lossyFeatures: () => string[];
   hasContent: () => boolean;
@@ -466,6 +468,8 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
   viewApiRef.current.save = save;
   viewApiRef.current.buildMarkdown = buildMarkdown;
   viewApiRef.current.buildSnote = buildSnote;
+  viewApiRef.current.getFrontMatter = () => frontMatterRef.current;
+  viewApiRef.current.isReady = () => !loadingRef.current;
   viewApiRef.current.lossyFeatures = documentLossyFeatures;
   viewApiRef.current.hasContent = hasContent;
   viewApiRef.current.pastePlainText = () => focusedHandle()?.pastePlainText();
@@ -490,6 +494,10 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
     const tab = useStore.getState().tabs.find((t) => t.id === tabId);
     if (!tab) return;
     const finish = (): void => {
+      if (tab.initialFrontMatter !== undefined) {
+        frontMatterRef.current = tab.initialFrontMatter;
+        updateTab(tabId, { initialFrontMatter: undefined });
+      }
       const loadedTab = useStore.getState().tabs.find((t) => t.id === tabId);
       const restoreDirty = loadedTab?.restoreDirtyAfterLoad;
       setTabDirty(tabId, restoreDirty ?? false);

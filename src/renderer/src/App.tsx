@@ -10,6 +10,9 @@ import {
   stageTabForPaneMove,
   closeTabWithChecks,
   convertLossyMarkdownTabs,
+  snapshotTabForTransfer,
+  receiveTransferredTab,
+  finishTabTransfer,
 } from './fileActions';
 import { PreferencesPanel } from './preferences/Panel';
 import { TweaksPanel } from './preferences/TweaksPanel';
@@ -86,6 +89,7 @@ export function App(): JSX.Element {
   const wordCountPopover = useStore((s) => s.wordCountPopover);
   const setWordCountPopover = useStore((s) => s.setWordCountPopover);
   const [draggedTabId, setDraggedTabId] = useState<string | null>(null);
+  const [tabDragActive, setTabDragActive] = useState(false);
   const [activeDropPaneId, setActiveDropPaneId] = useState<string | null>(null);
   const [splitDrop, setSplitDrop] = useState<PaneDrop | null>(null);
   const workspaceRef = useRef<HTMLDivElement | null>(null);
@@ -285,6 +289,19 @@ export function App(): JSX.Element {
     return window.api.onOpenInTab((doc) => void openDocumentPayload(doc));
   }, []);
 
+  useEffect(() => {
+    window.__simpleNote_snapshotTab = snapshotTabForTransfer;
+    window.__simpleNote_receiveTab = receiveTransferredTab;
+    window.__simpleNote_finishTabTransfer = finishTabTransfer;
+    const off = window.api.onTabDragState(setTabDragActive);
+    return () => {
+      off();
+      delete window.__simpleNote_snapshotTab;
+      delete window.__simpleNote_receiveTab;
+      delete window.__simpleNote_finishTabTransfer;
+    };
+  }, []);
+
   // Wire menu commands.
   useEffect(() => {
     const off = window.api.onMenu((cmd) => {
@@ -386,6 +403,7 @@ export function App(): JSX.Element {
                   paneId={pane.id}
                   clearTrafficLights={index === 0}
                   draggingTabId={draggedTabId}
+                  tabDragActive={tabDragActive}
                   activeDropPaneId={activeDropPaneId}
                   onTabDragStart={(tabId) => {
                     setDraggedTabId(tabId);

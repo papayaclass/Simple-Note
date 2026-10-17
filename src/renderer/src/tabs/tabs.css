@@ -30,6 +30,12 @@
   height: 0;
 }
 
+/* Let another window's dragged tab land in the empty title-bar space. Restore
+   native window dragging as soon as the tab drag ends. */
+.tab-bar.tab-drag-active .tab-strip {
+  -webkit-app-region: no-drag;
+}
+
 .tab-slot {
   display: flex;
   align-items: center;

@@ -15,6 +15,8 @@ export interface OpenDocumentPayload {
   content: string;
   dirty?: boolean;
   kind?: 'editor' | 'sheet';
+  fileName?: string;
+  frontMatter?: string;
 }
 
 export interface SimpleNoteAPI {
@@ -85,8 +87,12 @@ export interface SimpleNoteAPI {
     setTitle: (title: string) => void;
     close: () => void;
     moveTabToNewWindow: (doc: OpenDocumentPayload) => void;
+    beginTabDrag: (token: string, tabId: string) => void;
+    endTabDrag: (token: string) => void;
+    moveTabHere: (token: string, paneId: string, index: number) => Promise<boolean>;
     saveAll: () => Promise<void>;
   };
+  onTabDragState: (handler: (active: boolean) => void) => () => void;
   onMenu: (handler: (command: string) => void) => () => void;
   onOpenInTab: (handler: (payload: OpenDocumentPayload) => void) => () => void;
   notifyReady: () => Promise<boolean>;
@@ -129,7 +135,15 @@ const api: SimpleNoteAPI = {
     setTitle: (title) => ipcRenderer.send('window:setTitle', title),
     close: () => ipcRenderer.send('window:close'),
     moveTabToNewWindow: (doc) => ipcRenderer.send('window:moveTab', doc),
+    beginTabDrag: (token, tabId) => ipcRenderer.send('window:beginTabDrag', token, tabId),
+    endTabDrag: (token) => ipcRenderer.send('window:endTabDrag', token),
+    moveTabHere: (token, paneId, index) => ipcRenderer.invoke('window:moveTabHere', token, paneId, index),
     saveAll: () => ipcRenderer.invoke('window:saveAll'),
+  },
+  onTabDragState: (handler) => {
+    const listener = (_e: unknown, active: boolean) => handler(active);
+    ipcRenderer.on('window:tabDragState', listener);
+    return () => ipcRenderer.removeListener('window:tabDragState', listener);
   },
   onMenu: (handler) => {
     type Listener = Parameters<typeof ipcRenderer.on>[1];

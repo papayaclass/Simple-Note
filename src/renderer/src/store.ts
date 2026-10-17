@@ -35,6 +35,7 @@ export interface Tab {
   // Markdown to load into the editor once on first mount (set when a tab is
   // opened from a file). Cleared by DocumentView after it loads.
   initialMarkdown?: string;
+  initialFrontMatter?: string;
   // Whether the editor grabs focus when this tab first mounts.
   autoFocus: boolean;
   blankFirstLineFormat: BlankFirstLineFormat;
@@ -98,7 +99,9 @@ function fileNameFromPath(path: string | null, kind: TabKind = 'editor'): string
 
 export interface NewTabOptions {
   filePath?: string | null;
+  fileName?: string;
   initialMarkdown?: string;
+  initialFrontMatter?: string;
   autoFocus?: boolean;
   blankFirstLineFormat?: BlankFirstLineFormat;
   kind?: TabKind;
@@ -110,11 +113,12 @@ export function makeTab(opts: NewTabOptions = {}): Tab {
   return {
     id: nextTabId(),
     filePath,
-    fileName: fileNameFromPath(filePath, kind),
+    fileName: opts.fileName ?? fileNameFromPath(filePath, kind),
     dirty: false,
     columnLayout: 'center',
     columnSplit: 0.5,
     initialMarkdown: opts.initialMarkdown,
+    initialFrontMatter: opts.initialFrontMatter,
     autoFocus: opts.autoFocus ?? true,
     blankFirstLineFormat: opts.blankFirstLineFormat ?? 'paragraph',
     kind,

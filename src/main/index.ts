@@ -8,6 +8,7 @@ import { getPreferences, setPreference, setAllPreferences } from './preferences.
 import { getYouTubePreview } from './youtube-preview.js';
 import { runAI } from './openrouter.js';
 import { readImageAsDataUrl } from './images.js';
+import { registerTabTransfers } from './tab-transfer.js';
 
 app.setName('Simple Note');
 
@@ -83,6 +84,8 @@ interface PendingDocument {
   content?: string;
   dirty?: boolean;
   kind?: 'editor' | 'sheet';
+  fileName?: string;
+  frontMatter?: string;
 }
 
 const pendingOpenByWebContents = new Map<number, PendingDocument[]>();
@@ -124,6 +127,8 @@ async function deliverDocumentToWindow(
     content,
     dirty: doc.dirty ?? false,
     kind: doc.kind,
+    fileName: doc.fileName,
+    frontMatter: doc.frontMatter,
   });
   return true;
 }
@@ -428,6 +433,7 @@ function imageMimeToExt(mime: string): string {
 }
 
 app.whenReady().then(() => {
+  registerTabTransfers();
   buildMenu({
     onNew: () => newTabOrWindow(),
     onOpen: () => void openViaDialog(),
