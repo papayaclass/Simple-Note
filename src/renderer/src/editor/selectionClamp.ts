@@ -204,6 +204,16 @@ export function createSelectionClampPlugin(): Plugin {
       } catch {
         // ignore — leave the selection as-is on mouseup
       }
+      // A drag released in the page gutter still generates a click on the
+      // common ancestor of the press/release targets. The page's blank-area
+      // click handler would move the caret to the end and erase this selection.
+      // Suppress only that immediate click, just as marquee selection does.
+      const swallowClick = (event: MouseEvent): void => {
+        event.preventDefault();
+        event.stopPropagation();
+      };
+      window.addEventListener('click', swallowClick, { capture: true, once: true });
+      window.setTimeout(() => window.removeEventListener('click', swallowClick, true), 0);
     } else {
       dispatchCaret(current.view, current.anchor);
     }
