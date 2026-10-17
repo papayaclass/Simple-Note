@@ -21,12 +21,8 @@ export interface FindBarHandle {
 }
 
 interface Props {
-  // The editors to search, in on-screen order. Re-read on every operation so
-  // switching the column layout while the bar is open keeps working.
+  // The editors to search, in on-screen order.
   getEditors: () => TargetEditor[];
-  // Changes whenever the set of searched editors changes (column layout), so
-  // the search re-runs against the newly visible columns.
-  scopeKey: string;
   showReplace: boolean;
   onToggleReplace: (next: boolean) => void;
   onClose: () => void;
@@ -35,7 +31,6 @@ interface Props {
 
 export function FindBar({
   getEditors,
-  scopeKey,
   showReplace,
   onToggleReplace,
   onClose,
@@ -167,7 +162,7 @@ export function FindBar({
   useLayoutEffect(() => {
     runSearch(query, caseSensitive);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, caseSensitive, scopeKey]);
+  }, [query, caseSensitive]);
 
   // Editing the document while the bar is open keeps the counter honest.
   useEffect(() => {
@@ -189,7 +184,7 @@ export function FindBar({
       window.clearTimeout(timer.id);
       offs.forEach((off) => off());
     };
-  }, [getEditors, recount, scopeKey]);
+  }, [getEditors, recount]);
 
   // Drop every highlight when the bar unmounts (tab closed, layout torn down).
   useEffect(() => {

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 
 // Full-screen preview for an image block. Opened by the `simple-note:preview-image`
 // event (dispatched on double-click in editor/image.tsx) and mounted once at the
-// app root so two-column mode doesn't get two overlays. Right-clicking the image
+// app root so multiple editors don't get multiple overlays. Right-clicking the image
 // shows a single "另存新檔…" command that writes the original bytes to disk via
 // the file:saveImage IPC. Click the backdrop or press Escape to close.
 export function ImageLightbox(): JSX.Element | null {

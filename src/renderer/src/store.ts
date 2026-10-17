@@ -4,11 +4,6 @@ import { isSheetPath } from './sheet/sheetFormat';
 
 export type BlankFirstLineFormat = 'heading1' | 'heading2' | 'heading3' | 'paragraph';
 
-// Column layout as the article's position on a `[left] — center — [right]` track.
-// `center` is single-column; the other two reveal an independent blank column on
-// the opposite side (article-left reveals the right column, and vice versa).
-export type ColumnLayout = 'center' | 'article-left' | 'article-right';
-
 export type TabKind = 'editor' | 'sheet';
 
 export const MAX_PANES = 3;
@@ -30,8 +25,6 @@ export interface Tab {
   filePath: string | null;
   fileName: string;
   dirty: boolean;
-  columnLayout: ColumnLayout;
-  columnSplit: number;
   // Markdown to load into the editor once on first mount (set when a tab is
   // opened from a file). Cleared by DocumentView after it loads.
   initialMarkdown?: string;
@@ -50,7 +43,6 @@ export interface Tab {
 
 export interface Preferences {
   pageWidth: number;
-  twoColumnPageWidth: number;
   lineHeight: number;
   paragraphSpacing: number;
   topPadding: number;
@@ -66,7 +58,6 @@ export interface Preferences {
 
 export const DEFAULT_PREFS: Preferences = {
   pageWidth: 720,
-  twoColumnPageWidth: 1080,
   lineHeight: 1.6,
   paragraphSpacing: 8,
   topPadding: 96,
@@ -115,8 +106,6 @@ export function makeTab(opts: NewTabOptions = {}): Tab {
     filePath,
     fileName: opts.fileName ?? fileNameFromPath(filePath, kind),
     dirty: false,
-    columnLayout: 'center',
-    columnSplit: 0.5,
     initialMarkdown: opts.initialMarkdown,
     initialFrontMatter: opts.initialFrontMatter,
     autoFocus: opts.autoFocus ?? true,
@@ -187,9 +176,6 @@ interface AppState {
   retargetTabs: (oldPath: string, newPath: string) => void;
   setTabFile: (id: string, path: string | null) => void;
   setTabDirty: (id: string, dirty: boolean) => void;
-  setTabColumnLayout: (id: string, layout: ColumnLayout) => void;
-  shiftTabColumn: (id: string, dir: 'left' | 'right') => void;
-  setTabColumnSplit: (id: string, split: number) => void;
 
   // Global view/state
   toggleMathMode: () => void;
@@ -422,22 +408,6 @@ export const useStore = create<AppState>((set) => ({
     })),
   setTabDirty: (id, dirty) =>
     set((s) => ({ tabs: s.tabs.map((t) => (t.id === id ? { ...t, dirty } : t)) })),
-  setTabColumnLayout: (id, layout) =>
-    set((s) => ({ tabs: s.tabs.map((t) => (t.id === id ? { ...t, columnLayout: layout } : t)) })),
-  // Slide the article one step along [article-left, center, article-right].
-  shiftTabColumn: (id, dir) =>
-    set((s) => ({
-      tabs: s.tabs.map((t) => {
-        if (t.id !== id) return t;
-        const order: ColumnLayout[] = ['article-left', 'center', 'article-right'];
-        const i = order.indexOf(t.columnLayout);
-        const next = dir === 'right' ? Math.min(i + 1, 2) : Math.max(i - 1, 0);
-        return { ...t, columnLayout: order[next] };
-      }),
-    })),
-  setTabColumnSplit: (id, split) =>
-    set((s) => ({ tabs: s.tabs.map((t) => (t.id === id ? { ...t, columnSplit: split } : t)) })),
-
   toggleMathMode: () => set((s) => ({ mathMode: !s.mathMode })),
   setMathMode: (on) => set({ mathMode: on }),
   setPreferences: (p) => set((s) => ({ preferences: { ...s.preferences, ...p } })),

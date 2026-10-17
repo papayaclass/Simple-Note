@@ -3,7 +3,7 @@ import { DEFAULT_LINK_PROTOCOL, VALID_LINK_PROTOCOLS } from '@blocknote/core';
 
 // linkifyjs registers custom protocols globally and `Link.onDestroy` resets
 // them, so (mirroring BlockNote's own guard) only the first editor instance
-// should register the protocol list. Two-column mode creates two editors.
+// should register the protocol list. Every tab creates its own editor.
 let linkifyInitialized = false;
 
 /**

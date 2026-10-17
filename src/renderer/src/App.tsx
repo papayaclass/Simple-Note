@@ -206,7 +206,6 @@ export function App(): JSX.Element {
   useEffect(() => {
     const r = document.documentElement.style;
     r.setProperty('--page-width', `${preferences.pageWidth}px`);
-    r.setProperty('--two-column-page-width', `${preferences.twoColumnPageWidth}px`);
     r.setProperty('--line-height', `${preferences.lineHeight}`);
     r.setProperty('--paragraph-spacing', `${preferences.paragraphSpacing}px`);
     r.setProperty('--top-padding', `${preferences.topPadding}px`);
@@ -330,14 +329,6 @@ export function App(): JSX.Element {
         }
         case 'toggle-math':
           toggleMathMode();
-          break;
-        case 'push-article-left':
-          s.shiftTabColumn(id, 'left');
-          s.setTabDirty(id, true);
-          break;
-        case 'push-article-right':
-          s.shiftTabColumn(id, 'right');
-          s.setTabDirty(id, true);
           break;
         case 'find':
           getDocumentView(id)?.openFind(false);

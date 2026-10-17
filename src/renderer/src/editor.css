@@ -10,10 +10,6 @@
   color: var(--fg) !important;
 }
 
-.editor-host[data-interactive='false'] {
-  pointer-events: none;
-}
-
 /* hide top-of-doc + add-block helpers we don't need */
 .bn-block-content {
   font-family: inherit !important;

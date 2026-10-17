@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Editor, EditorHandle } from './editor/Editor';
 import { attachMarquee } from './editor/marquee';
-import { useStore, ColumnLayout } from './store';
+import { useStore } from './store';
 import {
   lossyFeatures,
   parseSnote,
@@ -61,39 +61,24 @@ interface Props {
   active: boolean;
 }
 
-// One open document: the persistent three-column "push" editor surface. Mounted
-// once per tab and kept in the DOM (hidden when inactive) so each tab keeps its
-// own undo history, caret and scroll position.
+// One open document: a single BlockNote editor. Mounted once per tab and kept
+// in the DOM (hidden when inactive) so each tab keeps its own undo history,
+// caret and scroll position.
 export function DocumentView({ tabId, active }: Props): JSX.Element {
-  const columnLayout = useStore(
-    (s) => s.tabs.find((t) => t.id === tabId)?.columnLayout ?? 'center'
-  );
-  const columnSplit = useStore((s) => s.tabs.find((t) => t.id === tabId)?.columnSplit ?? 0.5);
   const filePath = useStore((s) => s.tabs.find((t) => t.id === tabId)?.filePath ?? null);
   const blankFirstLineFormat = useStore(
     (s) => s.tabs.find((t) => t.id === tabId)?.blankFirstLineFormat ?? 'paragraph'
   );
   const setTabDirty = useStore((s) => s.setTabDirty);
   const setTabFile = useStore((s) => s.setTabFile);
-  const setTabColumnSplit = useStore((s) => s.setTabColumnSplit);
-  const shiftTabColumn = useStore((s) => s.shiftTabColumn);
-  const setTabColumnLayout = useStore((s) => s.setTabColumnLayout);
   const updateTab = useStore((s) => s.updateTab);
 
   const [findOpen, setFindOpen] = useState(false);
   const [findShowReplace, setFindShowReplace] = useState(false);
   const findApiRef = useRef<FindBarHandle | null>(null);
 
-  const leftHandleRef = useRef<EditorHandle | null>(null);
-  const midHandleRef = useRef<EditorHandle | null>(null);
-  const rightHandleRef = useRef<EditorHandle | null>(null);
+  const handleRef = useRef<EditorHandle | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const pageRef = useRef<HTMLDivElement | null>(null);
-  const leftColRef = useRef<HTMLDivElement | null>(null);
-  const midColRef = useRef<HTMLDivElement | null>(null);
-  const rightColRef = useRef<HTMLDivElement | null>(null);
-  const prevLayoutRef = useRef<string | null>(null);
-  const prevRectsRef = useRef<{ mid: DOMRect; left: DOMRect; right: DOMRect } | null>(null);
   // Suppresses onChange-driven dirty marking while the initial content loads.
   const loadingRef = useRef(false);
   // Raw YAML front matter of the loaded Markdown file, re-attached on save.
@@ -106,185 +91,12 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
   // doesn't override the autoFocus decision above.
   const firstActiveRun = useRef(true);
 
-  const currentLayout = useCallback(
-    (): ColumnLayout => useStore.getState().tabs.find((t) => t.id === tabId)?.columnLayout ?? 'center',
-    [tabId]
-  );
-
   // Rubber-band (marquee) block selection, scoped to this document's surface.
-  // `resolve` routes the drag to the editor of the column under the pointer.
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
-    const resolve = (e: MouseEvent): any => {
-      const article = midHandleRef.current?.editor ?? null;
-      if (currentLayout() === 'center') return article;
-      const col = (e.target as HTMLElement).closest('.column-left, .column-middle, .column-right');
-      if (col?.classList.contains('column-left')) return leftHandleRef.current?.editor ?? article;
-      if (col?.classList.contains('column-right')) return rightHandleRef.current?.editor ?? article;
-      return article;
-    };
-    return attachMarquee(root, resolve);
-  }, [currentLayout]);
-
-  // Seed/restore the column split ratio onto the page element.
-  useEffect(() => {
-    const page = pageRef.current;
-    if (!page) return;
-    page.style.setProperty('--col-left-grow', String(columnSplit));
-    page.style.setProperty('--col-right-grow', String(1 - columnSplit));
-  }, [columnSplit, columnLayout]);
-
-  // Drag the active divider to resize the two visible columns.
-  const onDividerPointerDown = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      if (e.button !== 0) return;
-      if (currentLayout() === 'center') return;
-      const page = pageRef.current;
-      if (!page) return;
-      e.preventDefault();
-      e.stopPropagation();
-      const divider = e.currentTarget;
-      divider.setPointerCapture(e.pointerId);
-      page.classList.add('resizing');
-      document.body.style.cursor = 'col-resize';
-      const PAD = 32; // .page horizontal padding
-      const MARGIN = 32; // divider's gutter margin on each side
-      const GUTTER = MARGIN * 2 + 1; // both margins + the 1px line
-      let frac = columnSplit;
-
-      const onMove = (ev: PointerEvent): void => {
-        const rect = page.getBoundingClientRect();
-        const colsSpan = rect.width - PAD * 2 - GUTTER;
-        if (colsSpan <= 0) return;
-        frac = Math.min(0.8, Math.max(0.2, (ev.clientX - rect.left - PAD - MARGIN) / colsSpan));
-        page.style.setProperty('--col-left-grow', String(frac));
-        page.style.setProperty('--col-right-grow', String(1 - frac));
-      };
-      const onUp = (): void => {
-        window.removeEventListener('pointermove', onMove, true);
-        window.removeEventListener('pointerup', onUp, true);
-        page.classList.remove('resizing');
-        document.body.style.cursor = '';
-        try {
-          divider.releasePointerCapture(e.pointerId);
-        } catch {
-          // ignore — capture may already be released
-        }
-        setTabColumnSplit(tabId, frac);
-      };
-      window.addEventListener('pointermove', onMove, true);
-      window.addEventListener('pointerup', onUp, true);
-    },
-    [columnSplit, currentLayout, setTabColumnSplit, tabId]
-  );
-
-  // Shift+Cmd+Left/Right slides the article between columns. Only the active
-  // tab listens (macOS swallows the menu accelerator while a contenteditable is
-  // focused, so we handle it here in the capture phase).
-  useEffect(() => {
-    if (!active) return;
-    const onKey = (e: KeyboardEvent): void => {
-      if (!(e.metaKey || e.ctrlKey) || !e.shiftKey || e.altKey) return;
-      if (e.code !== 'ArrowLeft' && e.code !== 'ArrowRight') return;
-      const editing =
-        leftHandleRef.current?.hasFocus() ||
-        midHandleRef.current?.hasFocus() ||
-        rightHandleRef.current?.hasFocus();
-      if (!editing) return;
-      e.preventDefault();
-      e.stopPropagation();
-      shiftTabColumn(tabId, e.code === 'ArrowRight' ? 'right' : 'left');
-      setTabDirty(tabId, true);
-    };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [active, shiftTabColumn, setTabDirty, tabId]);
-
-  // Animate column reveal/collapse with a FLIP slide (see App.tsx history).
-  useLayoutEffect(() => {
-    const page = pageRef.current;
-    const leftEl = leftColRef.current;
-    const midEl = midColRef.current;
-    const rightEl = rightColRef.current;
-    if (!page || !leftEl || !midEl || !rightEl) return;
-
-    const prev = prevLayoutRef.current;
-    const cur = columnLayout;
-
-    for (const el of [leftEl, midEl, rightEl]) {
-      el.getAnimations().forEach((a) => a.cancel());
-      resetSlideStyles(el);
-    }
-    page.classList.remove('sliding');
-
-    const newRects = {
-      mid: midEl.getBoundingClientRect(),
-      left: leftEl.getBoundingClientRect(),
-      right: rightEl.getBoundingClientRect(),
-    };
-    const prevRects = prevRectsRef.current;
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-    // Skip the slide while hidden (rects are zero) — just snap.
-    const visible = newRects.mid.width > 0;
-    if (prev !== null && prev !== cur && !reduceMotion && prevRects && visible) {
-      const DUR = 300;
-      const EASE = 'cubic-bezier(0.32, 0.72, 0, 1)';
-      const release = (): void => page.classList.remove('sliding');
-
-      const dx = prevRects.mid.left - newRects.mid.left;
-      if (Math.abs(dx) > 0.5) {
-        midEl.animate(
-          [{ transform: `translateX(${dx}px)` }, { transform: 'translateX(0)' }],
-          { duration: DUR, easing: EASE }
-        );
-      }
-
-      const enter =
-        prev === 'center' && cur === 'article-right'
-          ? { el: leftEl, from: '-100%' }
-          : prev === 'center' && cur === 'article-left'
-            ? { el: rightEl, from: '100%' }
-            : null;
-      if (enter) {
-        page.classList.add('sliding');
-        const a = enter.el.animate(
-          [
-            { transform: `translateX(${enter.from})`, opacity: 0 },
-            { transform: 'translateX(0)', opacity: 1 },
-          ],
-          { duration: DUR, easing: EASE }
-        );
-        a.onfinish = release;
-      }
-
-      const leave =
-        prev === 'article-right' && cur === 'center'
-          ? { el: leftEl, rect: prevRects.left, to: '-100%' }
-          : prev === 'article-left' && cur === 'center'
-            ? { el: rightEl, rect: prevRects.right, to: '100%' }
-            : null;
-      if (leave) {
-        floatAt(leave.el, leave.rect, page.getBoundingClientRect());
-        page.classList.add('sliding');
-        const a = leave.el.animate(
-          [
-            { transform: 'translateX(0)', opacity: 1 },
-            { transform: `translateX(${leave.to})`, opacity: 0 },
-          ],
-          { duration: DUR, easing: EASE }
-        );
-        a.onfinish = () => {
-          resetSlideStyles(leave.el);
-          release();
-        };
-      }
-    }
-
-    if (visible) prevRectsRef.current = newRects;
-    prevLayoutRef.current = cur;
-  }, [columnLayout, active]);
+    return attachMarquee(root, () => (handleRef.current?.editor ?? null) as any);
+  }, []);
 
   // Any edit marks the tab dirty until it is saved.
   const onEditorChange = useCallback(() => {
@@ -293,55 +105,30 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
     if (tab && !tab.dirty) setTabDirty(tabId, true);
   }, [setTabDirty, tabId]);
 
-  // Merge the visible columns into one Markdown string (top-to-bottom by the
-  // on-screen left→right order). Empty scratch columns are dropped.
   const buildMarkdown = useCallback(async (): Promise<string> => {
-    const article = midHandleRef.current;
-    if (!article) return '';
-    const layout = currentLayout();
-    const articleMd = await article.asMarkdown();
-    if (layout === 'center') return frontMatterRef.current + articleMd;
-    const scratchMd = async (h: EditorHandle | null): Promise<string> =>
-      h && docHasContent(h.editor.document) ? await h.asMarkdown() : '';
-    const parts =
-      layout === 'article-left'
-        ? [articleMd, await scratchMd(rightHandleRef.current)]
-        : [await scratchMd(leftHandleRef.current), articleMd];
-    return frontMatterRef.current + parts.filter((p) => p.trim().length > 0).join('\n\n');
-  }, [currentLayout]);
+    const h = handleRef.current;
+    if (!h) return '';
+    return frontMatterRef.current + (await h.asMarkdown());
+  }, []);
 
-  // The `.snote` payload: every column's raw block tree plus the layout, so a
-  // reopened note is byte-for-byte the document the user left behind.
+  // The `.snote` payload: the raw block tree, so a reopened note is exactly the
+  // document the user left behind.
   const buildSnote = useCallback(async (): Promise<string> => {
-    const tab = useStore.getState().tabs.find((t) => t.id === tabId);
     return serializeSnote({
       format: 'simple-note',
-      version: 1,
-      columnLayout: currentLayout(),
-      columnSplit: tab?.columnSplit ?? 0.5,
-      columns: {
-        left: leftHandleRef.current?.asBlocks() ?? [],
-        middle: midHandleRef.current?.asBlocks() ?? [],
-        right: rightHandleRef.current?.asBlocks() ?? [],
-      },
+      version: 2,
+      blocks: handleRef.current?.asBlocks() ?? [],
     });
-  }, [currentLayout, tabId]);
+  }, []);
 
-  // Which Markdown-incompatible features this document currently uses. A
-  // two-column layout counts too — Markdown has no way to express it.
-  const documentLossyFeatures = useCallback((): string[] => {
-    const layout = currentLayout();
-    const found = new Set<string>(lossyFeatures(midHandleRef.current?.editor.document ?? []));
-    if (layout !== 'center') {
-      found.add('雙欄版面');
-      const scratch = layout === 'article-left' ? rightHandleRef.current : leftHandleRef.current;
-      for (const f of lossyFeatures(scratch?.editor.document ?? [])) found.add(f);
-    }
-    return [...found];
-  }, [currentLayout]);
+  // Which Markdown-incompatible features this document currently uses.
+  const documentLossyFeatures = useCallback(
+    (): string[] => lossyFeatures(handleRef.current?.editor.document ?? []),
+    []
+  );
 
   const save = useCallback(async (): Promise<boolean> => {
-    if (!midHandleRef.current) return false;
+    if (!handleRef.current) return false;
     try {
       const tab = useStore.getState().tabs.find((t) => t.id === tabId);
       const contents = { markdown: await buildMarkdown(), snote: await buildSnote() };
@@ -351,7 +138,7 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
         // their first heading, in the app's own format so nothing is lost.
         suggestedName: withSnoteExt(
           (tab && tab.fileName !== '未命名筆記' ? tab.fileName : '') ||
-            sanitizeFileName(firstHeadingText(midHandleRef.current.editor.document)) ||
+            sanitizeFileName(firstHeadingText(handleRef.current.editor.document)) ||
             '未命名筆記'
         ),
       });
@@ -368,86 +155,50 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
     }
   }, [buildMarkdown, buildSnote, setTabFile, setTabDirty, tabId]);
 
-  const focusedHandle = useCallback((): EditorHandle | null => {
-    if (leftHandleRef.current?.hasFocus()) return leftHandleRef.current;
-    if (rightHandleRef.current?.hasFocus()) return rightHandleRef.current;
-    if (midHandleRef.current?.hasFocus()) return midHandleRef.current;
-    return midHandleRef.current;
-  }, []);
-
-  // The editors the find bar searches, in on-screen left-to-right order. Only
-  // the columns actually visible in the current layout take part.
-  const getFindEditors = useCallback((): unknown[] => {
-    const layout = currentLayout();
-    const list: unknown[] = [];
-    if (layout === 'article-right' && leftHandleRef.current) {
-      list.push(leftHandleRef.current.editor);
-    }
-    if (midHandleRef.current) list.push(midHandleRef.current.editor);
-    if (layout === 'article-left' && rightHandleRef.current) {
-      list.push(rightHandleRef.current.editor);
-    }
-    return list;
-  }, [currentLayout]);
+  const getFindEditors = useCallback(
+    (): unknown[] => (handleRef.current ? [handleRef.current.editor] : []),
+    []
+  );
 
   // Cmd+F / Opt+Cmd+F. Like macOS apps, a one-line selection seeds the field;
   // when the bar is already open we just re-focus and select it.
-  const openFind = useCallback(
-    (withReplace: boolean) => {
-      const seed = selectedText(focusedHandle()?.editor).trim();
-      const usable = seed && !seed.includes('\n') ? seed : '';
-      if (withReplace) setFindShowReplace(true);
-      setFindOpen(true);
-      requestAnimationFrame(() => {
-        if (usable) findApiRef.current?.seed(usable);
-        findApiRef.current?.focusQuery();
-      });
-    },
-    [focusedHandle]
-  );
+  const openFind = useCallback((withReplace: boolean) => {
+    const seed = selectedText(handleRef.current?.editor).trim();
+    const usable = seed && !seed.includes('\n') ? seed : '';
+    if (withReplace) setFindShowReplace(true);
+    setFindOpen(true);
+    requestAnimationFrame(() => {
+      if (usable) findApiRef.current?.seed(usable);
+      findApiRef.current?.focusQuery();
+    });
+  }, []);
 
   const closeFind = useCallback(() => {
     setFindOpen(false);
-    requestAnimationFrame(() => midHandleRef.current?.focus());
+    requestAnimationFrame(() => handleRef.current?.focus());
   }, []);
 
   const hasContent = useCallback((): boolean => {
-    const mid = midHandleRef.current;
-    if (mid && docHasContent(mid.editor.document)) return true;
-    if (currentLayout() !== 'center') {
-      const left = leftHandleRef.current;
-      const right = rightHandleRef.current;
-      if (left && docHasContent(left.editor.document)) return true;
-      if (right && docHasContent(right.editor.document)) return true;
-    }
-    return false;
-  }, [currentLayout]);
+    const h = handleRef.current;
+    return !!h && docHasContent(h.editor.document);
+  }, []);
 
-  // Load a file's text into the columns. `.snote` JSON restores every column
-  // and the layout; anything else is parsed as Markdown into the article column.
+  // Load a file's text into the editor: `.snote` JSON restores the block tree;
+  // anything else is parsed as Markdown.
   const loadContent = useCallback(
     async (text: string, opts: { focus?: boolean } = {}): Promise<void> => {
       const snote = parseSnote(text);
       frontMatterRef.current = '';
       if (snote) {
-        leftHandleRef.current?.loadBlocks(snote.columns.left);
-        rightHandleRef.current?.loadBlocks(snote.columns.right);
-        midHandleRef.current?.loadBlocks(snote.columns.middle);
-        setTabColumnLayout(tabId, snote.columnLayout);
-        setTabColumnSplit(tabId, snote.columnSplit);
+        handleRef.current?.loadBlocks(snote.blocks);
       } else {
-        await Promise.all([
-          leftHandleRef.current?.loadMarkdown(''),
-          rightHandleRef.current?.loadMarkdown(''),
-        ]);
-        setTabColumnLayout(tabId, 'center');
         const { frontMatter, body } = splitFrontMatter(text);
         frontMatterRef.current = frontMatter;
-        await midHandleRef.current?.loadMarkdown(body);
+        await handleRef.current?.loadMarkdown(body);
       }
-      if (opts.focus) requestAnimationFrame(() => midHandleRef.current?.focusLastBlock());
+      if (opts.focus) requestAnimationFrame(() => handleRef.current?.focusLastBlock());
     },
-    [setTabColumnLayout, setTabColumnSplit, tabId]
+    []
   );
 
   // Register this view's imperative API (stable object, mutated each render).
@@ -472,10 +223,10 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
   viewApiRef.current.isReady = () => !loadingRef.current;
   viewApiRef.current.lossyFeatures = documentLossyFeatures;
   viewApiRef.current.hasContent = hasContent;
-  viewApiRef.current.pastePlainText = () => focusedHandle()?.pastePlainText();
-  viewApiRef.current.removeParagraphBreaks = () => focusedHandle()?.removeParagraphBreaks();
-  viewApiRef.current.focusLastBlock = () => midHandleRef.current?.focusLastBlock();
-  viewApiRef.current.focus = () => midHandleRef.current?.focus();
+  viewApiRef.current.pastePlainText = () => handleRef.current?.pastePlainText();
+  viewApiRef.current.removeParagraphBreaks = () => handleRef.current?.removeParagraphBreaks();
+  viewApiRef.current.focusLastBlock = () => handleRef.current?.focusLastBlock();
+  viewApiRef.current.focus = () => handleRef.current?.focus();
   viewApiRef.current.openFind = openFind;
   viewApiRef.current.findNext = () => findApiRef.current?.next();
   viewApiRef.current.findPrev = () => findApiRef.current?.prev();
@@ -484,9 +235,9 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
   useEffect(() => {
     const tab = useStore.getState().tabs.find((t) => t.id === tabId);
     if (!tab || tab.filePath || tab.initialMarkdown != null) return;
-    const editor = midHandleRef.current;
+    const editor = handleRef.current;
     if (!editor) return;
-    if (active) requestAnimationFrame(() => midHandleRef.current?.focusLastBlock());
+    if (active) requestAnimationFrame(() => handleRef.current?.focusLastBlock());
   }, [active, blankFirstLineFormat, tabId]);
 
   // Load the tab's initial content once on mount.
@@ -505,7 +256,7 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
         updateTab(tabId, { restoreDirtyAfterLoad: undefined });
       }
       if (initialAutoFocus.current) {
-        requestAnimationFrame(() => midHandleRef.current?.focusLastBlock());
+        requestAnimationFrame(() => handleRef.current?.focusLastBlock());
       }
       setTimeout(() => {
         loadingRef.current = false;
@@ -536,23 +287,17 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
       firstActiveRun.current = false;
       return;
     }
-    if (active) midHandleRef.current?.focus();
+    if (active) handleRef.current?.focus();
   }, [active]);
 
   // Clicks on the page padding / gutter drop the caret into the last block.
   const onPageClick = useCallback((e: React.MouseEvent<HTMLDivElement>): void => {
     const t = e.target as HTMLElement;
     if (t.classList.contains('document-view') || t.classList.contains('page')) {
-      midHandleRef.current?.focusLastBlock();
+      handleRef.current?.focusLastBlock();
     }
   }, []);
 
-  const pageLayoutClass =
-    columnLayout === 'article-left'
-      ? ' reveal-right'
-      : columnLayout === 'article-right'
-        ? ' reveal-left'
-        : '';
 
   return (
     <div
@@ -565,67 +310,24 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
       {findOpen && (
         <FindBar
           getEditors={getFindEditors}
-          scopeKey={columnLayout}
           showReplace={findShowReplace}
           onToggleReplace={setFindShowReplace}
           onClose={closeFind}
           handleRef={findApiRef}
         />
       )}
-      <div className={`page${pageLayoutClass}`} ref={pageRef}>
-        <div className="column column-left" ref={leftColRef}>
-          <Editor
-            onChange={onEditorChange}
-            handleRef={leftHandleRef}
-            autoFocus={false}
-            interactive={columnLayout === 'article-right'}
-            notePath={filePath}
-          />
-        </div>
-        <div className="column-divider divider-left" onPointerDown={onDividerPointerDown} />
-        <div className="column column-middle" ref={midColRef}>
-          <Editor
-            key={blankFirstLineFormat}
-            onChange={onEditorChange}
-            handleRef={midHandleRef}
-            autoFocus={initialAutoFocus.current}
-            notePath={filePath}
-            blankFirstLineFormat={blankFirstLineFormat}
-          />
-        </div>
-        <div className="column-divider divider-right" onPointerDown={onDividerPointerDown} />
-        <div className="column column-right" ref={rightColRef}>
-          <Editor
-            onChange={onEditorChange}
-            handleRef={rightHandleRef}
-            autoFocus={false}
-            interactive={columnLayout === 'article-left'}
-            notePath={filePath}
-          />
-        </div>
+      <div className="page">
+        <Editor
+          key={blankFirstLineFormat}
+          onChange={onEditorChange}
+          handleRef={handleRef}
+          autoFocus={initialAutoFocus.current}
+          notePath={filePath}
+          blankFirstLineFormat={blankFirstLineFormat}
+        />
       </div>
     </div>
   );
-}
-
-// Pin an element on top of the page at its (now-collapsed) spot so a leaving
-// column can animate out without disturbing the flex layout.
-function floatAt(el: HTMLElement, rect: DOMRect, origin: DOMRect): void {
-  el.style.position = 'absolute';
-  el.style.left = `${rect.left - origin.left}px`;
-  el.style.top = `${rect.top - origin.top}px`;
-  el.style.width = `${rect.width}px`;
-  el.style.height = `${rect.height}px`;
-  el.style.zIndex = '1';
-}
-
-function resetSlideStyles(el: HTMLElement): void {
-  el.style.position = '';
-  el.style.left = '';
-  el.style.top = '';
-  el.style.width = '';
-  el.style.height = '';
-  el.style.zIndex = '';
 }
 
 // Concatenate the inline text of a block's content array.

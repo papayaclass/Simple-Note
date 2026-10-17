@@ -32,7 +32,7 @@ export async function stageTabForPaneMove(tabId: string): Promise<void> {
   const view = getDocumentView(tabId);
   if (!view) return;
   // Staged in the app's own format so a pane move never drops red text,
-  // toggles or the column layout.
+  // toggles or images.
   const markdown = await view.buildSnote();
   useStore.getState().updateTab(tabId, {
     initialMarkdown: markdown,
@@ -103,7 +103,7 @@ export async function openDocumentPayload(doc: OpenDocumentPayload): Promise<voi
 }
 
 // Capture from the live view, never from disk: an untitled or dirty document
-// must carry all three columns, formatting and sheet formulas to the new window.
+// must carry its formatting and sheet formulas to the new window.
 export async function snapshotTabForTransfer(tabId: string): Promise<OpenDocumentPayload | null> {
   const tab = useStore.getState().tabs.find((t) => t.id === tabId);
   const view = getDocumentView(tabId);
@@ -194,7 +194,7 @@ export function createNewSheet(): void {
 
 // Closing a Markdown note that uses formatting Markdown can't store: offer to
 // convert it to the app's own `.snote` format (answering "維持 Markdown" is what
-// loses the red text / toggles / two-column layout). A `.csv` sheet with
+// loses the red text / toggles / images). A `.csv` sheet with
 // formulas or cell styling gets the same offer for `.ssheet`. Returns silently
 // for native-format files and for documents that survive untouched.
 export async function convertMarkdownNoteIfLossy(tab: Tab): Promise<void> {

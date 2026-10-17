@@ -73,8 +73,8 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
 
   useEffect(() => {
     function onContext(e: MouseEvent) {
-      // Scope to this editor's own container so that in two-column mode the
-      // right-click menu only fires for the column the click landed in.
+      // Scope to this editor's own container so that with several tabs or panes
+      // open the right-click menu only fires for the editor the click landed in.
       const root = containerRef?.current ?? document.querySelector('.bn-container');
       if (!root || !root.contains(e.target as Node)) return;
       e.preventDefault();

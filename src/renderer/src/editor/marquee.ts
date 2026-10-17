@@ -44,8 +44,7 @@ function blockContentRange(doc: any, id: string): { from: number; to: number } |
 // every block the rectangle actually intersects is selected with a single
 // ProseMirror TextSelection, so copy / cut / delete / formatting all work on it.
 //
-// `resolve` maps the initial mousedown to the editor that should own the drag
-// (left vs. right column), so two-column mode routes correctly.
+// `resolve` maps the initial mousedown to the editor that should own the drag.
 export function attachMarquee(
   root: HTMLElement,
   resolve: (e: MouseEvent) => BlockNoteEditor | null
@@ -74,8 +73,7 @@ export function attachMarquee(
     if (
       t.closest(
         'button, a, input, select, .bn-side-menu, [contenteditable="false"], ' +
-          '.drag-bar, .status-bar, .prefs-overlay, .prefs-panel, .word-count-popover, ' +
-          '.column-divider'
+          '.drag-bar, .status-bar, .prefs-overlay, .prefs-panel, .word-count-popover'
       )
     )
       return;

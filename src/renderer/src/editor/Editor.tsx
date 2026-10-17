@@ -227,7 +227,6 @@ interface Props {
   onChange: () => void;
   handleRef: React.MutableRefObject<EditorHandle | null>;
   autoFocus?: boolean;
-  interactive?: boolean;
   notePath?: string | null;
   blankFirstLineFormat?: BlankFirstLineFormat;
 }
@@ -236,7 +235,6 @@ export function Editor({
   onChange,
   handleRef,
   autoFocus = true,
-  interactive = true,
   notePath = null,
   blankFirstLineFormat = 'paragraph',
 }: Props): JSX.Element {
@@ -451,8 +449,7 @@ export function Editor({
   }, [blankFirstLineFormat, editor, handleRef]);
 
   // Auto-focus on mount so the caret is visible without an initial click.
-  // Skipped for the secondary (right) column so switching to two-column mode
-  // doesn't steal focus away from the left column.
+  // Skipped for tabs opened in the background so they don't steal focus.
   useEffect(() => {
     if (autoFocus) editor.focus();
   }, [editor, autoFocus]);
@@ -682,9 +679,9 @@ export function Editor({
     function handler(e: KeyboardEvent) {
       const meta = e.metaKey || e.ctrlKey;
       if (!meta) return;
-      // In two-column mode both editors register this window-level listener.
-      // Only the focused editor should respond, otherwise a shortcut would be
-      // applied to both columns at once.
+      // Every mounted editor (one per tab) registers this window-level
+      // listener. Only the focused editor should respond, otherwise a shortcut
+      // would be applied to several documents at once.
       const view = (editor as unknown as { _tiptapEditor: { view: { hasFocus: () => boolean } } })
         ._tiptapEditor.view;
       if (!view.hasFocus()) return;
@@ -766,22 +763,17 @@ export function Editor({
   }, [editor]);
 
   return (
-    <div
-      ref={containerRef}
-      className="editor-host"
-      data-interactive={interactive ? 'true' : 'false'}
-    >
+    <div ref={containerRef} className="editor-host">
       <BlockNoteView
         editor={editor}
-        editable={interactive}
         slashMenu={false}
         formattingToolbar={false}
         sideMenu={false}
         filePanel={false}
         emojiPicker={false}
       >
-        {interactive && <SimpleNoteSideMenuController editor={editor} containerRef={containerRef} />}
-        {interactive && <SimpleNoteSlashMenu editor={editor} />}
+        <SimpleNoteSideMenuController editor={editor} containerRef={containerRef} />
+        <SimpleNoteSlashMenu editor={editor} />
       </BlockNoteView>
       <ContextMenu editor={editor} containerRef={containerRef} />
     </div>

@@ -1,27 +1,16 @@
-import { ColumnLayout } from './store';
-
 // Simple Note's own document format (`.snote`).
 //
 // Markdown is still a first-class format — files opened as `.md` keep being
-// saved as Markdown — but it can't express red text, toggle lists, in-editor
-// images or the two-column layout. `.snote` stores the raw BlockNote block tree
-// of all three columns (plus the layout) as JSON, so a note round-trips with
-// every formatting feature intact.
+// saved as Markdown — but it can't express red text, toggle lists or in-editor
+// images. `.snote` stores the raw BlockNote block tree as JSON, so a note
+// round-trips with every formatting feature intact.
 export const SNOTE_EXT = '.snote';
 export const SNOTE_FORMAT = 'simple-note';
 
-export interface SnoteColumns {
-  left: unknown[];
-  middle: unknown[];
-  right: unknown[];
-}
-
 export interface SnoteFile {
   format: typeof SNOTE_FORMAT;
-  version: 1;
-  columnLayout: ColumnLayout;
-  columnSplit: number;
-  columns: SnoteColumns;
+  version: 2;
+  blocks: unknown[];
 }
 
 // The two payloads a document can be written as. Which one lands on disk is
@@ -49,27 +38,50 @@ export function serializeSnote(data: SnoteFile): string {
 }
 
 // Returns null when the text isn't a Simple Note document (i.e. it's Markdown).
+// Version 1 files stored three columns (`columns.left/middle/right`) from the
+// removed two-column layout; their non-empty columns are joined in on-screen
+// order so nothing written there is lost.
 export function parseSnote(text: string): SnoteFile | null {
   const trimmed = text.trimStart();
   if (!trimmed.startsWith('{')) return null;
   try {
-    const data = JSON.parse(trimmed) as Partial<SnoteFile>;
-    if (data?.format !== SNOTE_FORMAT) return null;
-    const cols = data.columns ?? { left: [], middle: [], right: [] };
-    return {
-      format: SNOTE_FORMAT,
-      version: 1,
-      columnLayout: (data.columnLayout ?? 'center') as ColumnLayout,
-      columnSplit: typeof data.columnSplit === 'number' ? data.columnSplit : 0.5,
-      columns: {
-        left: Array.isArray(cols.left) ? cols.left : [],
-        middle: Array.isArray(cols.middle) ? cols.middle : [],
-        right: Array.isArray(cols.right) ? cols.right : [],
-      },
+    const data = JSON.parse(trimmed) as {
+      format?: string;
+      blocks?: unknown;
+      columns?: { left?: unknown; middle?: unknown; right?: unknown };
     };
+    if (data?.format !== SNOTE_FORMAT) return null;
+    let blocks: unknown[];
+    if (Array.isArray(data.blocks)) {
+      blocks = data.blocks;
+    } else {
+      const cols = data.columns ?? {};
+      const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+      const middle = list(cols.middle);
+      const left = list(cols.left);
+      const right = list(cols.right);
+      blocks = [
+        ...(isBlank(left) ? [] : left),
+        ...middle,
+        ...(isBlank(right) ? [] : right),
+      ];
+    }
+    return { format: SNOTE_FORMAT, version: 2, blocks };
   } catch {
     return null;
   }
+}
+
+// A column left at BlockNote's default: only empty paragraphs.
+function isBlank(blocks: unknown[]): boolean {
+  return blocks.every((b) => {
+    const blk = b as { type?: string; content?: unknown; children?: unknown[] };
+    const empty =
+      blk.content == null ||
+      (Array.isArray(blk.content) && blk.content.length === 0) ||
+      blk.content === '';
+    return blk.type === 'paragraph' && empty && !(blk.children && blk.children.length);
+  });
 }
 
 // Split a leading YAML front matter block (`---` … `---`) off a Markdown file.

@@ -119,17 +119,6 @@ export function buildMenu(h: MenuHandlers): void {
       label: '檢視',
       submenu: [
         {
-          label: '將文章推往左側',
-          accelerator: 'Shift+CmdOrCtrl+Left',
-          click: () => h.onCommand('push-article-left'),
-        },
-        {
-          label: '將文章推往右側',
-          accelerator: 'Shift+CmdOrCtrl+Right',
-          click: () => h.onCommand('push-article-right'),
-        },
-        { type: 'separator' },
-        {
           label: '切換數學模式',
           accelerator: 'Shift+CmdOrCtrl+M',
           click: () => h.onCommand('toggle-math'),

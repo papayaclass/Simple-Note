@@ -24,7 +24,6 @@ const GROUPS: { title: string; sliders: SliderDef[] }[] = [
     title: '版面',
     sliders: [
       { key: 'pageWidth', label: '頁面寬度', min: 480, max: 1200, step: 20, unit: 'px' },
-      { key: 'twoColumnPageWidth', label: '雙欄頁寬', min: 600, max: 1600, step: 20, unit: 'px' },
       { key: 'paragraphSpacing', label: '段落間距', min: 0, max: 32, step: 1, unit: 'px' },
       { key: 'topPadding', label: '上方留白', min: 0, max: 200, step: 4, unit: 'px' },
     ],
