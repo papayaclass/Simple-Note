@@ -26,6 +26,14 @@ interface SplitDrop {
   width: number;
 }
 
+// The pane under a Cmd-drag and the dragged tab's own pane, when they differ.
+function swapTargetPane(target: EventTarget, tabId: string) {
+  const paneEl = target instanceof Element ? target.closest<HTMLElement>('.editor-pane') : null;
+  const targetId = paneEl?.dataset.paneId;
+  const source = useStore.getState().panes.find((p) => p.tabIds.includes(tabId))?.id;
+  return targetId && source && targetId !== source ? { source, target: targetId } : null;
+}
+
 export function App(): JSX.Element {
   const tabs = useStore((s) => s.tabs);
   const panes = useStore((s) => s.panes);
@@ -34,6 +42,7 @@ export function App(): JSX.Element {
   const resizePanes = useStore((s) => s.resizePanes);
   const setActiveTab = useStore((s) => s.setActiveTab);
   const splitTabToSide = useStore((s) => s.splitTabToSide);
+  const swapPaneTabs = useStore((s) => s.swapPaneTabs);
   const mathMode = useStore((s) => s.mathMode);
   const toggleMathMode = useStore((s) => s.toggleMathMode);
   const preferences = useStore((s) => s.preferences);
@@ -90,9 +99,17 @@ export function App(): JSX.Element {
 
   const handleWorkspaceDragOver = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {
-      // Cmd-drag swaps panes via the target's tab strip, so no edge split.
-      if (!draggedTabId || e.metaKey) {
+      if (!draggedTabId) {
         setSplitDrop(null);
+        return;
+      }
+      // Cmd-drag onto any part of another pane swaps the two panes, so no edge split.
+      if (e.metaKey) {
+        setSplitDrop(null);
+        if (swapTargetPane(e.target, draggedTabId)) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+        }
         return;
       }
       const drop = splitDropForPoint(e.clientX, draggedTabId);
@@ -109,7 +126,19 @@ export function App(): JSX.Element {
 
   const handleWorkspaceDrop = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {
-      if (!draggedTabId || e.metaKey || pendingSplitDragRef.current !== draggedTabId) return;
+      if (!draggedTabId || pendingSplitDragRef.current !== draggedTabId) return;
+      if (e.metaKey) {
+        const panes = swapTargetPane(e.target, draggedTabId);
+        if (!panes) return;
+        e.preventDefault();
+        e.stopPropagation();
+        pendingSplitDragRef.current = null;
+        swapPaneTabs(panes.source, panes.target);
+        setDraggedTabId(null);
+        setActiveDropPaneId(null);
+        setSplitDrop(null);
+        return;
+      }
       const side = (splitDrop ?? splitDropForPoint(e.clientX, draggedTabId))?.side;
       if (!side) return;
       e.preventDefault();
@@ -123,7 +152,7 @@ export function App(): JSX.Element {
       setActiveDropPaneId(null);
       setSplitDrop(null);
     },
-    [draggedTabId, splitDrop, splitDropForPoint, splitTabToSide]
+    [draggedTabId, splitDrop, splitDropForPoint, splitTabToSide, swapPaneTabs]
   );
 
   const handleWorkspaceDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
@@ -364,6 +393,7 @@ export function App(): JSX.Element {
               )}
               <section
                 className={`editor-pane${pane.id === activePaneId ? ' active-pane' : ''}`}
+                data-pane-id={pane.id}
                 style={
                   panes.length > 1
                     ? { flexGrow: pane.size, flexBasis: 0 }

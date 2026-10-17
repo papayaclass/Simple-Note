@@ -48,7 +48,6 @@ export function TabBar({
   const setActivePane = useStore((s) => s.setActivePane);
   const addTab = useStore((s) => s.addTab);
   const moveTabToPane = useStore((s) => s.moveTabToPane);
-  const swapPaneTabs = useStore((s) => s.swapPaneTabs);
 
   const [menu, setMenu] = useState<PopMenuState | null>(null);
   const [dropGap, setDropGap] = useState<number | null>(null);
@@ -192,19 +191,13 @@ export function TabBar({
     setDropGap(null);
     dragIndex.current = null;
     onTabDragEnd?.();
-    // Holding Cmd while dropping on another pane swaps the two panes' tabs.
-    const sourcePaneId = useStore.getState().panes.find((p) => p.tabIds.includes(tabId))?.id;
-    if (tabId && e.metaKey && sourcePaneId && sourcePaneId !== paneId) {
-      swapPaneTabs(sourcePaneId, paneId);
-      return;
-    }
     if (tabId) {
       void (async () => {
         await stageTabForPaneMove(tabId);
         moveTabToPane(tabId, paneId, dropGap ?? tabs.length);
       })();
     }
-  }, [dropGap, moveTabToPane, onTabDragEnd, paneId, swapPaneTabs, tabs.length]);
+  }, [dropGap, moveTabToPane, onTabDragEnd, paneId, tabs.length]);
 
   const showDropLine = draggingTabId && activeDropPaneId === paneId;
 
