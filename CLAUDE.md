@@ -11,11 +11,12 @@ Simple Note 是一款 macOS 為主的極簡 Block 式筆記桌面應用，採用
 - `npm run dev`：以 `electron-vite dev` 啟動開發模式（含 HMR），同時跑 main / preload / renderer。
 - `npm run build`：使用 `electron-vite build`，輸出 production bundle 到 `out/`。
 - `npm start`：執行 `electron-vite preview`，預覽已 build 的版本。
-- `npm run pack`：build 後以 `electron-builder --dir` 產生未打包的 app 目錄（測試用，不簽章）。
+- `npm run pack`：build 後以 `electron-builder --dir` 產生 App 目錄，預設可能自動使用鑰匙圈憑證簽章。需要不簽章的測試版時，明確使用 `CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --dir --mac --arm64 -c.mac.identity=null`。
 - `npm run dist`：build 後以 `electron-builder` 產生可散布的安裝檔，輸出到 `dist/`electron-builder 會自動用鑰匙圈裡的 Developer ID 憑證簽章（含 hardened runtime 與時間戳記），但 `notarize` 設為 `false`，發布時要另外把 `dist/mac-universal/Simple Note.app` 壓成 zip 用 `notarytool` 公證再 `stapler staple`。第一次打包需要下載 x64 與 arm64 兩份 Electron（各約 100 MB），會花好幾分鐘。
 - `npm run icons`：從根目錄的 `Simple Note.png` 產生 `build/icons/` 內所有平台圖示。`build/icons/` 不在 git 裡，在 worktree 內打包前要先從主 checkout 複製過來（或執行 `npm run icons`），否則 electron-builder 找不到 `icon.icns` 而失敗。
 - 指定 electron-builder 的 `CSC_NAME` 時使用 `Mu-Hua Wang (7Y3SNMCD34)`，不要加上 `Developer ID Application:` 前綴，否則 builder 會拒絕。正式 App 公證並 staple 後，需重新製作最終 DMG，確保其中包含已附票證的 App；DMG 先以 `hdiutil verify` 驗證，再簽章、公證與 staple。
-- 目前沒有測試框架、ESLint 或 Prettier 設定；型別檢查只透過 `electron-vite build` 進行。要單獨檢查型別可執行 `npx tsc --noEmit -p tsconfig.web.json` 或 `tsconfig.node.json`。
+- 正式 Universal App 可用 `npm run build` 後接 `CSC_NAME='Mu-Hua Wang (7Y3SNMCD34)' npx electron-builder --dir --mac --universal` 產生，再以 `PapayaNotary` 分別公證 App 與最終 DMG。安裝時先完整移除或移走舊的 `/Applications/Simple Note.app` 再以 `ditto` 複製，並驗證安裝版與 DMG 內的 App 都通過 `codesign --verify --deep --strict`、`stapler validate` 與 Gatekeeper。DMG 簽章後不要再執行 `hdiutil verify`。
+- 目前沒有測試框架、ESLint 或 Prettier 設定。`electron-vite build` 只負責轉譯與打包，不會執行 TypeScript 型別檢查；驗證或發布前需另行執行 `npx tsc --noEmit -p tsconfig.web.json` 與 `npx tsc --noEmit -p tsconfig.node.json`。
 
 **進程架構**
 
@@ -82,6 +83,7 @@ Renderer 每次存檔都同時算出兩種內容（`{ markdown, snote }`）交�
 - 左側把手（`editor/sideMenu.tsx`，自繪，不用 BlockNote 的 SideMenu）：拖曳移動 block；單純點一下會把整個 block（含子 block）設成 blockContainer 的 NodeSelection，由 `editor.css` 的 `.bn-block-outer.ProseMirror-selectednode > .bn-block` 反白，之後可直接複製、剪下或刪除。沒有彈出選單。注意 BlockNote 的 `getSelection()` 在這種選取下回傳 undefined，需要時改從 `selection.node.attrs.id` 取 block。
 - 框選整塊與整塊刪除：`codeBlockSelect.ts` 的 `WHOLE_BLOCK_TYPES` 同時涵蓋 `codeBlock` 與 `toggle`（被選取覆蓋時加 `.sn-block-selected` 整塊反白），`blockDelete.ts` 也把單一 `toggle` 視為整塊刪除（連同子 block）。**重要：所有 shortcut 都用 `e.code`（物理按鍵）判斷，不要用 `e.key`，因為 macOS 上 Option 會把 `key` 改寫（Opt+V 變 √、Opt+4 變 ¢）導致比對失敗。**
 - BlockNote 的 `[ ]\s` input rule 在轉成 checkbox 後會多留一個空 paragraph，`Editor.tsx` 內有一段 `onChange` 監聽會偵測此 pattern 並 `removeBlocks` + `setTextCursorPosition` 修正。修改 onChange 邏輯時要小心不要重新引入這個 bug。
+- 文字拖曳反白放開後還會收到 `click`：若放在 `.page` 或 `.document-view` 的留白處，`onPageClick` 原本會把游標移到文件末尾並清掉反白。`selectionClamp.ts` 只在已形成拖曳時，以 capture 階段攔截緊接的那次點擊，再於下一個事件循環清除；單純點擊、雙擊與後續點擊仍照常處理。只在 `mouseup` 呼叫 `preventDefault()` 無法阻止這次點擊。
 
 **數學模式 (`src/renderer/src/math/`)**
 
@@ -104,6 +106,7 @@ Cmd+F 尋找、Opt+Cmd+F 尋找並取代、Cmd+G / Shift+Cmd+G 下一個／上�
 - 啟動時一律只開一個未存檔的空白筆記。從 Finder 雙擊文件或以文件建立新視窗時，main 先將文件放入 `pendingOpenByWebContents`。`App.tsx` 註冊檔案事件後呼叫 `window.api.notifyReady()`（`renderer:ready` 使用 invoke / handle），main 才把排隊的文件送出；原本的空白分頁由 `openFileInTab` 移除。初始化以 ref 保護，避免 React StrictMode 重跑；main 快取每個視窗的啟動結果並在關閉時清除。
 - 從 Finder 一次開啟多個檔案時都開在同一個視窗的不同分頁：第一個視窗建立前 (`initialWindowCreated` 為 false) 收到的 `open-file` 都先進 `coldStartPaths`，不能只看 `app.isReady()`，否則 ready 之後、視窗建立之前到達的檔案會各自開新視窗。
 - 分頁右鍵「開啟在新視窗」是「移動」：`moveTabToNewWindow` 把分頁的 snote 內容、路徑、dirty 狀態與 kind 經 `window:moveTab` 交給 main 開新視窗（新視窗以 `openDocumentPayload` + `restoreDirtyAfterLoad` 還原），再從原視窗移除該分頁；原視窗只剩它一個分頁時直接關閉原視窗。未命名分頁也可以移動。
+- 分頁也能拖到另一個視窗的分頁列合併，依藍色插入線決定位置。`src/main/tab-transfer.ts` 以拖曳 token 找到來源視窗，透過 renderer 的 `snapshotTabForTransfer`／`receiveTransferredTab`／`finishTabTransfer` 完成搬移；目標確認內容載入後才移除來源，來源只剩一個分頁時自動關閉視窗。保留自訂分頁名稱、檔案路徑、dirty、三欄內容、折疊／格式、試算表公式與樣式，以及 Markdown 的 YAML front matter（`initialFrontMatter`，載入後回到 `frontMatterRef`）。跨視窗合併不覆蓋目標原有分頁，也不合併同路徑的文件。拖曳期間 main 廣播 `window:tabDragState`，暫時把所有分頁列的空白區改成 `no-drag`，讓原本可拖動視窗的區域也能接收分頁；放開後恢復。分頁列同樣忽略 BlockNote 重送的非 trusted 拖放事件。
 - 分頁右鍵「重新命名」在分頁上就地編輯名稱（Enter 確定、Esc 取消）：已存檔的分頁經 `file:rename` 在同一資料夾改檔名、保留副檔名，已有同名檔案時拒絕；未命名分頁只改 `fileName`，第一次存檔時優先用它當建議檔名（沒改過才用第一個標題）。
 - 分頁右鍵「全部儲存」：renderer 呼叫 `window.api.window.saveAll()`（`window:saveAll`），main 逐一對每個視窗執行 `window.__simpleNote_save()`（與關閉視窗時的「儲存」共用），一次只處理一個視窗，讓未命名分頁的存檔對話框不會同時跳出。踩過的坑：`file:save` 會把視窗標題改成剛寫入的檔名，存到背景分頁時標題會錯，所以 `__simpleNote_save` 結束時會把標題與 edited 圓點還原成作用中分頁。
 - 啟動時由 `src/renderer/src/main.tsx` 的 `bootstrap()` 先讀取偏好設定還原至 store，完成後才掛載 React。讀取失敗時會記錄錯誤並使用預設設定啟動。

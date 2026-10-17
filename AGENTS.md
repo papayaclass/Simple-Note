@@ -11,11 +11,12 @@ Simple Note 是一款 macOS 為主的極簡 Block 式筆記桌面應用，採用
 - `npm run dev`：以 `electron-vite dev` 啟動開發模式（含 HMR），同時跑 main / preload / renderer。
 - `npm run build`：使用 `electron-vite build`，輸出 production bundle 到 `out/`。
 - `npm start`：執行 `electron-vite preview`，預覽已 build 的版本。
-- `npm run pack`：build 後以 `electron-builder --dir` 產生未打包的 app 目錄（測試用，不簽章）。
+- `npm run pack`：build 後以 `electron-builder --dir` 產生 App 目錄，預設可能自動使用鑰匙圈憑證簽章。需要不簽章的測試版時，明確使用 `CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --dir --mac --arm64 -c.mac.identity=null`。
 - `npm run dist`：build 後以 `electron-builder` 產生可散布的安裝檔，輸出到 `dist/`electron-builder 會自動用鑰匙圈裡的 Developer ID 憑證簽章（含 hardened runtime 與時間戳記），但 `notarize` 設為 `false`，發布時要另外把 `dist/mac-universal/Simple Note.app` 壓成 zip 用 `notarytool` 公證再 `stapler staple`。第一次打包需要下載 x64 與 arm64 兩份 Electron（各約 100 MB），會花好幾分鐘。
 - `npm run icons`：從根目錄的 `Simple Note.png` 產生 `build/icons/` 內所有平台圖示。`build/icons/` 不在 git 裡，在 worktree 內打包前要先從主 checkout 複製過來（或執行 `npm run icons`），否則 electron-builder 找不到 `icon.icns` 而失敗。
 - 指定 electron-builder 的 `CSC_NAME` 時使用 `Mu-Hua Wang (7Y3SNMCD34)`，不要加上 `Developer ID Application:` 前綴，否則 builder 會拒絕。正式 App 公證並 staple 後，需重新製作最終 DMG，確保其中包含已附票證的 App；DMG 先以 `hdiutil verify` 驗證，再簽章、公證與 staple。
-- 目前沒有測試框架、ESLint 或 Prettier 設定；型別檢查只透過 `electron-vite build` 進行。要單獨檢查型別可執行 `npx tsc --noEmit -p tsconfig.web.json` 或 `tsconfig.node.json`。
+- 正式 Universal App 可用 `npm run build` 後接 `CSC_NAME='Mu-Hua Wang (7Y3SNMCD34)' npx electron-builder --dir --mac --universal` 產生，再以 `PapayaNotary` 分別公證 App 與最終 DMG。安裝時先完整移除或移走舊的 `/Applications/Simple Note.app` 再以 `ditto` 複製，並驗證安裝版與 DMG 內的 App 都通過 `codesign --verify --deep --strict`、`stapler validate` 與 Gatekeeper。DMG 簽章後不要再執行 `hdiutil verify`。
+- 目前沒有測試框架、ESLint 或 Prettier 設定。`electron-vite build` 只負責轉譯與打包，不會執行 TypeScript 型別檢查；驗證或發布前需另行執行 `npx tsc --noEmit -p tsconfig.web.json` 與 `npx tsc --noEmit -p tsconfig.node.json`。
 
 **進程架構**
 
@@ -82,6 +83,7 @@ Renderer 每次存檔都同時算出兩種內容（`{ markdown, snote }`）交�
 - 左側把手（`editor/sideMenu.tsx`，自繪，不用 BlockNote 的 SideMenu）：拖曳移動 block；單純點一下會把整個 block（含子 block）設成 blockContainer 的 NodeSelection，由 `editor.css` 的 `.bn-block-outer.ProseMirror-selectednode > .bn-block` 反白，之後可直接複製、剪下或刪除。沒有彈出選單。注意 BlockNote 的 `getSelection()` 在這種選取下回傳 undefined，需要時改從 `selection.node.attrs.id` 取 block。
 - 框選整塊與整塊刪除：`codeBlockSelect.ts` 的 `WHOLE_BLOCK_TYPES` 同時涵蓋 `codeBlock` 與 `toggle`（被選取覆蓋時加 `.sn-block-selected` 整塊反白），`blockDelete.ts` 也把單一 `toggle` 視為整塊刪除（連同子 block）。**重要：所有 shortcut 都用 `e.code`（物理按鍵）判斷，不要用 `e.key`，因為 macOS 上 Option 會把 `key` 改寫（Opt+V 變 √、Opt+4 變 ¢）導致比對失敗。**
 - BlockNote 的 `[ ]\s` input rule 在轉成 checkbox 後會多留一個空 paragraph，`Editor.tsx` 內有一段 `onChange` 監聽會偵測此 pattern 並 `removeBlocks` + `setTextCursorPosition` 修正。修改 onChange 邏輯時要小心不要重新引入這個 bug。
+- 文字拖曳反白放開後還會收到 `click`：若放在 `.page` 或 `.document-view` 的留白處，`onPageClick` 原本會把游標移到文件末尾並清掉反白。`selectionClamp.ts` 只在已形成拖曳時，以 capture 階段攔截緊接的那次點擊，再於下一個事件循環清除；單純點擊、雙擊與後續點擊仍照常處理。只在 `mouseup` 呼叫 `preventDefault()` 無法阻止這次點擊。
 
 **數學模式 (`src/renderer/src/math/`)**
 
