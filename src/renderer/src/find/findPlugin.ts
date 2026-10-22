@@ -143,9 +143,16 @@ export function setActiveMatch(editor: AnyEditor, index: number, scroll: boolean
   let tr = ctx.state.tr.setMeta(findPluginKey, { active: index }).setMeta('addToHistory', false);
   if (scroll && s && index >= 0 && index < s.matches.length) {
     const m = s.matches[index];
-    tr = tr.setSelection(TextSelection.create(tr.doc, m.from, m.to)).scrollIntoView();
+    tr = tr.setSelection(TextSelection.create(tr.doc, m.from, m.to));
   }
   ctx.view.dispatch(tr);
+  // tr.scrollIntoView() is a no-op here: ProseMirror only scrolls when the DOM
+  // selection is inside the editor, and focus sits in the find field.
+  if (scroll) {
+    ctx.view.dom
+      .querySelector('.sn-find-match-active')
+      ?.scrollIntoView({ block: 'center' });
+  }
 }
 
 // Build the replacement text carrying the marks of the text it replaces, so
