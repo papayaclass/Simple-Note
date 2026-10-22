@@ -97,7 +97,7 @@ Renderer 每次存檔都同時算出兩種內容（`{ markdown, snote }`）交�
 
 **尋找與取代 (`src/renderer/src/find/`)**
 
-Cmd+F 尋找、Opt+Cmd+F 尋找並取代、Cmd+G / Shift+Cmd+G 下一個／上一個（編輯選單命令，經 `DocumentViewHandle.openFind` 等轉給目前分頁）。`FindBar` 只搜尋目前版面上看得到的欄位，依畫面左到右排序；一行以內的選取文字會自動帶入搜尋欄。試算表分頁目前不支援尋找。
+Cmd+F 尋找、Opt+Cmd+F 尋找並取代、Cmd+G / Shift+Cmd+G 下一個／上一個（編輯選單命令，經 `DocumentViewHandle.openFind` 等轉給目前分頁）。`FindBar` 只搜尋目前版面上看得到的欄位，依畫面左到右排序；一行以內的選取文字會自動帶入搜尋欄。試算表分頁目前不支援尋找。踩過的坑：跳到某筆結果時不能靠 `tr.scrollIntoView()`，ProseMirror 只在 DOM 選取範圍位於編輯器內時才捲動，而按箭頭或 Enter 時焦點在尋找欄，所以 `setActiveMatch` 在 dispatch 後直接對 `.sn-find-match-active` 呼叫 `scrollIntoView({ block: 'center' })`。
 
 **分頁、分割窗格與視窗**
 
