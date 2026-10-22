@@ -80,7 +80,19 @@ function sideMenuTop(blockEl: HTMLElement, handleSize: number): number {
   return firstLineCenterY(blockEl) - handleSize / 2;
 }
 
-function blockPosition(editor: any, blockEl: HTMLElement): MenuPosition & { hoverZone: HoverZone } {
+// The handle is portalled to <body>, so without this it would float over the
+// tab bar once its block scrolls out of the document view.
+function handleOutsideScrollView(blockEl: HTMLElement, top: number, handleSize: number): boolean {
+  const scroller = blockEl.closest('.document-view');
+  if (!scroller) return false;
+  const rect = scroller.getBoundingClientRect();
+  return top < rect.top || top + handleSize > rect.bottom;
+}
+
+function blockPosition(
+  editor: any,
+  blockEl: HTMLElement
+): (MenuPosition & { hoverZone: HoverZone }) | null {
   const viewDom = (editor as { _tiptapEditor?: { view?: { dom?: HTMLElement } } })._tiptapEditor
     ?.view?.dom;
   const blockGroup = (viewDom?.firstElementChild as HTMLElement | null) ?? viewDom;
@@ -90,6 +102,7 @@ function blockPosition(editor: any, blockEl: HTMLElement): MenuPosition & { hove
   const top = sideMenuTop(blockEl, handleSize);
   const left = groupRect.left - handleSize - gap;
   const clampedTop = Math.min(window.innerHeight - handleSize - 4, Math.max(4, top));
+  if (handleOutsideScrollView(blockEl, clampedTop, handleSize)) return null;
 
   return {
     left,
@@ -136,7 +149,8 @@ export function SimpleNoteSideMenuController({
       if (!blockId) return;
       const block = editor.getBlock(blockId);
       if (!block) return;
-      setMenu({ block, ...blockPosition(editor, blockEl) });
+      const position = blockPosition(editor, blockEl);
+      setMenu(position ? { block, ...position } : null);
     },
     [editor]
   );
@@ -153,7 +167,8 @@ export function SimpleNoteSideMenuController({
           `[data-node-type="blockContainer"][data-id="${cssAttr(blockId)}"]`
         ) ?? null;
       if (!(blockEl instanceof HTMLElement)) return null;
-      return { ...current, ...blockPosition(editor, blockEl) };
+      const position = blockPosition(editor, blockEl);
+      return position ? { ...current, ...position } : null;
     });
   }, [editor]);
 
