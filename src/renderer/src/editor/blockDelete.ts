@@ -22,6 +22,8 @@ type AnyEditor = {
 type ForwardDeleteEditor = {
   _tiptapEditor: { state: any };
   getTextCursorPosition: () => { block: any; nextBlock?: any };
+  getParentBlock: (block: any) => any | undefined;
+  getNextBlock: (block: any) => any | undefined;
   removeBlocks: (blocks: any[]) => void;
   setTextCursorPosition: (block: any, placement?: 'start' | 'end') => void;
 };
@@ -45,10 +47,20 @@ type ForwardDeleteEditor = {
 // there's nothing to pull up).
 export function deleteForwardEmptyBlock(editor: ForwardDeleteEditor): boolean {
   if (!editor._tiptapEditor.state.selection.empty) return false;
-  const { block, nextBlock } = editor.getTextCursorPosition();
+  const { block } = editor.getTextCursorPosition();
   const empty = !block.content || (Array.isArray(block.content) && block.content.length === 0);
   const hasChildren = Array.isArray(block.children) && block.children.length > 0;
-  if (!empty || hasChildren || !nextBlock) return false;
+  if (!empty || hasChildren) return false;
+
+  // Cursor-position nextBlock only includes siblings. At the end of a nested
+  // list, continue after its parent (and, if needed, higher ancestors).
+  let { nextBlock } = editor.getTextCursorPosition();
+  let ancestor = editor.getParentBlock(block);
+  while (!nextBlock && ancestor) {
+    nextBlock = editor.getNextBlock(ancestor);
+    ancestor = editor.getParentBlock(ancestor);
+  }
+  if (!nextBlock) return false;
   editor.removeBlocks([block]);
   editor.setTextCursorPosition(nextBlock, 'start');
   return true;
