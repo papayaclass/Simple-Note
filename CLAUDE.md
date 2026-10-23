@@ -75,6 +75,7 @@ Renderer 每次存檔都同時算出兩種內容（`{ markdown, snote }`）交�
   - `simple-note-select-all`：兩段式 Cmd+A，第一次選整個 block，第二次才全選整份文件。
   - `simple-note-find`：尋找與取代的高亮 (見下節)。
   - `simple-note-block-delete`、`simple-note-codeblock-select`：整塊選取與刪除。
+- 空白行的向前 Delete 由 `blockDelete.ts` 的 `deleteForwardEmptyBlock` 處理：BlockNote 的 `getTextCursorPosition().nextBlock` 只包含同層 sibling。空白子清單位於該層最後一項時，必須沿 `getParentBlock` 往上，找祖先的 `getNextBlock`；找到後刪掉空白 leaf，將游標移至下一個區塊開頭，保留下一段原有格式、子區塊與縮排。沒有下一段、目前有內容／子區塊或有文字選取時，交回原本的按鍵處理。
   - `simple-note-heading-enter`：在標題開頭或結尾按 Enter 會留下一般段落，而不是再產生一個標題。
   - 其他：`code-highlight` (lowlight 語法上色)、`code-wrap`、`selection-clamp`、`toggle-keys`、`paste-link`、`youtube`。
 - 鍵盤快捷鍵：Cmd+1 段落、Cmd+2 折疊清單 (toggle)、Cmd+3 項目符號、Cmd+4 程式碼區塊、Cmd+5 checkbox、Shift+Cmd+D 引言、Shift+Cmd+S 刪除線、Shift+Cmd+X inline code、Shift+Cmd+V 貼成純文字、Opt+Cmd+1/2/3 H1/H2/H3、Opt+Cmd+V 紅字。
