@@ -63,6 +63,16 @@
 /* Toggle blocks are React node views in this app. BlockNote's bundled collapse
    selector still targets an older `.react-renderer` wrapper, so add the current
    `.bn-react-node-view-renderer` path to make hidden children actually collapse. */
+.bn-block:has(> .bn-react-node-view-renderer > .bn-block-content[data-content-type='toggle']) {
+  --sn-toggle-button-size: 24px;
+}
+
+/* Align child content with the title text, including the live marker gap. */
+.bn-block:has(> .bn-react-node-view-renderer > .bn-block-content[data-content-type='toggle'])
+  > .bn-block-group {
+  margin-left: calc(var(--sn-toggle-button-size) + var(--list-marker-gap));
+}
+
 .bn-block:has(
     > .bn-react-node-view-renderer
       > .bn-block-content
@@ -100,7 +110,6 @@
   color: var(--toggle-filled-fg);
 }
 .bn-block-content[data-content-type='toggle'] .bn-toggle-button {
-  --sn-toggle-button-size: 24px;
   position: relative;
   /* The SideMenu hover guard intentionally sits above the editor surface
      (`z-index: 10001`) and can overlap the toggle column. Keep the chevron
