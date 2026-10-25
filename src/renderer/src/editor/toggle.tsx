@@ -1,6 +1,6 @@
 import { createBlockNoteExtension, defaultProps } from '@blocknote/core';
-import { createReactBlockSpec } from '@blocknote/react';
-import type { MouseEvent, PointerEvent } from 'react';
+import { createReactBlockSpec, useEditorChange } from '@blocknote/react';
+import { useCallback, useState, type MouseEvent, type PointerEvent } from 'react';
 
 // Notion-style collapsible block.
 //
@@ -14,6 +14,24 @@ import type { MouseEvent, PointerEvent } from 'react';
 // with `data-show-children` hides the child `.bn-block-group` when closed, and
 // `.bn-toggle-button` styles + rotates the chevron.
 const CHEVRON_PATH = 'M320-200v-560l440 280-440 280Z';
+
+// A title alone or blank child paragraphs do not count as inner content.
+// Non-text blocks (images, tables, dividers) and nested content do count.
+function inlineHasContent(content: any): boolean {
+  if (typeof content === 'string') return content.trim().length > 0;
+  if (!Array.isArray(content)) return content != null;
+  return content.some((span) => {
+    if (span.type === 'text') return span.text.trim().length > 0;
+    if (span.type === 'link') return inlineHasContent(span.content);
+    return true;
+  });
+}
+
+function childrenHaveContent(children: any[]): boolean {
+  return children.some((child) =>
+    child.content == null || inlineHasContent(child.content) || childrenHaveContent(child.children ?? [])
+  );
+}
 
 function stopEditorPointerHandling(
   event: MouseEvent<HTMLButtonElement> | PointerEvent<HTMLButtonElement>
@@ -33,16 +51,24 @@ export const Toggle = createReactBlockSpec(
     // block.props.open, editor.updateBlock and contentRef, which line up at runtime.
     render: (props: any) => {
       const open = props.block.props.open !== false;
+      const [hasContent, setHasContent] = useState(() => childrenHaveContent(props.block.children ?? []));
+      // Editing descendants need not rerender the parent's React node view.
+      // Read the current block tree on document changes, including undo/redo.
+      useEditorChange(useCallback(() => {
+        const block = props.editor.getBlock(props.block.id);
+        setHasContent(childrenHaveContent(block?.children ?? []));
+      }, [props.editor, props.block.id]), props.editor);
+      const label = `${open ? '摺疊' : '展開'} Toggle List（${hasContent ? '有內容' : '無內容'}）`;
       return (
         <div>
-          <div className="bn-toggle-wrapper" data-show-children={open ? 'true' : 'false'}>
+          <div className="bn-toggle-wrapper" data-show-children={open ? 'true' : 'false'} data-has-content={hasContent}>
             <button
               className="bn-toggle-button"
               type="button"
               contentEditable={false}
               aria-expanded={open}
-              aria-label={open ? '摺疊 Toggle List' : '展開 Toggle List'}
-              title={open ? '摺疊 Toggle List' : '展開 Toggle List'}
+              aria-label={label}
+              title={label}
               draggable={false}
               onPointerDownCapture={stopEditorPointerHandling}
               onMouseDownCapture={stopEditorPointerHandling}

@@ -45,6 +45,7 @@ export interface Preferences {
   pageWidth: number;
   lineHeight: number;
   paragraphSpacing: number;
+  listMarkerGap: number;
   topPadding: number;
   heading1Scale: number;
   heading2Scale: number;
@@ -60,6 +61,7 @@ export const DEFAULT_PREFS: Preferences = {
   pageWidth: 720,
   lineHeight: 1.6,
   paragraphSpacing: 8,
+  listMarkerGap: 4,
   topPadding: 96,
   heading1Scale: 2,
   heading2Scale: 1.5,

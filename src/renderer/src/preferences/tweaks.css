@@ -86,7 +86,7 @@
 /* 面板拉寬時滑桿自動排成多欄，縮窄時回到單欄。 */
 .tweaks-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
   gap: 18px 24px;
 }
 
@@ -99,6 +99,7 @@
 
 .tweaks-field-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;

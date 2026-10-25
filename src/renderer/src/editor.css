@@ -73,6 +73,14 @@
   display: none;
 }
 
+/* Keep marker hit areas intact; only adjust the gap before the text. */
+.bn-block-content[data-content-type='bulletListItem']::before,
+.bn-block-content[data-content-type='numberedListItem']::before {
+  padding-right: 0;
+  margin-right: var(--list-marker-gap);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
 /* Align the chevron with the first line of a multi-line toggle title, not the
    vertical center of the whole wrapped paragraph. */
 .bn-block-content[data-content-type='toggle'] > div {
@@ -80,6 +88,16 @@
 }
 .bn-block-content[data-content-type='toggle'] .bn-toggle-wrapper {
   align-items: flex-start;
+  column-gap: var(--list-marker-gap);
+}
+.bn-block-content[data-content-type='toggle'] .bn-inline-content {
+  min-width: 0;
+}
+.bn-block-content[data-content-type='toggle'] .bn-toggle-button {
+  color: var(--toggle-empty-fg);
+}
+.bn-block-content[data-content-type='toggle'] .bn-toggle-wrapper[data-has-content='true'] .bn-toggle-button {
+  color: var(--toggle-filled-fg);
 }
 .bn-block-content[data-content-type='toggle'] .bn-toggle-button {
   --sn-toggle-button-size: 24px;
@@ -232,11 +250,13 @@
 
 /* marquee fully selected a toggle → highlight the toggle's own line as a whole
    block and hide the ragged inner text selection */
-.bn-block-content[data-content-type='toggle'].sn-block-selected {
+.bn-block-content[data-content-type='toggle'].sn-block-selected,
+.sn-block-selected > .bn-block-content[data-content-type='toggle'] {
   background: var(--selection);
   border-radius: 4px;
 }
-.bn-block-content[data-content-type='toggle'].sn-block-selected ::selection {
+.bn-block-content[data-content-type='toggle'].sn-block-selected ::selection,
+.sn-block-selected > .bn-block-content[data-content-type='toggle'] ::selection {
   background: transparent;
 }
 
@@ -246,13 +266,15 @@
   background: var(--selection);
   border-radius: 4px;
 }
-/* the outer highlight already marks it: drop BlockNote's blue node outline and
-   the inner whole-block tints so the selection isn't painted twice */
-.bn-block-outer.ProseMirror-selectednode .ProseMirror-selectednode > .bn-block-content > *,
-.bn-block-outer.ProseMirror-selectednode .bn-block-content.ProseMirror-selectednode > * {
+/* BlockNote also marks React node views during a text/marquee selection.
+   Use the selection backgrounds above without its separate blue outlines. */
+.ProseMirror-selectednode > .bn-block-content > *,
+.bn-block-content.ProseMirror-selectednode > * {
   outline: none;
 }
-.bn-block-outer.ProseMirror-selectednode .bn-block-content[data-content-type='toggle'].sn-block-selected {
+/* The outer highlight already marks it; avoid painting the tint twice. */
+.bn-block-outer.ProseMirror-selectednode .bn-block-content[data-content-type='toggle'].sn-block-selected,
+.bn-block-outer.ProseMirror-selectednode .sn-block-selected > .bn-block-content[data-content-type='toggle'] {
   background: none;
 }
 .bn-block-outer.ProseMirror-selectednode .bn-block-content[data-content-type='codeBlock'].sn-block-selected {
@@ -376,9 +398,10 @@
   color: var(--fg-faint);
 }
 
-/* checkbox spacing — widen gap between checkbox and label text by ~1 CJK char */
+/* Checkbox spacing follows the same live preference as the other list markers. */
 .bn-block-content[data-content-type='checkListItem'] > input[type='checkbox'] {
-  margin-right: 1em !important;
+  margin-right: var(--list-marker-gap) !important;
+  flex-shrink: 0;
 }
 
 /* links — gray + underline instead of the default blue */

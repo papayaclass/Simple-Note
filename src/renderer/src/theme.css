@@ -3,6 +3,8 @@
   --fg: #1a1a1a;
   --fg-muted: #888;
   --fg-faint: #b0b0b0;
+  --toggle-empty-fg: #888;
+  --toggle-filled-fg: #1a1a1a;
   --accent: #2563eb;
   --red: #e5484d;
   --hr: rgba(0, 0, 0, 0.08);
@@ -25,6 +27,7 @@
   --page-width: 720px;
   --line-height: 1.6;
   --paragraph-spacing: 8px;
+  --list-marker-gap: 4px;
   --top-padding: 96px;
 }
 
@@ -34,6 +37,8 @@
     --fg: #e8e8e8;
     --fg-muted: #888;
     --fg-faint: #555;
+    --toggle-empty-fg: #888;
+    --toggle-filled-fg: #e8e8e8;
     --accent: #60a5fa;
     --red: #f47174;
     --hr: rgba(255, 255, 255, 0.08);

@@ -17,6 +17,7 @@ export interface Preferences {
   pageWidth: number;
   lineHeight: number;
   paragraphSpacing: number;
+  listMarkerGap: number;
   topPadding: number;
   heading1Scale: number;
   heading2Scale: number;
@@ -49,6 +50,7 @@ const DEFAULTS: Preferences = {
   pageWidth: 720,
   lineHeight: 1.6,
   paragraphSpacing: 8,
+  listMarkerGap: 4,
   topPadding: 96,
   heading1Scale: 2,
   heading2Scale: 1.5,
@@ -67,6 +69,7 @@ export function getPreferences(): Preferences {
     pageWidth: store.get('pageWidth', DEFAULTS.pageWidth),
     lineHeight: store.get('lineHeight', DEFAULTS.lineHeight),
     paragraphSpacing: store.get('paragraphSpacing', DEFAULTS.paragraphSpacing),
+    listMarkerGap: store.get('listMarkerGap', DEFAULTS.listMarkerGap),
     topPadding: store.get('topPadding', DEFAULTS.topPadding),
     heading1Scale: store.get('heading1Scale', DEFAULTS.heading1Scale),
     heading2Scale: store.get('heading2Scale', DEFAULTS.heading2Scale),
