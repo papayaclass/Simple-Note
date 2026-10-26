@@ -387,6 +387,10 @@ export function Editor({
     initialContent,
     extensions: customExtensions,
     _tiptapOptions: tiptapOptions,
+    // The formatting toolbar is disabled in the view, but its plugin still
+    // marks itself "shown" whenever text is selected, which makes BlockNote
+    // skip Tab / Shift+Tab. Always indent so multi-block selections work.
+    tabBehavior: 'prefer-indent',
     placeholders: {
       default: '',
       emptyDocument: placeholderForFormat(blankFirstLineFormat),
