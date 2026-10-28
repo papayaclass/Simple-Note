@@ -71,7 +71,7 @@
         "ext": "snote",
         "name": "Simple Note Document",
         "role": "Editor",
-        "icon": "build/icons/icon.icns"
+        "icon": "build/document.icns"
       },
       {
         "ext": "ssheet",
