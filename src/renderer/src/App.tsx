@@ -9,6 +9,7 @@ import {
   createNewSheet,
   stageTabForPaneMove,
   closeTabWithChecks,
+  tabHasUnsavedChanges,
   convertLossyMarkdownTabs,
   snapshotTabForTransfer,
   receiveTransferredTab,
@@ -255,13 +256,11 @@ export function App(): JSX.Element {
       return true;
     };
     window.__simpleNote_isDirty = () =>
-      useStore.getState().tabs.some(
-        (t) => t.dirty && (getDocumentView(t.id)?.hasContent() ?? false)
-      );
+      useStore.getState().tabs.some(tabHasUnsavedChanges);
     window.__simpleNote_save = async () => {
       let allOk = true;
       for (const t of useStore.getState().tabs) {
-        if (t.dirty && (getDocumentView(t.id)?.hasContent() ?? false)) {
+        if (tabHasUnsavedChanges(t)) {
           const ok = await getDocumentView(t.id)?.save();
           if (!ok) allOk = false;
         }

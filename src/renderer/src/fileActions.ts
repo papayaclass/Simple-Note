@@ -220,6 +220,12 @@ export async function convertMarkdownNoteIfLossy(tab: Tab): Promise<void> {
   }
 }
 
+export function tabHasUnsavedChanges(tab: Tab): boolean {
+  // Clearing a saved document is still an edit that must be saved or discarded.
+  // Only blank, untitled documents may close without a prompt.
+  return tab.dirty && (!!tab.filePath || (getDocumentView(tab.id)?.hasContent() ?? false));
+}
+
 // Close a tab, first asking about unsaved changes and then about any
 // formatting a Markdown file can't keep.
 export async function closeTabWithChecks(tabId: string): Promise<void> {
@@ -227,10 +233,10 @@ export async function closeTabWithChecks(tabId: string): Promise<void> {
   if (!tab) return;
   const view = getDocumentView(tabId);
   let discarded = false;
-  if (tab.dirty && view?.hasContent()) {
+  if (tabHasUnsavedChanges(tab)) {
     const choice = await window.api.file.confirmCloseDirty(tab.fileName);
     if (choice === 2) return;
-    if (choice === 0 && !(await view.save())) return;
+    if (choice === 0 && !(await view?.save())) return;
     discarded = choice === 1;
   }
   // Converting writes the editor's current content, which a discard just threw away.
