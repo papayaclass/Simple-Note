@@ -735,8 +735,8 @@ export function Editor({
         editor.toggleStyles({ strike: true } as never);
         return;
       }
-      // Shift+Cmd+V → paste clipboard contents as plain text.
-      if (e.shiftKey && !e.altKey && code === 'KeyV') {
+      // Shift+Option+Cmd+V → paste clipboard contents as plain text.
+      if (e.shiftKey && e.altKey && code === 'KeyV') {
         e.preventDefault();
         e.stopPropagation();
         pastePlainText(editor);

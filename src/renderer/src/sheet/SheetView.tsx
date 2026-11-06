@@ -745,6 +745,12 @@ export function SheetView({ tabId, active }: Props): JSX.Element {
           clearContents();
           return;
       }
+      if (meta && e.shiftKey && e.altKey && isKey(e, 'V')) {
+        e.preventDefault();
+        e.stopPropagation();
+        pasteFromClipboard(true);
+        return;
+      }
       if (meta && !e.altKey) {
         if (!e.shiftKey && isKey(e, 'A')) {
           e.preventDefault();
@@ -752,10 +758,6 @@ export function SheetView({ tabId, active }: Props): JSX.Element {
         } else if (isKey(e, 'Z')) {
           e.preventDefault();
           undo(e.shiftKey);
-        } else if (e.shiftKey && isKey(e, 'V')) {
-          e.preventDefault();
-          e.stopPropagation();
-          pasteFromClipboard(true);
         }
       }
     },

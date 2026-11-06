@@ -67,7 +67,7 @@ export function buildMenu(h: MenuHandlers): void {
         { role: 'paste' },
         {
           label: '貼成純文字',
-          accelerator: 'Shift+CmdOrCtrl+V',
+          accelerator: 'Shift+Alt+CmdOrCtrl+V',
           click: () => h.onCommand('paste-plain'),
         },
         { role: 'selectAll' },

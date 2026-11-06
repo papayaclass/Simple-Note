@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+每次發布與本機安裝的詳細紀錄在 PROGRESS.md，只在修改某功能前想知道過去的改法、同一問題再次出現，或使用者問到某次發布細節時，用 rg 搜尋相關段落，不要整份讀完。
+
 **專案概述**
 
 Simple Note 是一款 macOS 為主的極簡 Block 式筆記桌面應用，採用 Electron + Vite + React + TypeScript 建置，編輯器核心使用 BlockNote (TipTap / ProseMirror)。筆記**預設以 App 專用的 `.snote` 格式儲存**（BlockNote block tree 的 JSON，完整保留紅字、Toggle 與圖片）；`.md` 檔仍可直接開啟並以 Markdown 儲存，但 Markdown 不支援的標記會在存檔時被捨棄。另外內建簡易試算表，可開啟 `.csv` 與 App 專用的 `.ssheet`（見「試算表」一節）。介面語言為繁體中文。
@@ -78,7 +80,7 @@ Renderer 每次存檔都同時算出兩種內容（`{ markdown, snote }`）交�
 - 空白行的向前 Delete 由 `blockDelete.ts` 的 `deleteForwardEmptyBlock` 處理：BlockNote 的 `getTextCursorPosition().nextBlock` 只包含同層 sibling。空白子清單位於該層最後一項時，必須沿 `getParentBlock` 往上，找祖先的 `getNextBlock`；找到後刪掉空白 leaf，將游標移至下一個區塊開頭，保留下一段原有格式、子區塊與縮排。沒有下一段、目前有內容／子區塊或有文字選取時，交回原本的按鍵處理。
   - `simple-note-heading-enter`：在標題開頭或結尾按 Enter 會留下一般段落，而不是再產生一個標題。
   - 其他：`code-highlight` (lowlight 語法上色)、`code-wrap`、`selection-clamp`、`toggle-keys`、`paste-link`、`youtube`。
-- 鍵盤快捷鍵：Cmd+1 段落、Cmd+2 折疊清單 (toggle)、Cmd+3 項目符號、Cmd+4 程式碼區塊、Cmd+5 checkbox、Shift+Cmd+D 引言、Shift+Cmd+S 刪除線、Shift+Cmd+X inline code、Shift+Cmd+V 貼成純文字、Opt+Cmd+1/2/3 H1/H2/H3、Opt+Cmd+V 紅字。
+- 鍵盤快捷鍵：Cmd+1 段落、Cmd+2 折疊清單 (toggle)、Cmd+3 項目符號、Cmd+4 程式碼區塊、Cmd+5 checkbox、Shift+Cmd+D 引言、Shift+Cmd+S 刪除線、Shift+Cmd+X inline code、Shift+Opt+Cmd+V 貼成純文字、Opt+Cmd+1/2/3 H1/H2/H3、Opt+Cmd+V 紅字。
 - Tab / Shift+Tab 縮排：`useCreateBlockNote` 設了 `tabBehavior: 'prefer-indent'`。格式工具列雖以 `formattingToolbar={false}` 隱藏，但它的 plugin 在有反白文字時仍會標記為 shown，預設行為會因此把 Tab 讓給工具列導覽，導致反白多個清單項目時無法一起升降級。不要移除這個設定。
 - 折疊清單是自訂 block `toggle`（`editor/toggle.tsx`）。**注意：不要改用 BlockNote 內建的 `toggleListItem`——在 0.40 版透過 BlockNoteView 渲染時它沒有箭頭、不能折疊（core 的 render 只對 isToggleable 的 heading 加 toggle UI，`toggleListItem` 沒有該 prop），會退化成普通段落。** 我們自繪 `.bn-toggle-wrapper` + `.bn-toggle-button`（沿用 BlockNote CSS：`data-show-children=false` 時隱藏子 `.bn-block-group`），展開/關閉狀態存在 block 的 `open` prop（活在文件模型中，不像 BlockNote 內建的 `ToggleWrapper` 存在 localStorage；存成 `.snote` 時會一併保存；存成 `.md` 則不會）。
 - toggle 的 Notion 式互動由 `createToggleKeyboardExtension()`（在 `Editor.tsx` 的 extensions 內）提供：游標在 toggle 標題列按 Enter，展開時在內側新增子 block 並把游標移入、關閉時在下方新增 sibling toggle（像 list item）；Cmd/Ctrl+Enter 切換展開/關閉。**新增 sibling toggle 後必須用 `requestAnimationFrame` 才能把游標移入新 block——它是 React node view，內容 DOM 要等 React 繪製後才存在，同步設游標會失效。** Cmd+2 在 `Editor.tsx` 把目前 block 轉成 `toggle`。
