@@ -5,6 +5,7 @@ import {
   cellKey,
   colName,
   createEvaluator,
+  cycleAbsoluteAt,
   formatNumber,
   formatValue,
   FormulaError,
@@ -198,6 +199,8 @@ export function SheetView({ tabId, active }: Props): JSX.Element {
   const [view, setView] = useState({ top: 0, left: 0, w: 1200, h: 900 });
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [resizing, setResizing] = useState<{ c: number; w: number } | null>(null);
+  // Target range while the fill handle is being dragged.
+  const [fillTarget, setFillTarget] = useState<Range | null>(null);
 
   const rootRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -644,6 +647,23 @@ export function SheetView({ tabId, active }: Props): JSX.Element {
   // Keyboard
   // ---------------------------------------------------------------------------
 
+  // F4 in a formula: toggle the reference under the caret between relative
+  // and absolute ($A$1 → A$1 → $A1 → A1).
+  const onToggleAbsolute = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>): boolean => {
+      if (e.key !== 'F4') return false;
+      e.preventDefault();
+      const input = e.currentTarget;
+      const next = cycleAbsoluteAt(draft, input.selectionStart ?? draft.length);
+      if (!next) return true;
+      refPick.current = null;
+      setDraft(next.text);
+      requestAnimationFrame(() => input.setSelectionRange(next.caret, next.caret));
+      return true;
+    },
+    [draft]
+  );
+
   const onStyleShortcut = useCallback(
     (e: React.KeyboardEvent): boolean => {
       const meta = e.metaKey || e.ctrlKey;
@@ -674,6 +694,7 @@ export function SheetView({ tabId, active }: Props): JSX.Element {
       if (onStyleShortcut(e)) return;
 
       if (editing) {
+        if (onToggleAbsolute(e)) return;
         if (e.key === 'Enter') {
           e.preventDefault();
           commitEdit([e.shiftKey ? -1 : 1, 0]);
@@ -771,6 +792,7 @@ export function SheetView({ tabId, active }: Props): JSX.Element {
       extent,
       moveBy,
       onStyleShortcut,
+      onToggleAbsolute,
       pasteFromClipboard,
       rowCount,
       select,
@@ -782,7 +804,7 @@ export function SheetView({ tabId, active }: Props): JSX.Element {
   const onBarKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.nativeEvent.isComposing || e.keyCode === 229) return;
-      if (onStyleShortcut(e)) return;
+      if (onStyleShortcut(e) || onToggleAbsolute(e)) return;
       if (e.key === 'Enter') {
         e.preventDefault();
         commitEdit([e.shiftKey ? -1 : 1, 0]);
@@ -794,7 +816,7 @@ export function SheetView({ tabId, active }: Props): JSX.Element {
         cancelEdit();
       }
     },
-    [cancelEdit, commitEdit, onStyleShortcut]
+    [cancelEdit, commitEdit, onStyleShortcut, onToggleAbsolute]
   );
 
   // Leaving the sheet (another tab or pane) commits a pending edit.
@@ -860,10 +882,11 @@ export function SheetView({ tabId, active }: Props): JSX.Element {
     });
   }, [activeInput]);
 
-  const trackDrag = useCallback((onMove: (e: MouseEvent) => void) => {
+  const trackDrag = useCallback((onMove: (e: MouseEvent) => void, onUp?: () => void) => {
     const up = (): void => {
       window.removeEventListener('mousemove', onMove, true);
       window.removeEventListener('mouseup', up, true);
+      onUp?.();
     };
     window.addEventListener('mousemove', onMove, true);
     window.addEventListener('mouseup', up, true);
@@ -892,6 +915,72 @@ export function SheetView({ tabId, active }: Props): JSX.Element {
       });
     },
     [cellFromPoint, commitEdit, editing, extendRefPick, select, trackDrag, tryInsertRef]
+  );
+
+  // Excel-style fill handle: drag the selection's corner to repeat its cells
+  // down/up/left/right; formulas shift their relative references.
+  const onFillMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const src = rangeOf(selRef.current);
+      let target = src;
+      document.body.style.cursor = 'crosshair';
+      trackDrag(
+        (ev) => {
+          const q = cellFromPoint(ev.clientX, ev.clientY);
+          const dr = q.r > src.r2 ? q.r - src.r2 : q.r < src.r1 ? q.r - src.r1 : 0;
+          const dc = q.c > src.c2 ? q.c - src.c2 : q.c < src.c1 ? q.c - src.c1 : 0;
+          if (dr === 0 && dc === 0) target = src;
+          else if (Math.abs(dr) >= Math.abs(dc))
+            target = { ...src, r1: Math.min(src.r1, q.r), r2: Math.max(src.r2, q.r) };
+          else target = { ...src, c1: Math.min(src.c1, q.c), c2: Math.max(src.c2, q.c) };
+          setFillTarget(target);
+        },
+        () => {
+          document.body.style.cursor = '';
+          setFillTarget(null);
+          if (target === src) return;
+          const h = src.r2 - src.r1 + 1;
+          const w = src.c2 - src.c1 + 1;
+          const mod = (a: number, n: number): number => ((a % n) + n) % n;
+          apply((d) => {
+            const cells = { ...d.cells };
+            for (let r = target.r1; r <= target.r2; r += 1) {
+              for (let c = target.c1; c <= target.c2; c += 1) {
+                if (inRange({ r, c }, src)) continue;
+                const sr = src.r1 + mod(r - src.r1, h);
+                const sc = src.c1 + mod(c - src.c1, w);
+                const cell: Cell = { ...(d.cells[cellKey(sr, sc)] ?? {}) };
+                if (cell.v && isFormula(cell.v)) cell.v = shiftRelative(cell.v, r - sr, c - sc);
+                const key = cellKey(r, c);
+                const t = tidy(cell);
+                if (t) cells[key] = t;
+                else delete cells[key];
+              }
+            }
+            return { ...d, cells };
+          });
+          // Keep the active cell when it is still a corner of the filled range.
+          const old = selRef.current.a;
+          const a =
+            (old.r === target.r1 || old.r === target.r2) &&
+            (old.c === target.c1 || old.c === target.c2)
+              ? old
+              : { r: target.r1, c: target.c1 };
+          setSel({
+            a,
+            f: {
+              r: a.r === target.r1 ? target.r2 : target.r1,
+              c: a.c === target.c1 ? target.c2 : target.c1,
+            },
+          });
+          inputRef.current?.focus({ preventScroll: true });
+        }
+      );
+    },
+    [apply, cellFromPoint, trackDrag]
   );
 
   const onCellsDoubleClick = useCallback(
@@ -1154,6 +1243,10 @@ export function SheetView({ tabId, active }: Props): JSX.Element {
       })
     : null;
 
+  // Whole rows/columns get no fill handle (filling a million cells is never meant).
+  const showFillHandle =
+    !editing && range.r2 - range.r1 + 1 < rowCount && range.c2 - range.c1 + 1 < colCount;
+
   const activeW = colWidth(sel.a.c);
   const inputW = editing
     ? Math.max(activeW + 1, Math.min(640, Math.ceil(textWidth(draft) + 20)))
@@ -1219,6 +1312,25 @@ export function SheetView({ tabId, active }: Props): JSX.Element {
               {rows}
               {multi && !editing && <div className="sheet-sel-range" style={selBox} />}
               {refBoxes}
+              {fillTarget && (
+                <div
+                  className="sheet-ref-box sheet-fill-preview"
+                  style={{
+                    left: colX[fillTarget.c1],
+                    top: fillTarget.r1 * ROW_H,
+                    width: colX[fillTarget.c2 + 1]! - colX[fillTarget.c1]! + 1,
+                    height: (fillTarget.r2 - fillTarget.r1 + 1) * ROW_H + 1,
+                  }}
+                />
+              )}
+              {showFillHandle && (
+                <div
+                  className="sheet-fill-handle"
+                  style={{ left: selBox.left + selBox.width, top: selBox.top + selBox.height }}
+                  onMouseDown={onFillMouseDown}
+                  onDoubleClick={(e) => e.stopPropagation()}
+                />
+              )}
               <div
                 className="sheet-sel-active"
                 style={{

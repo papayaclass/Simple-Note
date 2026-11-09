@@ -911,3 +911,35 @@ export function formulaRanges(
   });
   return out;
 }
+
+// F4 while editing: cycle the reference under the caret through
+// A1 → $A$1 → A$1 → $A1 → A1 (a range cycles both ends together).
+export function cycleAbsoluteAt(
+  formula: string,
+  caret: number
+): { text: string; caret: number } | null {
+  if (!formula.startsWith('=')) return null;
+  let offset = 0;
+  const parts = formula.split(/("(?:[^"]|"")*"?)/);
+  for (let i = 0; i < parts.length; i += 1) {
+    const part = parts[i]!;
+    if (i % 2 === 0) {
+      for (const m of part.matchAll(CELL_OR_RANGE_RE)) {
+        const start = offset + m.index!;
+        const end = start + m[0].length;
+        if (caret < start || caret > end) continue;
+        const absC = !!m[1];
+        const absR = !!m[3];
+        const [nc, nr] =
+          !absC && !absR ? [true, true] : absC && absR ? [false, true] : absR ? [true, false] : [false, false];
+        const fmt = (col: string, row: string): string =>
+          `${nc ? '$' : ''}${col}${nr ? '$' : ''}${row}`;
+        let rep = fmt(m[2]!, m[4]!);
+        if (m[6]) rep += ':' + fmt(m[6], m[8]!);
+        return { text: formula.slice(0, start) + rep + formula.slice(end), caret: start + rep.length };
+      }
+    }
+    offset += part.length;
+  }
+  return null;
+}

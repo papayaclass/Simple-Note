@@ -460,3 +460,28 @@
     animation: none;
   }
 }
+
+/* Fill handle --------------------------------------------------------------
+   Excel's corner square: drag it to repeat the selection (formulas shift).
+   The preview reuses the reference frame's dashes, without the tint. */
+.sheet-fill-handle {
+  position: absolute;
+  z-index: 3;
+  width: 7px;
+  height: 7px;
+  margin: -5px 0 0 -5px;
+  background: var(--accent);
+  box-shadow: 0 0 0 1px var(--bg);
+  cursor: crosshair;
+}
+.sheet-fill-handle::before {
+  /* A larger invisible hit area; the square itself stays small. */
+  content: '';
+  position: absolute;
+  inset: -4px;
+}
+.sheet-ref-box.sheet-fill-preview {
+  --ant: var(--sheet-head-fg);
+  z-index: 2;
+  background-color: transparent;
+}
