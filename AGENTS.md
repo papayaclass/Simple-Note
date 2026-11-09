@@ -58,6 +58,7 @@ Renderer 每次存檔都同時算出兩種內容（`{ markdown, snote }`）交�
 `.ssheet` (Simple Sheet，JSON：`{ format: 'simple-sheet', version, colWidths, cells }`，cells 以 A1 位址為 key，存原始輸入含公式與粗斜體／顏色) 與 `.csv` 以 `kind: 'sheet'` 分頁開啟，由 `SheetView` 渲染 (`makeTab` 依副檔名推斷 kind)。沿用 `DocumentViewHandle`（透過 `registerDocumentView` 註冊），所以存檔、關閉詢問、分頁搬移不用分支：`buildMarkdown` 回傳 CSV、`buildSnote` 回傳 `.ssheet` JSON，main 端 `.csv` 與 `.md` 一樣走純文字那份。`.csv` 行為比照 `.md`：存回 CSV 時公式變計算結果、樣式捨棄，關閉時若用了公式或格式會詢問轉存 `.ssheet`。
 
 - `formula.ts`：手寫公式引擎（文法在檔頭），支援 SUM / AVERAGE / COUNT / COUNTIF / SUMIF / IF 等；插入／刪除列欄與相對貼上時用 `shiftForStructure` / `shiftRelative` 改寫參照。
+- 填滿控點 (`.sheet-fill-handle`) 拖曳時沿主要方向延伸選取範圍，以 `shiftRelative` 循環複製來源格；整欄／整列選取不顯示控點，否則一拖就要處理上百萬格。F4 在編輯公式時由 `cycleAbsoluteAt` 切換游標所在參照的 `$`（A1 → $A$1 → A$1 → $A1），範圍兩端一起切換。
 - `SheetView` 內的 `.sheet-input` 同時是鍵盤接收器：未編輯時透明地停在作用中儲存格上並保持 focus，讓注音等輸入法直接在格子上組字。快捷鍵一樣用 `e.code`。
 - 「檔案 → 新增試算表」(Opt+Cmd+N) 建立試算表；分頁列的 + 號只建立一般筆記。
 - 編輯公式時，`formulaRanges()` 找出公式內所有參照，畫成 `.sheet-ref-box` 虛線框；用滑鼠剛點選／拖曳的那一段 (`refPick`) 加 `.marching` 流動虛線（四條 gradient 邊框動畫 background-position），使用者一打字就停止。
