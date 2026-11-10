@@ -1,3 +1,9 @@
+**2026-11-10：Electron 45 本機安裝**
+
+- 內容為提交 d0e1ade：Electron 32.3.3 升級到 45.2.3，preload 的剪貼簿改經 main 的 `clipboard:readText`／`clipboard:writeText` IPC。
+- 驗證：兩組 TypeScript 型別檢查與 production build 通過；封裝內 Electron Framework 版號為 45.2.3，app.asar 含剪貼簿 IPC 與 `will-navigate` 防護。升級本身的 CDP 實測在 arm64 測試版完成；簽章後的 Universal 版只確認能啟動且主程序與渲染程序持續執行，未做互動測試。未測試：注音輸入、「開啟…」對話框是否記住資料夾。
+- 使用 Developer ID 製作 Universal 本機版本，含 hardened runtime 與時間戳記，依本機模式略過公證與 DMG；/Applications 安裝版深度嚴格簽章檢查通過並已啟動。CDHash：a5d2158f8439563f69ed564dcd598fb8ca01f78d。
+
 **2026-11-10：專案體檢修正、安全更新與本機安裝**
 
 - 修正：「編輯」選單的簡體轉繁體、半形標點轉全形、清除所有格式、字數統計原本送出 `simple-note:command` 後無人接收，現由作用中分頁的 ContextMenu 處理。未命名筆記只含圖片、分隔線、表格或巢狀內容時，關閉前會正確提示儲存。寫檔失敗改為跳出錯誤對話框。轉存 `.snote`／`.ssheet` 遇到同名檔案改用「名稱 2」，不覆蓋。從 Finder 拖入 `.snote`／`.ssheet`／`.md`／`.txt`／`.csv` 到視窗任何位置都會開成分頁，main 端加上 `will-navigate` 防護。試算表刪除被參照的列欄後顯示 `#REF!`。斜線選單「引言」快捷鍵標示改為 ⇧⌘D。
