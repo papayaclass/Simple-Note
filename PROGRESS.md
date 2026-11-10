@@ -1,3 +1,9 @@
+**2026-11-10：分頁選單點擊與未儲存筆記 MD 匯出修正、本機安裝**
+
+- 修正：分頁右鍵選單改透過 portal 掛在 document.body，並明確排除 Electron 視窗拖曳區，避免選單按鈕的滑鼠事件遭攔截。未儲存筆記也能直接匯出 MD，保留特殊格式遺失提醒。
+- 驗證：兩組 TypeScript 型別檢查、production build 與 git diff --check 通過。在獨立 Electron 45 測試視窗，以 CDP 滑鼠事件驗證複製分頁、重新命名、全部儲存、MD 匯出選單操作；確認選單掛在 body 且為 no-drag。以原生儲存對話框完成未儲存筆記匯出，核對 MD 含「MD 匯出測試 123」。未逐一測試關閉分頁、開啟在新視窗及另存新檔；未以實體滑鼠重測 macOS 視窗拖曳攔截。
+- 使用 Developer ID 製作 Universal 本機版本，含 hardened runtime 與時間戳記，略過公證與 DMG。安裝版深度嚴格簽章檢查通過並啟動；保留舊版於 /private/tmp/Simple Note-before-tab-menu-fix.app。CDHash：ad8270e2514999f648fbf25160e1d0a7d4a2c96f。程式提交：fe19664。
+
 **2026-11-10：Electron 45 本機安裝**
 
 - 內容為提交 d0e1ade：Electron 32.3.3 升級到 45.2.3，preload 的剪貼簿改經 main 的 `clipboard:readText`／`clipboard:writeText` IPC。

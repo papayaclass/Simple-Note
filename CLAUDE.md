@@ -52,7 +52,7 @@ Renderer 每次存檔都同時算出兩種內容（`{ markdown, snote }`）交�
 `lossyFeatures()`（noteFormat.ts）掃描 block tree 找出 Markdown 存不下的東西（紅字、底線、文字顏色／底色、折疊清單、圖片）。用在兩處：
 
 - 關閉含特殊格式的 `.md` 分頁時（`closeTabWithChecks` / 視窗關閉前的 `window.__simpleNote_beforeClose`）詢問是否轉存成 `.snote`；答「轉存」會寫出同名 `.snote`（已有同名檔案時改用「名稱 2.snote」，不覆蓋）並把原 `.md` 移到垃圾桶（`file:convertToSnote`），答「維持 Markdown」則特殊格式就此遺失。
-- 分頁右鍵的「匯出成 MD 文件…」（僅 `.snote` 分頁可用）匯出前提醒，預設存到下載資料夾（`file:exportMarkdown`）。
+- 分頁右鍵的「匯出成 MD 文件…」（未儲存筆記與 `.snote` 分頁皆可用）匯出前提醒，預設存到下載資料夾（`file:exportMarkdown`）。
 
 `file:save` 會記住分頁的檔案路徑，後續按 Cmd+S 不再跳對話框。Renderer 端透過 `window.__simpleNote_isDirty()` / `window.__simpleNote_save()` / `window.__simpleNote_beforeClose()` 三個全域函式，讓 main 在視窗關閉前可依序做格式轉存詢問與未存檔詢問（會檢查 / 儲存所有未存的分頁）。
 
@@ -130,6 +130,8 @@ Cmd+F 尋找、Opt+Cmd+F 尋找並取代、Cmd+G / Shift+Cmd+G 下一個／上�
 **右鍵選單與文字轉換 (`src/renderer/src/context-menu/`)**
 
 命令清單集中在 `commands.ts` 的 `MENU_COMMANDS`（`transforms.ts` 內的 `opencc-js`、`pinyin-pro` 與嘸蝦米字典都以動態 `import()` 在第一次使用時才載入，不要改回靜態 import，否則主程式會多出約 1.4 MB）：簡轉繁（`opencc-js`）、半形標點轉全形、清除格式、移除超連結（命令 key 仍是舊名 `stripLinksAndCitations`，保留使用者自訂的順序與名稱）、段落／分行轉換、字數統計、拼音查詢（`pinyin-pro`）、嘸蝦米查碼、Google 搜尋，以及中英互譯（透過 main 端 `openrouter.ts` 的 `ai:run` 呼叫 OpenRouter，需在偏好設定的 API Keys 填金鑰；結果一律取代選取文字）。使用者可在偏好設定「右鍵選單」頁調整順序、顯示與名稱、插入分隔線，存在 `preferences.menuCommands`；新增命令時 `reconcileMenuCommands` 會把它插到原本順序中的相鄰位置。部分命令也能從 macOS 應用選單（編輯 → ...）叫出：`App.tsx` 送出 `window.dispatchEvent(new CustomEvent('simple-note:command', ...))`，由 `ContextMenu.tsx` 接收；每個分頁各有一個 ContextMenu，只有作用中分頁（以 `.document-view` 的 `data-tab-id` 比對）會執行。右鍵選單開啟後會用 `useLayoutEffect` 量測尺寸並把位置夾進可視範圍，過長時靠 CSS `max-height` + `overflow-y` 捲動。
+
+- 分頁右鍵選單必須透過 portal 掛在 `document.body`，並明確設定 `-webkit-app-region: no-drag`，避免分頁列的視窗拖曳區攔截選單點擊。
 
 **樣式與排版**
 
