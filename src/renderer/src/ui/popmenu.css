@@ -1,4 +1,5 @@
 .pop-menu {
+  -webkit-app-region: no-drag;
   position: fixed;
   z-index: 11000;
   min-width: 160px;

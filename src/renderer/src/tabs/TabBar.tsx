@@ -166,7 +166,7 @@ export function TabBar({
               }
             : {
                 label: '匯出成 MD 文件…',
-                disabled: !isSnotePath(tab.filePath),
+                disabled: !!tab.filePath && !isSnotePath(tab.filePath),
                 onClick: () => void exportMarkdown(tab),
               },
         ],

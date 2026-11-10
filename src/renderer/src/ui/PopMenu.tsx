@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import './popmenu.css';
 
 export interface PopMenuItem {
@@ -54,7 +55,8 @@ export function PopMenu({
     };
   }, [onClose]);
 
-  return (
+  // Keep the menu outside the native title-bar drag region and pane handlers.
+  return createPortal(
     <div
       ref={ref}
       className="pop-menu"
@@ -80,6 +82,7 @@ export function PopMenu({
           </button>
         )
       )}
-    </div>
+    </div>,
+    document.body
   );
 }
