@@ -59,7 +59,7 @@ function slashMenuItems(editor: SNEditor): DefaultReactSuggestionItem[] {
     },
     {
       title: '引言',
-      badge: '⇧⌘L',
+      badge: '⇧⌘D',
       aliases: ['quote', 'blockquote'],
       onItemClick: insert({ type: 'quote' }),
     },

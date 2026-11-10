@@ -5,6 +5,9 @@ import { isCsvPath } from './sheet/sheetFormat';
 
 type OpenDocumentPayload = Parameters<Window['api']['window']['moveTabToNewWindow']>[0];
 
+// Documents this app opens as tabs when dragged in from Finder.
+export const OPENABLE_FILE_RE = /\.(snote|ssheet|md|txt|csv)$/i;
+
 interface OpenFileOptions {
   autoFocus?: boolean;
   blankFirstLineFormat?: BlankFirstLineFormat;

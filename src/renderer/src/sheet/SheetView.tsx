@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../store';
 import { DocumentViewHandle, registerDocumentView } from '../DocumentView';
 import {
@@ -180,7 +180,7 @@ interface Props {
   active: boolean;
 }
 
-export function SheetView({ tabId, active }: Props): JSX.Element {
+export const SheetView = memo(function SheetView({ tabId, active }: Props): JSX.Element {
   const setTabDirty = useStore((s) => s.setTabDirty);
   const setTabFile = useStore((s) => s.setTabFile);
   const updateTab = useStore((s) => s.updateTab);
@@ -1406,7 +1406,7 @@ export function SheetView({ tabId, active }: Props): JSX.Element {
       )}
     </div>
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // Right-click menu: clipboard, text style, colours, rows/columns.

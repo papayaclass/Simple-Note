@@ -73,7 +73,7 @@ export function attachMarquee(
     if (
       t.closest(
         'button, a, input, select, .bn-side-menu, [contenteditable="false"], ' +
-          '.drag-bar, .status-bar, .prefs-overlay, .prefs-panel, .word-count-popover'
+          '.status-bar, .prefs-overlay, .prefs-panel, .word-count-popover'
       )
     )
       return;

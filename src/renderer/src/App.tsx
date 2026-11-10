@@ -4,7 +4,9 @@ import { DocumentView, getDocumentView } from './DocumentView';
 import { SheetView } from './sheet/SheetView';
 import { TabBar } from './tabs/TabBar';
 import {
+  OPENABLE_FILE_RE,
   openDocumentPayload,
+  openFileInTab,
   createNewTab,
   createNewSheet,
   stageTabForPaneMove,
@@ -286,6 +288,37 @@ export function App(): JSX.Element {
   // another window) open as tabs.
   useEffect(() => {
     return window.api.onOpenInTab((doc) => void openDocumentPayload(doc));
+  }, []);
+
+  // Files dragged in from Finder and dropped anywhere the editor doesn't handle
+  // them itself (tab bar, a spreadsheet, the page margins): open the documents
+  // as tabs. Always cancelling the default also keeps Chromium from navigating
+  // the window to the dropped file.
+  useEffect(() => {
+    const carriesFiles = (e: DragEvent): boolean =>
+      !!e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files');
+    const onDragOver = (e: DragEvent): void => {
+      if (carriesFiles(e)) e.preventDefault();
+    };
+    const onDrop = (e: DragEvent): void => {
+      if (!e.isTrusted || !carriesFiles(e) || e.defaultPrevented) return;
+      e.preventDefault();
+      for (const file of Array.from(e.dataTransfer!.files)) {
+        let path = '';
+        try {
+          path = window.api.file.getPathForFile(file);
+        } catch {
+          // Not a file on disk.
+        }
+        if (path && OPENABLE_FILE_RE.test(path)) void openFileInTab(path, undefined, { autoFocus: true });
+      }
+    };
+    window.addEventListener('dragover', onDragOver);
+    window.addEventListener('drop', onDrop);
+    return () => {
+      window.removeEventListener('dragover', onDragOver);
+      window.removeEventListener('drop', onDrop);
+    };
   }, []);
 
   useEffect(() => {

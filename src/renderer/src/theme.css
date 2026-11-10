@@ -205,20 +205,6 @@ body,
   position: relative;
 }
 
-/* Only the top strip is a drag region; everything else stays interactive.
-   Painted with the page background (not transparent) so article text scrolled
-   up under it is masked at the filename line instead of bleeding to the very
-   top edge. The filename / chips in .status-bar (z 10000) sit above this. */
-.drag-bar {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 28px;
-  background: var(--bg);
-  -webkit-app-region: drag;
-  z-index: 9999;
-}
 
 /* rubber-band (marquee) selection rectangle dragged over blocks */
 .marquee-box {
@@ -361,7 +347,6 @@ body,
   .split-divider,
   .split-drop-overlay,
   .editor-pane:not(.active-pane),
-  .drag-bar,
   .status-bar,
   .marquee-box,
   .prefs-overlay,

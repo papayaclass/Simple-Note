@@ -44,11 +44,11 @@ main 端在 `app.whenReady` 內註冊 handler，命名採 `namespace:action`（�
 - `.md` / `.txt`：純 Markdown，內容由 `editor.blocksToMarkdownLossy` 產生。
 - Markdown 開頭的 YAML front matter（第一行 `---`、第二行是 `key:`）由 `splitFrontMatter` 在載入時切出來存在 `DocumentView` 的 `frontMatterRef`，不進編輯器，`buildMarkdown` 時原文接回最前面。原因是 BlockNote 會把 `---` 解析成分隔線與 setext 標題，存回去變成 `***` 與一長串 `-`，弄壞 Claude Code Skill 的 `SKILL.md` 這類靠 front matter 運作的檔案。因此 front matter 在 App 內看不到也改不了。
 
-Renderer 每次存檔都同時算出兩種內容（`{ markdown, snote }`）交給 main，**由目標檔案的副檔名決定寫入哪一份**（`contentForPath`，`.md`/`.txt`/`.csv` 走純文字那份，其餘走 snote）。`file:save`、`file:saveAs` 都是這個約定；存檔對話框依建議檔名的副檔名決定篩選器（筆記 `.snote`/`.md`，試算表 `.ssheet`/`.csv`），筆記新檔／另存預設 `.snote`，對話框預設位置是下載資料夾，未命名筆記以第一個標題當建議檔名。
+Renderer 每次存檔都同時算出兩種內容（`{ markdown, snote }`）交給 main，**由目標檔案的副檔名決定寫入哪一份**（`contentForPath`，`.md`/`.txt`/`.csv` 走純文字那份，其餘走 snote）。`file:save`、`file:saveAs` 都是這個約定，寫入失敗時由 main 的 `writeFileReporting` 跳出錯誤對話框並回傳 `ok: false`；存檔對話框依建議檔名的副檔名決定篩選器（筆記 `.snote`/`.md`，試算表 `.ssheet`/`.csv`），筆記新檔／另存預設 `.snote`，對話框預設位置是下載資料夾，未命名筆記以第一個標題當建議檔名。
 
 `lossyFeatures()`（noteFormat.ts）掃描 block tree 找出 Markdown 存不下的東西（紅字、底線、文字顏色／底色、折疊清單、圖片）。用在兩處：
 
-- 關閉含特殊格式的 `.md` 分頁時（`closeTabWithChecks` / 視窗關閉前的 `window.__simpleNote_beforeClose`）詢問是否轉存成 `.snote`；答「轉存」會寫出同名 `.snote` 並把原 `.md` 移到垃圾桶（`file:convertToSnote`），答「維持 Markdown」則特殊格式就此遺失。
+- 關閉含特殊格式的 `.md` 分頁時（`closeTabWithChecks` / 視窗關閉前的 `window.__simpleNote_beforeClose`）詢問是否轉存成 `.snote`；答「轉存」會寫出同名 `.snote`（已有同名檔案時改用「名稱 2.snote」，不覆蓋）並把原 `.md` 移到垃圾桶（`file:convertToSnote`），答「維持 Markdown」則特殊格式就此遺失。
 - 分頁右鍵的「匯出成 MD 文件…」（僅 `.snote` 分頁可用）匯出前提醒，預設存到下載資料夾（`file:exportMarkdown`）。
 
 `file:save` 會記住分頁的檔案路徑，後續按 Cmd+S 不再跳對話框。Renderer 端透過 `window.__simpleNote_isDirty()` / `window.__simpleNote_save()` / `window.__simpleNote_beforeClose()` 三個全域函式，讓 main 在視窗關閉前可依序做格式轉存詢問與未存檔詢問（會檢查 / 儲存所有未存的分頁）。
@@ -111,7 +111,7 @@ Cmd+F 尋找、Opt+Cmd+F 尋找並取代、Cmd+G / Shift+Cmd+G 下一個／上�
 - 每個分頁是 `store.ts` 的一個 `Tab`，`kind` 為 `editor`（`DocumentView`）或 `sheet`（`SheetView`）。分頁的 view 一直掛著、非作用中時只是隱藏，所以各自保有復原紀錄、游標與捲動位置。App shell 透過 `getDocumentView(tabId)` 取得 `DocumentViewHandle` 操作特定分頁。
 - 最多三個分割窗格（`panes`，上限 `MAX_PANES`）：分頁拖放規則集中在 `App.tsx` 的 `paneDropForPoint`（工作區 capture 階段處理，靠 `.editor-pane` 的 `data-pane-id` 判斷目標窗格）：放在另一個窗格內文區左半側時兩個窗格整組對調位置 (`swapPaneTabs`，寬度留在原位)；放在右半側時在該窗格右邊新增一欄 (`splitTabBesidePane`，所有窗格重設為等寬)，已滿三欄則改成對調；放在自己所在窗格的左／右半側時在該側分割出新窗格（該窗格只剩一個分頁或已滿三欄時不動作）；放在另一個窗格的分頁列則移入該窗格 (`moveTabToPane`)，來源窗格因此清空時就消失（等於合併）。拖曳中 `.split-drop-overlay` 預覽落點（對調蓋住整個目標窗格，分割蓋住一半）。沒有使用修飾鍵：macOS 拖曳時 `DragEvent.metaKey` 不可靠。每個窗格的寬度存在 `TabPane.size`（flex-grow），拖曳分隔線只在相鄰兩欄之間調整（`resizePanes`）。踩過的坑：BlockNote 會把拖放事件再派送一份到編輯器上（座標夾在編輯器內，`isTrusted` 為 false），連放在分頁列的 drop 都會，而且比分頁列的處理更早抵達工作區，被當成內文區的對調或分割，所以工作區的 dragover／drop 一律忽略 `!e.nativeEvent.isTrusted` 的事件。分頁移到另一個窗格時 React 會重新掛載 view，所以 `stageTabForPaneMove` 先把內容存進 `initialMarkdown`，並用 `restoreDirtyAfterLoad` 保留 dirty 狀態。
 - 未儲存變更統一由 `fileActions.ts` 的 `tabHasUnsavedChanges` 判斷：`dirty` 且已有檔案路徑的文件，即使內容已全部剪下／刪除也必須提示儲存；只有未命名且空白的文件可略過。關閉分頁、視窗關閉檢查與全部儲存共用此判斷，不能只以 `hasContent()` 過濾，否則會漏存清空文件的變更。
-- App 沒有側邊欄與儲存庫（已移除）。所有文件都要手動存檔：編輯後分頁出現未存檔圓點，關閉未存檔分頁時 `closeTabWithChecks` 會先詢問儲存／不儲存／取消（`file:confirmCloseDirty`），選「不儲存」時不再做 `.snote` 轉存詢問。圖片從 Finder 拖入時以絕對路徑引用，貼上的圖片以 data URL 存在文件內。
+- App 沒有側邊欄與儲存庫（已移除）。所有文件都要手動存檔：編輯後分頁出現未存檔圓點，關閉未存檔分頁時 `closeTabWithChecks` 會先詢問儲存／不儲存／取消（`file:confirmCloseDirty`），選「不儲存」時不再做 `.snote` 轉存詢問。圖片從 Finder 拖入時以絕對路徑引用，貼上的圖片以 data URL 存在文件內。從 Finder 拖入文件（`fileActions.ts` 的 `OPENABLE_FILE_RE`：`.snote`／`.ssheet`／`.md`／`.txt`／`.csv`）會開成分頁：放在編輯器上由 `Editor.tsx` 處理，其餘位置由 `App.tsx` 的 window 層 drop 處理並一律取消預設行為；main 端另有 `will-navigate` 防護，避免視窗被導覽到拖入的檔案而丟失所有分頁。
 - 啟動時一律只開一個未存檔的空白筆記。從 Finder 雙擊文件或以文件建立新視窗時，main 先將文件放入 `pendingOpenByWebContents`。`App.tsx` 註冊檔案事件後呼叫 `window.api.notifyReady()`（`renderer:ready` 使用 invoke / handle），main 才把排隊的文件送出；原本的空白分頁由 `openFileInTab` 移除。初始化以 ref 保護，避免 React StrictMode 重跑；main 快取每個視窗的啟動結果並在關閉時清除。
 - 從 Finder 一次開啟多個檔案時都開在同一個視窗的不同分頁：第一個視窗建立前 (`initialWindowCreated` 為 false) 收到的 `open-file` 都先進 `coldStartPaths`，不能只看 `app.isReady()`，否則 ready 之後、視窗建立之前到達的檔案會各自開新視窗。
 - 分頁右鍵「開啟在新視窗」是「移動」：`moveTabToNewWindow` 把分頁的 snote 內容、路徑、dirty 狀態與 kind 經 `window:moveTab` 交給 main 開新視窗（新視窗以 `openDocumentPayload` + `restoreDirtyAfterLoad` 還原），再從原視窗移除該分頁；原視窗只剩它一個分頁時直接關閉原視窗。未命名分頁也可以移動。
@@ -126,12 +126,12 @@ Cmd+F 尋找、Opt+Cmd+F 尋找並取代、Cmd+G / Shift+Cmd+G 下一個／上�
 
 **右鍵選單與文字轉換 (`src/renderer/src/context-menu/`)**
 
-命令清單集中在 `commands.ts` 的 `MENU_COMMANDS`：簡轉繁（`opencc-js`）、半形標點轉全形、清除格式、移除超連結（命令 key 仍是舊名 `stripLinksAndCitations`，保留使用者自訂的順序與名稱）、段落／分行轉換、字數統計、拼音查詢（`pinyin-pro`）、嘸蝦米查碼、Google 搜尋，以及中英互譯（透過 main 端 `openrouter.ts` 的 `ai:run` 呼叫 OpenRouter，需在偏好設定的 API Keys 填金鑰；結果一律取代選取文字）。使用者可在偏好設定「右鍵選單」頁調整順序、顯示與名稱、插入分隔線，存在 `preferences.menuCommands`；新增命令時 `reconcileMenuCommands` 會把它插到原本順序中的相鄰位置。部分命令也能從 macOS 應用選單（編輯 → ...）叫出，兩者透過 `window.dispatchEvent(new CustomEvent('simple-note:command', ...))` 統一處理。右鍵選單開啟後會用 `useLayoutEffect` 量測尺寸並把位置夾進可視範圍，過長時靠 CSS `max-height` + `overflow-y` 捲動。
+命令清單集中在 `commands.ts` 的 `MENU_COMMANDS`：簡轉繁（`opencc-js`）、半形標點轉全形、清除格式、移除超連結（命令 key 仍是舊名 `stripLinksAndCitations`，保留使用者自訂的順序與名稱）、段落／分行轉換、字數統計、拼音查詢（`pinyin-pro`）、嘸蝦米查碼、Google 搜尋，以及中英互譯（透過 main 端 `openrouter.ts` 的 `ai:run` 呼叫 OpenRouter，需在偏好設定的 API Keys 填金鑰；結果一律取代選取文字）。使用者可在偏好設定「右鍵選單」頁調整順序、顯示與名稱、插入分隔線，存在 `preferences.menuCommands`；新增命令時 `reconcileMenuCommands` 會把它插到原本順序中的相鄰位置。部分命令也能從 macOS 應用選單（編輯 → ...）叫出：`App.tsx` 送出 `window.dispatchEvent(new CustomEvent('simple-note:command', ...))`，由 `ContextMenu.tsx` 接收；每個分頁各有一個 ContextMenu，只有作用中分頁（以 `.document-view` 的 `data-tab-id` 比對）會執行。右鍵選單開啟後會用 `useLayoutEffect` 量測尺寸並把位置夾進可視範圍，過長時靠 CSS `max-height` + `overflow-y` 捲動。
 
 **樣式與排版**
 
 - 全域樣式：`src/renderer/src/theme.css`、`editor.css`。版面寬度／行高／段落間距／清單符號間距／頂端 padding 都是 CSS 變數，由 `App.tsx` 從 preferences 動態設定（`--page-width`、`--line-height`、`--paragraph-spacing`、`--list-marker-gap`、`--top-padding`）。
 - 版面寬度、段落間距、清單符號間距、上方留白與標題大小的滑桿在「微調面板」(`preferences/TweaksPanel.tsx`，應用程式選單 → 微調面板⋯，沒有快捷鍵)，不在偏好設定裡。面板是沒有遮罩的浮動 div，拖曳標題列移動、CSS `resize: both` 縮放，滑桿用 auto-fill grid 隨寬度換欄；改動即時寫入 store 並 `prefs.set` 存檔，不走取消／確定。偏好設定面板因此只在按「確定」時寫回它自己管的欄位 (右鍵選單、API Keys)，避免舊 draft 蓋掉微調面板的改動。新增空白筆記的第一行一律是內文。
 - 「清單符號間距」對應 `listMarkerGap`（預設 4 px，範圍 0～32 px），套用至 Toggle、項目符號、編號與核取方塊。Toggle 的箭頭寬度由父 `.bn-block` 定義 `--sn-toggle-button-size: 24px`，直接子 `.bn-block-group` 的縮排為箭頭寬度加上 `--list-marker-gap`，讓內文與標題文字保持對齊；不可只調整標題的 gap 而保留預設 24 px 子區塊縮排。一般清單的子區塊縮排維持原樣。
-- 視窗使用 `titleBarStyle: 'hiddenInset'`，拖曳視窗靠分頁列 `.tab-bar` 的 `-webkit-app-region: drag`（互動元件各自設 `no-drag`）；第一個窗格的分頁列 (`.clear-traffic-lights`) 左側固定讓出 78px 給紅綠燈按鈕。`theme.css` 裡的 `.drag-bar` 樣式已沒有元件使用。
+- 視窗使用 `titleBarStyle: 'hiddenInset'`，拖曳視窗靠分頁列 `.tab-bar` 的 `-webkit-app-region: drag`（互動元件各自設 `no-drag`）；第一個窗格的分頁列 (`.clear-traffic-lights`) 左側固定讓出 78px 給紅綠燈按鈕。
 - 顏色以 `theme.css` `:root` 的 CSS 變數定義，深色模式跟隨系統 `prefers-color-scheme`；試算表另有自己的色票變數（`sheet/sheet.css`）。

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useStore, Tab } from '../store';
+import { useShallow } from 'zustand/react/shallow';
+import { useStore, Tab, fileNameFromPath } from '../store';
 import { getDocumentView } from '../DocumentView';
 import { createNewTab, stageTabForPaneMove, closeTabWithChecks, moveTabToNewWindow } from '../fileActions';
 import { isSnotePath, withMarkdownExt, withSnoteExt } from '../noteFormat';
@@ -37,13 +38,17 @@ export function TabBar({
   onTabDragOverPane,
   onTabDragEnd,
 }: TabBarProps): JSX.Element {
-  const tabs = useStore((s) => {
-    const pane = s.panes.find((p) => p.id === paneId);
-    if (!pane) return [];
-    return pane.tabIds
-      .map((id) => s.tabs.find((t) => t.id === id))
-      .filter((t): t is Tab => !!t);
-  });
+  // Shallow-compared: the selector builds a new array each time, which would
+  // otherwise re-render every tab bar on any store change.
+  const tabs = useStore(
+    useShallow((s) => {
+      const pane = s.panes.find((p) => p.id === paneId);
+      if (!pane) return [];
+      return pane.tabIds
+        .map((id) => s.tabs.find((t) => t.id === id))
+        .filter((t): t is Tab => !!t);
+    })
+  );
   const activeTabId = useStore(
     (s) => s.panes.find((p) => p.id === paneId)?.activeTabId ?? s.activeTabId
   );
@@ -117,7 +122,12 @@ export function TabBar({
     const ext = tab.filePath?.match(/\.[^./]+$/)?.[0] ?? '';
     let name = input.trim();
     if (ext && name.toLowerCase().endsWith(ext.toLowerCase())) name = name.slice(0, -ext.length).trim();
-    if (!name || name === tab.fileName.replace(/\.csv$/i, '')) return;
+    // The tab name keeps some extensions (.csv, .txt); compare without it.
+    const current =
+      ext && tab.fileName.toLowerCase().endsWith(ext.toLowerCase())
+        ? tab.fileName.slice(0, -ext.length)
+        : tab.fileName;
+    if (!name || name === current) return;
     if (/[/:]/.test(name)) {
       window.alert('名稱不能包含「/」或「:」。');
       return;
@@ -132,11 +142,7 @@ export function TabBar({
       window.alert(r.reason === 'exists' ? `同一個資料夾內已有「${name}${ext}」。` : '無法重新命名檔案。');
       return;
     }
-    const base = r.path.split('/').pop()!;
-    updateTab(tab.id, {
-      filePath: r.path,
-      fileName: /\.csv$/i.test(base) ? base : base.replace(/\.[^.]+$/, ''),
-    });
+    updateTab(tab.id, { filePath: r.path, fileName: fileNameFromPath(r.path, tab.kind) });
   }, []);
 
   const openContext = useCallback(

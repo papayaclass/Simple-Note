@@ -8,11 +8,10 @@ import {
   setResolvedImage,
 } from './noteDir';
 
-// In-session image block. The image is held as a data URL in the `src` prop and
-// only lives in memory: there is deliberately NO `toExternalHTML`/`parse`, so
-// `blocksToMarkdownLossy()` drops it on save — the document keeps its text and
-// discards images (by design). The block survives JSON serialization, so it is
-// preserved when switching columns within a session.
+// Image block. `src` is either an absolute / note-relative file path (dragged in
+// from Finder) or a data URL (pasted). `.snote` keeps both. Markdown keeps only
+// file-path images (as `![](path)`); a data-URL image is dropped from a `.md`
+// save, which is why closing such a note offers to convert it to `.snote`.
 //
 // Interactions, all self-contained in ImageBlockView:
 //   • click the image       → select it (8 resize handles appear)

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { Editor, EditorHandle } from './editor/Editor';
 import { attachMarquee } from './editor/marquee';
 import { useStore } from './store';
@@ -41,10 +41,6 @@ export function getDocumentView(id: string): DocumentViewHandle | undefined {
   return registry.get(id);
 }
 
-export function allDocumentViews(): Array<[string, DocumentViewHandle]> {
-  return [...registry.entries()];
-}
-
 // Tab surfaces other than DocumentView (the spreadsheet view) register the same
 // handle so save / close / pane-move flows treat every tab alike. The returned
 // cleanup only unregisters its own handle: when a tab switches between a note
@@ -63,8 +59,9 @@ interface Props {
 
 // One open document: a single BlockNote editor. Mounted once per tab and kept
 // in the DOM (hidden when inactive) so each tab keeps its own undo history,
-// caret and scroll position.
-export function DocumentView({ tabId, active }: Props): JSX.Element {
+// caret and scroll position. Memoised: the app shell re-renders on every pane
+// resize tick and tab change, none of which concern an individual document.
+export const DocumentView = memo(function DocumentView({ tabId, active }: Props): JSX.Element {
   const filePath = useStore((s) => s.tabs.find((t) => t.id === tabId)?.filePath ?? null);
   const blankFirstLineFormat = useStore(
     (s) => s.tabs.find((t) => t.id === tabId)?.blankFirstLineFormat ?? 'paragraph'
@@ -328,7 +325,7 @@ export function DocumentView({ tabId, active }: Props): JSX.Element {
       </div>
     </div>
   );
-}
+});
 
 // Concatenate the inline text of a block's content array.
 function inlineText(content: unknown): string {
@@ -366,10 +363,17 @@ function sanitizeFileName(s: string): string {
     .slice(0, 100);
 }
 
-// BlockNote always carries at least one paragraph; "empty" means no meaningful
-// inline text across any block.
+// Blocks that are content by themselves, without any inline text.
+const CONTENT_BLOCK_TYPES = new Set(['image', 'divider', 'table']);
+
+// BlockNote always carries at least one paragraph; "empty" means no text in any
+// block (nested ones included) and no image / divider / table. This decides
+// whether an untitled note may close without a save prompt, so it must not
+// miss anything the user would lose.
 export function docHasContent(blocks: readonly unknown[]): boolean {
-  for (const b of blocks as Array<{ content?: unknown }>) {
+  for (const b of blocks as Array<{ type?: string; content?: unknown; children?: unknown }>) {
+    if (b.type && CONTENT_BLOCK_TYPES.has(b.type)) return true;
+    if (Array.isArray(b.children) && docHasContent(b.children)) return true;
     const c = b.content;
     if (typeof c === 'string') {
       if (c.length > 0) return true;

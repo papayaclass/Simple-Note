@@ -85,7 +85,7 @@ function nextPaneId(): string {
   return `pane-${paneCounter}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-function fileNameFromPath(path: string | null, kind: TabKind = 'editor'): string {
+export function fileNameFromPath(path: string | null, kind: TabKind = 'editor'): string {
   if (!path) return kind === 'sheet' ? '未命名試算表' : '未命名筆記';
   return path.split('/').pop()!.replace(/\.(md|snote|ssheet)$/i, '');
 }
@@ -159,7 +159,6 @@ interface AppState {
   preferences: Preferences;
   prefsPanelOpen: boolean;
   tweaksPanelOpen: boolean;
-  contextMenuOpen: boolean;
   wordCountPopover: { count: number; chars: number; charsNoSpace: number; chinese: number } | null;
 
   // Tab actions
@@ -167,7 +166,6 @@ interface AppState {
   closeTab: (id: string) => void;
   setActiveTab: (id: string) => void;
   setActivePane: (id: string) => void;
-  reorderTabs: (from: number, to: number) => void;
   reorderTabsInPane: (paneId: string, from: number, to: number) => void;
   moveTabToPane: (tabId: string, paneId: string, index: number) => void;
   splitTabBesidePane: (tabId: string, anchorPaneId: string, side: 'left' | 'right') => void;
@@ -181,7 +179,6 @@ interface AppState {
 
   // Global view/state
   toggleMathMode: () => void;
-  setMathMode: (on: boolean) => void;
   setPreferences: (p: Partial<Preferences>) => void;
   setPrefsPanelOpen: (open: boolean) => void;
   setTweaksPanelOpen: (open: boolean) => void;
@@ -201,7 +198,6 @@ export const useStore = create<AppState>((set) => ({
   preferences: DEFAULT_PREFS,
   prefsPanelOpen: false,
   tweaksPanelOpen: false,
-  contextMenuOpen: false,
   wordCountPopover: null,
 
   addTab: (opts, paneId) => {
@@ -284,15 +280,6 @@ export const useStore = create<AppState>((set) => ({
       const pane = s.panes.find((p) => p.id === id);
       if (!pane) return s;
       return { activePaneId: pane.id, activeTabId: pane.activeTabId };
-    }),
-  reorderTabs: (from, to) =>
-    set((s) => {
-      if (from === to || from < 0 || from >= s.tabs.length) return s;
-      const tabs = [...s.tabs];
-      const [moved] = tabs.splice(from, 1);
-      const target = to > from ? to - 1 : to;
-      tabs.splice(Math.max(0, Math.min(target, tabs.length)), 0, moved);
-      return { tabs };
     }),
   reorderTabsInPane: (paneId, from, to) =>
     set((s) => ({
@@ -388,17 +375,11 @@ export const useStore = create<AppState>((set) => ({
     set((s) => ({ tabs: s.tabs.map((t) => (t.id === id ? { ...t, ...patch } : t)) })),
   retargetTabs: (oldPath, newPath) =>
     set((s) => ({
-      tabs: s.tabs.map((t) => {
-        if (!t.filePath) return t;
-        if (t.filePath === oldPath) {
-          return { ...t, filePath: newPath, fileName: fileNameFromPath(newPath) };
-        }
-        if (t.filePath.startsWith(oldPath + '/')) {
-          const np = newPath + t.filePath.slice(oldPath.length);
-          return { ...t, filePath: np, fileName: fileNameFromPath(np) };
-        }
-        return t;
-      }),
+      tabs: s.tabs.map((t) =>
+        t.filePath === oldPath
+          ? { ...t, filePath: newPath, fileName: fileNameFromPath(newPath, t.kind) }
+          : t
+      ),
     })),
   setTabFile: (id, path) =>
     set((s) => ({
@@ -411,7 +392,6 @@ export const useStore = create<AppState>((set) => ({
   setTabDirty: (id, dirty) =>
     set((s) => ({ tabs: s.tabs.map((t) => (t.id === id ? { ...t, dirty } : t)) })),
   toggleMathMode: () => set((s) => ({ mathMode: !s.mathMode })),
-  setMathMode: (on) => set({ mathMode: on }),
   setPreferences: (p) => set((s) => ({ preferences: { ...s.preferences, ...p } })),
   setPrefsPanelOpen: (open) => set({ prefsPanelOpen: open }),
   setTweaksPanelOpen: (open) => set({ tweaksPanelOpen: open }),

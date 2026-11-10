@@ -20,13 +20,11 @@ import { SimpleNoteSideMenuController } from './sideMenu';
 import { SimpleNoteSlashMenu } from './slashMenu';
 import { BlankFirstLineFormat, useStore } from '../store';
 import { setEditorNoteDir, dirOf } from './noteDir';
-import { openFileInTab } from '../fileActions';
+import { OPENABLE_FILE_RE, openFileInTab } from '../fileActions';
 import { ContextMenu } from '../context-menu/ContextMenu';
 import { removeParagraphBreaks } from '../context-menu/removeParagraphBreaks';
 
 export interface EditorHandle {
-  serialize: () => string;
-  load: (json: string) => void;
   loadMarkdown: (md: string) => Promise<void>;
   asMarkdown: () => Promise<string>;
   // Raw BlockNote block tree — the payload of the `.snote` format, which keeps
@@ -37,7 +35,6 @@ export interface EditorHandle {
   focus: () => void;
   pastePlainText: () => void;
   removeParagraphBreaks: () => void;
-  hasFocus: () => boolean;
   editor: ReturnType<typeof useCreateBlockNote>;
 }
 
@@ -408,18 +405,6 @@ export function Editor({
   useEffect(() => {
     handleRef.current = {
       editor,
-      serialize: () => JSON.stringify(editor.document),
-      load: (json: string) => {
-        try {
-          const blocks = JSON.parse(json);
-          (editor.replaceBlocks as (a: unknown, b: unknown) => unknown)(
-            editor.document,
-            blocks
-          );
-        } catch {
-          // ignore
-        }
-      },
       loadMarkdown: async (md: string) => {
         if (md.trim() === '') {
           (editor.replaceBlocks as (a: unknown, b: unknown) => unknown)(
@@ -448,7 +433,6 @@ export function Editor({
       removeParagraphBreaks: () => {
         removeParagraphBreaks(editor);
       },
-      hasFocus: () => editorHasFocus(editor),
     };
   }, [blankFirstLineFormat, editor, handleRef]);
 
@@ -535,8 +519,8 @@ export function Editor({
 
   // Paste (Cmd+V) and Finder drag-drop of images. Listen on the editor host in
   // the capture phase so we intercept before ProseMirror's own paste/drop, then
-  // stopPropagation+preventDefault to suppress the default handling. Each column
-  // has its own host, so the event is naturally scoped to the column it hit.
+  // stopPropagation+preventDefault to suppress the default handling. Each tab
+  // has its own host, so the event is naturally scoped to the editor it hit.
   useEffect(() => {
     const host = containerRef.current;
     if (!host) return;
@@ -630,7 +614,7 @@ export function Editor({
       e.preventDefault();
       e.stopPropagation();
 
-      // md/txt dropped from Finder open as new tabs (storage location unchanged).
+      // Documents dropped from Finder open as new tabs (storage location unchanged).
       for (const p of textPaths) {
         void window.api.file.read(p).then((r) => {
           if (r.ok) void openFileInTab(p, r.content ?? '');
@@ -800,12 +784,6 @@ function transformSelectedBlocks(
   });
 }
 
-function editorHasFocus(editor: ReturnType<typeof useCreateBlockNote>): boolean {
-  return (
-    editor as unknown as { _tiptapEditor: { view: { hasFocus: () => boolean } } }
-  )._tiptapEditor.view.hasFocus();
-}
-
 function pastePlainText(editor: ReturnType<typeof useCreateBlockNote>): void {
   const text = window.api.clipboard.readText();
   if (!text) return;
@@ -835,13 +813,13 @@ function imageFilesFrom(data: DataTransfer | null): File[] {
   });
 }
 
-// Pull md/txt files (with their Finder paths) out of a drag payload. Electron
+// Pull document files (with their Finder paths) out of a drag payload. Electron
 // exposes dropped file paths through webUtils, bridged from preload.
 function textNoteFilesFrom(data: DataTransfer | null): string[] {
   if (!data) return [];
   return Array.from(data.files)
     .map((f) => filePathFor(f))
-    .filter((p) => Boolean(p) && /\.(md|txt)$/i.test(p));
+    .filter((p) => Boolean(p) && OPENABLE_FILE_RE.test(p));
 }
 
 function filePathFor(file: File): string {

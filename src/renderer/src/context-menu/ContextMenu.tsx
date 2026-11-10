@@ -272,6 +272,27 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
     },
   };
 
+  // The same commands from the app menu (編輯 → …), which App.tsx forwards as a
+  // `simple-note:command` event. Every open tab has its own ContextMenu, so only
+  // the one belonging to the active tab acts on it.
+  const menuActionsRef = useRef<Record<string, () => void>>({});
+  menuActionsRef.current = {
+    s2t: () => transformSelection(simplifiedToTraditional),
+    half2full: () => transformSelection(halfToFullPunctuation),
+    'clear-format': clearFormatting,
+    'word-count': doWordCount,
+  };
+  useEffect(() => {
+    const onCommand = (e: Event): void => {
+      const root = containerRef?.current;
+      const tabId = root?.closest('[data-tab-id]')?.getAttribute('data-tab-id');
+      if (!tabId || tabId !== useStore.getState().activeTabId) return;
+      menuActionsRef.current[(e as CustomEvent<string>).detail]?.();
+    };
+    window.addEventListener('simple-note:command', onCommand);
+    return () => window.removeEventListener('simple-note:command', onCommand);
+  }, [containerRef]);
+
   const labelByKey = new Map(MENU_COMMANDS.map((c) => [c.key, c]));
 
   // Built-in commands rendered in the user-defined order, hidden ones filtered

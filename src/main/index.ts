@@ -1,7 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, screen } from 'electron';
-import { dirname, join } from 'node:path';
+import { dirname, extname, join } from 'node:path';
 import { access, readFile, rename, writeFile } from 'node:fs/promises';
-import { extname } from 'node:path';
 import Store from 'electron-store';
 import { buildMenu } from './menu.js';
 import { getPreferences, setPreference, setAllPreferences } from './preferences.js';
@@ -40,6 +39,36 @@ const SHEET_FILTERS = [
 // Save dialogs offer the formats matching the suggested file's kind.
 function filtersFor(name: string | undefined): typeof NOTE_FILTERS {
   return name && /\.(ssheet|csv)$/i.test(name) ? SHEET_FILTERS : NOTE_FILTERS;
+}
+
+// Write a file, reporting a failure (read-only folder, missing volume, full
+// disk…) to the user instead of rejecting the IPC call, which the renderer
+// would otherwise swallow so a failed save looked like nothing happened.
+async function writeFileReporting(path: string, data: string | Buffer): Promise<boolean> {
+  try {
+    if (typeof data === 'string') await writeFile(path, data, 'utf-8');
+    else await writeFile(path, data);
+    return true;
+  } catch (err) {
+    console.error('[save] failed:', path, err);
+    dialog.showErrorBox(
+      '無法儲存檔案',
+      `「${path}」寫入失敗：${err instanceof Error ? err.message : String(err)}`
+    );
+    return false;
+  }
+}
+
+// `base + ext` if that path is free, otherwise "base 2.ext", "base 3.ext"…
+async function freePath(base: string, ext: string): Promise<string> {
+  for (let n = 1; ; n += 1) {
+    const candidate = n === 1 ? base + ext : `${base} ${n}${ext}`;
+    try {
+      await access(candidate);
+    } catch {
+      return candidate;
+    }
+  }
 }
 
 interface WindowBounds {
@@ -283,6 +312,15 @@ function createWindow(openPath?: string): BrowserWindow {
     return { action: 'deny' };
   });
 
+  // The window only ever shows the app itself. Without this, anything that
+  // navigates the page (a file dropped outside a drop target, a plain link)
+  // would replace the app and throw away every unsaved tab.
+  win.webContents.on('will-navigate', (e, url) => {
+    if (url === win.webContents.getURL()) return; // dev-server reload
+    e.preventDefault();
+    if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
+  });
+
   if (process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(process.env['ELECTRON_RENDERER_URL']);
   } else {
@@ -309,15 +347,20 @@ function createWindow(openPath?: string): BrowserWindow {
     if (forceClose) return;
     e.preventDefault();
     void (async () => {
-      // Give the renderer a chance to ask about Markdown-incompatible
-      // formatting (and convert those notes to .snote) before the dirty check.
-      await win.webContents.executeJavaScript(
-        'window.__simpleNote_beforeClose?.() ?? true'
-      );
-      if (win.isDestroyed()) return;
-      const dirty = await win.webContents.executeJavaScript(
-        'window.__simpleNote_isDirty?.() ?? false'
-      );
+      let dirty = false;
+      try {
+        // Give the renderer a chance to ask about Markdown-incompatible
+        // formatting (and convert those notes to .snote) before the dirty check.
+        await win.webContents.executeJavaScript('window.__simpleNote_beforeClose?.() ?? true');
+        if (win.isDestroyed()) return;
+        dirty = await win.webContents.executeJavaScript('window.__simpleNote_isDirty?.() ?? false');
+      } catch (err) {
+        // A crashed or unresponsive renderer can't answer; don't leave a window
+        // that can never be closed.
+        console.error('[close] renderer check failed:', err);
+        if (!win.isDestroyed()) proceedClose();
+        return;
+      }
       if (!dirty) {
         proceedClose();
         return;
@@ -331,7 +374,9 @@ function createWindow(openPath?: string): BrowserWindow {
         detail: '若不儲存，所有未儲存的變更會遺失。',
       });
       if (result.response === 0) {
-        const saved = await win.webContents.executeJavaScript('window.__simpleNote_save?.()');
+        const saved = await win.webContents
+          .executeJavaScript('window.__simpleNote_save?.()')
+          .catch(() => false);
         if (saved) {
           proceedClose();
         } else {
@@ -469,7 +514,7 @@ app.whenReady().then(() => {
   ipcMain.handle('window:saveAll', async () => {
     for (const win of BrowserWindow.getAllWindows()) {
       if (win.isDestroyed()) continue;
-      await win.webContents.executeJavaScript('window.__simpleNote_save?.()');
+      await win.webContents.executeJavaScript('window.__simpleNote_save?.()').catch(() => false);
     }
   });
 
@@ -500,7 +545,7 @@ app.whenReady().then(() => {
         if (r.canceled || !r.filePath) return { ok: false };
         path = r.filePath;
       }
-      await writeFile(path, contentForPath(path, contents), 'utf-8');
+      if (!(await writeFileReporting(path, contentForPath(path, contents)))) return { ok: false };
       win?.setRepresentedFilename(path);
       win?.setTitle(path.split('/').pop() ?? 'Simple Note');
       win?.setDocumentEdited(false);
@@ -542,7 +587,9 @@ app.whenReady().then(() => {
       ? await dialog.showSaveDialog(win, saveOptions)
       : await dialog.showSaveDialog(saveOptions);
     if (r.canceled || !r.filePath) return { ok: false };
-    await writeFile(r.filePath, contentForPath(r.filePath, contents), 'utf-8');
+    if (!(await writeFileReporting(r.filePath, contentForPath(r.filePath, contents)))) {
+      return { ok: false };
+    }
     return { ok: true, path: r.filePath };
   });
 
@@ -562,18 +609,20 @@ app.whenReady().then(() => {
       ? await dialog.showSaveDialog(win, saveOptions)
       : await dialog.showSaveDialog(saveOptions);
     if (r.canceled || !r.filePath) return { ok: false };
-    await writeFile(r.filePath, markdown, 'utf-8');
+    if (!(await writeFileReporting(r.filePath, markdown))) return { ok: false };
     return { ok: true, path: r.filePath };
   });
 
   // Convert a Markdown note that gained Markdown-incompatible formatting into a
   // `.snote` beside it (a `.csv` sheet with formulas / styling into a
-  // `.ssheet`); the original goes to the Trash (recoverable).
+  // `.ssheet`); the original goes to the Trash (recoverable). An unrelated file
+  // already using the new name is never overwritten: the copy gets a numbered
+  // name instead.
   ipcMain.handle('file:convertToSnote', async (_e, path: string, snote: string) => {
     try {
       const target = /\.csv$/i.test(path)
-        ? path.replace(/\.csv$/i, '') + '.ssheet'
-        : path.replace(/\.(md|txt)$/i, '') + '.snote';
+        ? await freePath(path.replace(/\.csv$/i, ''), '.ssheet')
+        : await freePath(path.replace(/\.(md|txt)$/i, ''), '.snote');
       await writeFile(target, snote, 'utf-8');
       if (target !== path) await shell.trashItem(path);
       return { ok: true, path: target };
@@ -647,8 +696,7 @@ app.whenReady().then(() => {
     return r.response;
   });
 
-  // Save an in-editor image (a data URL) to disk. Images are never persisted in
-  // the .md, so this is the only way to keep one — invoked from the preview
+  // Save an in-editor image (a data URL) to disk — invoked from the preview
   // lightbox's "另存新檔…" command.
   ipcMain.handle('file:saveImage', async (e, dataUrl: string) => {
     const win = BrowserWindow.fromWebContents(e.sender);
@@ -663,7 +711,7 @@ app.whenReady().then(() => {
       ? await dialog.showSaveDialog(win, saveOptions)
       : await dialog.showSaveDialog(saveOptions);
     if (r.canceled || !r.filePath) return { ok: false };
-    await writeFile(r.filePath, Buffer.from(m[2]!, 'base64'));
+    if (!(await writeFileReporting(r.filePath, Buffer.from(m[2]!, 'base64')))) return { ok: false };
     return { ok: true, path: r.filePath };
   });
 

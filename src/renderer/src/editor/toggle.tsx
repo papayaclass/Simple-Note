@@ -91,8 +91,8 @@ export const Toggle = createReactBlockSpec(
 );
 
 // Keyboard behaviour, registered as a BlockNote extension in Editor.tsx. Both
-// handlers return false when the cursor isn't in a toggle, so they chain after
-// the other Enter handlers (e.g. the timer extension).
+// handlers return false when the cursor isn't in a toggle, so they chain with
+// the other Enter handlers (e.g. the heading one in Editor.tsx).
 export function createToggleKeyboardExtension() {
   return createBlockNoteExtension({
     key: 'simple-note-toggle-keys',

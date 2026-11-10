@@ -150,6 +150,12 @@ function tokenize(src: string): Tok[] {
       out.push({ t: 'str', v: s });
       continue;
     }
+    // Left behind by rewriteRefs when a referenced row / column was deleted.
+    if (src.startsWith('#REF!', i)) {
+      out.push({ t: 'name', v: '#REF!' });
+      i += 5;
+      continue;
+    }
     if (/[A-Za-z_$]/.test(normalized)) {
       const m = /^[A-Za-z_$][A-Za-z0-9_$.]*/.exec(src.slice(i))!;
       out.push({ t: 'name', v: m[0] });
@@ -253,6 +259,7 @@ class Parser {
       return n;
     }
     const name = t.v;
+    if (name === '#REF!') return { k: 'lit', v: ERR_REF };
     if (this.peekOp('(')) {
       this.i += 1;
       const args: Node[] = [];
@@ -649,9 +656,6 @@ const FUNCTIONS: Record<string, Fn> = {
 };
 FUNCTIONS.CONCATENATE = FUNCTIONS.CONCAT!;
 
-// Names offered in the formula hint / used to validate input.
-export const FUNCTION_NAMES = [...Object.keys(FUNCTIONS), 'IF', 'IFERROR'].sort();
-
 // Evaluates cells lazily with memoisation and cycle detection. Build a new one
 // whenever the sheet changes.
 export function createEvaluator(src: SheetSource): (r: number, c: number) => Val {
@@ -814,7 +818,7 @@ function rewriteRefs(
     .split(/("(?:[^"]|"")*")/)
     .map((part, i) => {
       if (i % 2 === 1) return part; // string literal
-      let s = part.replace(CELL_OR_RANGE_RE, (m, a1, c1, b1, r1, a2, c2, b2, r2) => {
+      let s = part.replace(CELL_OR_RANGE_RE, (_m, a1, c1, b1, r1, a2, c2, b2, r2) => {
         const s1 = map(Number(r1) - 1, colIndex(c1), !!b1, !!a1, c2 ? 'start' : 'single');
         if (!c2) return s1 ? refText(a1, s1.c, b1, s1.r) : '#REF!';
         const s2 = map(Number(r2) - 1, colIndex(c2), !!b2, !!a2, 'end');
@@ -822,7 +826,7 @@ function rewriteRefs(
         return `${refText(a1, s1.c, b1, s1.r)}:${refText(a2, s2.c, b2, s2.r)}`;
       });
       if (mapCol) {
-        s = s.replace(COL_RANGE_RE, (m, a1, c1, a2, c2) => {
+        s = s.replace(COL_RANGE_RE, (_m, a1, c1, a2, c2) => {
           const x = mapCol(colIndex(c1), !!a1, 'start');
           const y = mapCol(colIndex(c2), !!a2, 'end');
           if (x === null || y === null || y < x) return '#REF!';
