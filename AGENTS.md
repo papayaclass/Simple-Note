@@ -126,7 +126,7 @@ Cmd+F 尋找、Opt+Cmd+F 尋找並取代、Cmd+G / Shift+Cmd+G 下一個／上�
 
 **右鍵選單與文字轉換 (`src/renderer/src/context-menu/`)**
 
-命令清單集中在 `commands.ts` 的 `MENU_COMMANDS`：簡轉繁（`opencc-js`）、半形標點轉全形、清除格式、移除超連結（命令 key 仍是舊名 `stripLinksAndCitations`，保留使用者自訂的順序與名稱）、段落／分行轉換、字數統計、拼音查詢（`pinyin-pro`）、嘸蝦米查碼、Google 搜尋，以及中英互譯（透過 main 端 `openrouter.ts` 的 `ai:run` 呼叫 OpenRouter，需在偏好設定的 API Keys 填金鑰；結果一律取代選取文字）。使用者可在偏好設定「右鍵選單」頁調整順序、顯示與名稱、插入分隔線，存在 `preferences.menuCommands`；新增命令時 `reconcileMenuCommands` 會把它插到原本順序中的相鄰位置。部分命令也能從 macOS 應用選單（編輯 → ...）叫出：`App.tsx` 送出 `window.dispatchEvent(new CustomEvent('simple-note:command', ...))`，由 `ContextMenu.tsx` 接收；每個分頁各有一個 ContextMenu，只有作用中分頁（以 `.document-view` 的 `data-tab-id` 比對）會執行。右鍵選單開啟後會用 `useLayoutEffect` 量測尺寸並把位置夾進可視範圍，過長時靠 CSS `max-height` + `overflow-y` 捲動。
+命令清單集中在 `commands.ts` 的 `MENU_COMMANDS`（`transforms.ts` 內的 `opencc-js`、`pinyin-pro` 與嘸蝦米字典都以動態 `import()` 在第一次使用時才載入，不要改回靜態 import，否則主程式會多出約 1.4 MB）：簡轉繁（`opencc-js`）、半形標點轉全形、清除格式、移除超連結（命令 key 仍是舊名 `stripLinksAndCitations`，保留使用者自訂的順序與名稱）、段落／分行轉換、字數統計、拼音查詢（`pinyin-pro`）、嘸蝦米查碼、Google 搜尋，以及中英互譯（透過 main 端 `openrouter.ts` 的 `ai:run` 呼叫 OpenRouter，需在偏好設定的 API Keys 填金鑰；結果一律取代選取文字）。使用者可在偏好設定「右鍵選單」頁調整順序、顯示與名稱、插入分隔線，存在 `preferences.menuCommands`；新增命令時 `reconcileMenuCommands` 會把它插到原本順序中的相鄰位置。部分命令也能從 macOS 應用選單（編輯 → ...）叫出：`App.tsx` 送出 `window.dispatchEvent(new CustomEvent('simple-note:command', ...))`，由 `ContextMenu.tsx` 接收；每個分頁各有一個 ContextMenu，只有作用中分頁（以 `.document-view` 的 `data-tab-id` 比對）會執行。右鍵選單開啟後會用 `useLayoutEffect` 量測尺寸並把位置夾進可視範圍，過長時靠 CSS `max-height` + `overflow-y` 捲動。
 
 **樣式與排版**
 

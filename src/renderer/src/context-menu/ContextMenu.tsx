@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   halfToFullPunctuation,
-  simplifiedToTraditional,
+  loadSimplifiedToTraditional,
   toPinyin,
   toBoshiamy,
   BoshiamyEntry,
@@ -206,20 +206,23 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
     setWordCount({ count: wc.words, chars: wc.chars, charsNoSpace: wc.charsNoSpace, chinese: wc.chinese });
   };
 
-  const doPinyin = () => {
-    const text = (window.getSelection()?.toString() ?? '').trim();
-    if (!text) return;
-    setPinyinState({ original: text, pinyin: toPinyin(text) });
-    close();
+  const doS2T = async () => {
+    transformSelection(await loadSimplifiedToTraditional());
   };
 
-  const doBoshiamy = () => {
+  const doPinyin = async () => {
     const text = (window.getSelection()?.toString() ?? '').trim();
     if (!text) return;
-    const entries = toBoshiamy(text);
-    if (entries.length === 0) return;
-    setBoshiamyState({ entries });
     close();
+    setPinyinState({ original: text, pinyin: await toPinyin(text) });
+  };
+
+  const doBoshiamy = async () => {
+    const text = (window.getSelection()?.toString() ?? '').trim();
+    if (!text) return;
+    close();
+    const entries = await toBoshiamy(text);
+    if (entries.length > 0) setBoshiamyState({ entries });
   };
 
   // Open a web search for the selected text. window.open is intercepted by the
@@ -234,7 +237,7 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
   // Per-command click handlers, keyed to match the registry in commands.ts.
   const handlers: Record<string, () => void> = {
     s2t: () => {
-      transformSelection(simplifiedToTraditional);
+      void doS2T();
       close();
     },
     half2full: () => {
@@ -261,8 +264,8 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
       doWordCount();
       close();
     },
-    pinyin: doPinyin,
-    boshiamy: doBoshiamy,
+    pinyin: () => void doPinyin(),
+    boshiamy: () => void doBoshiamy(),
     googleSearch: () => {
       searchSelection((q) => `https://www.google.com/search?q=${q}`);
       close();
@@ -277,7 +280,7 @@ export function ContextMenu({ editor, containerRef }: Props): JSX.Element | null
   // the one belonging to the active tab acts on it.
   const menuActionsRef = useRef<Record<string, () => void>>({});
   menuActionsRef.current = {
-    s2t: () => transformSelection(simplifiedToTraditional),
+    s2t: () => void doS2T(),
     half2full: () => transformSelection(halfToFullPunctuation),
     'clear-format': clearFormatting,
     'word-count': doWordCount,

@@ -1,17 +1,22 @@
-import * as OpenCC from 'opencc-js';
-import { pinyin } from 'pinyin-pro';
-import boshiamyData from './boshiamy-data';
+// The conversion dictionaries (opencc-js, pinyin-pro and the 嘸蝦米 table) are
+// several MB of script. They are imported on first use instead of with the app,
+// so every window opens without parsing data most sessions never touch.
 
-const s2tConverter = OpenCC.Converter({ from: 'cn', to: 'twp' });
+let s2tConverter: Promise<(text: string) => string> | null = null;
 
-export function simplifiedToTraditional(text: string): string {
-  return s2tConverter(text);
+// Resolves to the 簡體 → 繁體 (台灣用語) converter.
+export function loadSimplifiedToTraditional(): Promise<(text: string) => string> {
+  s2tConverter ??= import('opencc-js').then(
+    (OpenCC) => OpenCC.Converter({ from: 'cn', to: 'twp' }) as (text: string) => string
+  );
+  return s2tConverter;
 }
 
 // Convert Chinese characters to Hanyu Pinyin without tone marks. Syllables are
 // space-separated; non-Chinese characters are kept as-is (nonZh: 'consecutive'
 // groups runs of non-Chinese text into single segments rather than per-char).
-export function toPinyin(text: string): string {
+export async function toPinyin(text: string): Promise<string> {
+  const { pinyin } = await import('pinyin-pro');
   const segments = pinyin(text, {
     toneType: 'none',
     type: 'array',
@@ -26,7 +31,7 @@ export function toPinyin(text: string): string {
 // flags in its ones digit (bitmask) and a display order group in the rest:
 //   weight % 10 : bit 1 = 最短碼, bit 2 = 推薦碼(建議), bit 4 = V/重複字根變體
 //   Math.trunc(weight / 10) : 顯示排序群組 (smaller shown first)
-const BOSHIAMY = boshiamyData as Record<string, Record<string, number>>;
+type BoshiamyTable = Record<string, Record<string, number>>;
 
 interface RankedCode {
   code: string; // lowercased
@@ -48,8 +53,8 @@ function byCanonical(a: RankedCode, b: RankedCode): number {
   return a.order - b.order || a.code.length - b.code.length || (a.code < b.code ? -1 : 1);
 }
 
-function lookupBoshiamy(char: string): BoshiamyEntry {
-  const codes = BOSHIAMY[char];
+function lookupBoshiamy(table: BoshiamyTable, char: string): BoshiamyEntry {
+  const codes = table[char];
   if (!codes) return { char, primary: null, alternatives: [] };
   const ranked: RankedCode[] = Object.entries(codes).map(([code, weight]) => ({
     code: code.toLowerCase(),
@@ -72,8 +77,9 @@ function lookupBoshiamy(char: string): BoshiamyEntry {
 // Look up each character of the selection (skipping whitespace). Surrogate
 // pairs are handled by iterating with the string iterator. Characters with no
 // entry come back with primary = null so the UI can show 「查無此碼」.
-export function toBoshiamy(text: string): BoshiamyEntry[] {
-  return [...text].filter((ch) => !/\s/.test(ch)).map((ch) => lookupBoshiamy(ch));
+export async function toBoshiamy(text: string): Promise<BoshiamyEntry[]> {
+  const table: BoshiamyTable = (await import('./boshiamy-data')).default;
+  return [...text].filter((ch) => !/\s/.test(ch)).map((ch) => lookupBoshiamy(table, ch));
 }
 
 const HALF_TO_FULL: Record<string, string> = {
