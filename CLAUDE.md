@@ -19,6 +19,7 @@ Simple Note 是一款 macOS 為主的極簡 Block 式筆記桌面應用，採用
 - App 圖示來源為 `/Users/papayastudio/Library/Mobile Documents/com~apple~CloudDocs/Images/Logos/Simple Note.png`。更換時先原樣複製到根目錄的 `Simple Note.png`，再執行 `npm run icons`；App 與其他文件關聯使用 `build/icons/icon.icns`；`.snote` 文件獨立使用已納入版控的 `build/document.icns`（macOS 一般白紙文件圖示），不要刪除其 `fileAssociations.icon` 設定，否則 electron-builder 會自動沿用 App 圖示，發布前需比對打包後資源，避免沿用舊圖示。
 - 指定 electron-builder 的 `CSC_NAME` 時使用 `Mu-Hua Wang (7Y3SNMCD34)`，不要加上 `Developer ID Application:` 前綴，否則 builder 會拒絕。正式 App 公證並 staple 後，需重新製作最終 DMG，確保其中包含已附票證的 App；DMG 先以 `hdiutil verify` 驗證，再簽章、公證與 staple。
 - 正式 Universal App 可用 `npm run build` 後接 `CSC_NAME='Mu-Hua Wang (7Y3SNMCD34)' npx electron-builder --dir --mac --universal` 產生，再以 `PapayaNotary` 分別公證 App 與最終 DMG。安裝時先完整移除或移走舊的 `/Applications/Simple Note.app` 再以 `ditto` 複製，並驗證安裝版與 DMG 內的 App 都通過 `codesign --verify --deep --strict`、`stapler validate` 與 Gatekeeper。DMG 簽章後不要再執行 `hdiutil verify`。
+- Electron 版本為 45（搭配 electron-vite 6、Vite 8、electron-builder 26），最低系統需求 macOS 13。Electron 42 起套件不再於安裝時自動下載執行檔，`package.json` 的 `postinstall` 會執行 `install-electron` 補上；`npm run dev` 出現 `Electron uninstall` 錯誤時手動執行 `npx install-electron` 即可。electron-builder 打包時會自行下載對應版本，不受影響。
 - 目前沒有測試框架、ESLint 或 Prettier 設定。`electron-vite build` 只負責轉譯與打包，不會執行 TypeScript 型別檢查；驗證或發布前需另行執行 `npx tsc --noEmit -p tsconfig.web.json` 與 `npx tsc --noEmit -p tsconfig.node.json`。
 
 **進程架構**
@@ -29,6 +30,8 @@ Simple Note 是一款 macOS 為主的極簡 Block 式筆記桌面應用，採用
 - `src/preload/index.ts`（編譯到 `out/preload/`）：唯一允許跨進程的橋接層。透過 `contextBridge.exposeInMainWorld('api', ...)` 把白名單 IPC 包成型別化的 `SimpleNoteAPI`。**新增任何 main 端能力時，要在 preload 的 `SimpleNoteAPI` 介面與 `api` 實作同時加上，否則 renderer 無法存取。** Renderer 的型別直接從 preload 匯入（`src/renderer/src/types.d.ts` 只 `import type { SimpleNoteAPI }`，外加 `window.__simpleNote_*` 幾個全域函式的宣告），不需要另外維護一份型別。
 - `src/renderer/`（React，編譯到 `out/renderer/`）：UI 與編輯器。使用 alias `@renderer/*` 指向 `src/renderer/`。
 - `sandbox: false`、`contextIsolation: true`、`nodeIntegration: false`。Renderer 嚴禁直接 require Node 模組；所有原生功能都要走 preload。
+- Electron 44 起 `clipboard` 模組只能在 main 使用，而且 `readText()`／`writeText()` 回傳 Promise。preload 不可再 `import { clipboard }`；`window.api.clipboard.readText()`／`writeText()` 經 `clipboard:readText`／`clipboard:writeText` 轉給 main，呼叫端一律要 `await`（或 `.then`）。
+- Electron 43 起對話框沒給 `defaultPath` 時固定從下載資料夾開始，不再由 macOS 記住上次的位置，所以「開啟…」把上次開檔的資料夾存在 `window-state` 的 `lastOpenDir`。
 
 **IPC 約定**
 
@@ -68,7 +71,7 @@ Renderer 每次存檔都同時算出兩種內容（`{ markdown, snote }`）交�
   - `registerDocumentView` 的 cleanup 要比對 handle 是否仍是自己：分頁從筆記切成試算表 (同一個 tab id) 時，新 view 可能先註冊、舊 view 後卸載。
   - Browser pane 模擬按鍵時 `e.code` 是空字串，快捷鍵用 `isKey()`：有 code 比 code，沒有才退回 `e.key`。
 - 驗證 UI：`.claude/launch.json` 的 `renderer-only` 只跑 Vite，沒有 preload，`window.api` 不存在會直接壞掉。可暫時在 `src/renderer/` 放一個 harness html，先用 inline script 塞假的 `window.api` (記下 `onOpenInTab` / `onMenu` 的 handler 以便從 console 開檔、送選單命令) 再載入 `./src/main.tsx`，測完刪除。
-- 驗證整個 App（含 main 端、多視窗、Finder 開檔）：`npx electron-builder --dir --mac --arm64 -c.mac.identity=null` 快速打包，`open -a "dist/mac-arm64/Simple Note.app" <檔案...> --args --remote-debugging-port=9555` 啟動後，用 Node 的 `fetch('http://127.0.0.1:9555/json')` + `WebSocket` 送 `Runtime.evaluate` 檢查 DOM 與操作。不要用 9333，那個 port 是 Simple Gmail 在用。App 在背景時 `focus()` / `blur()` 不會觸發事件（例如分頁重新命名的輸入框按 Enter 不會送出），測之前先用 System Events 把 App 切到前景。macOS 會把「偏好設定…」自動改名成「設定⋯」，用 System Events 點選單時要用改名後的文字。原生對話框（儲存提醒）可用 System Events 的 `sheet 1 of window 1` 讀文字與按按鈕，但存檔面板讀不到。分頁拖放可用 CDP 模擬：`Input.setInterceptDrags` 開啟後以 `Input.dispatchMouseEvent` 按住分頁並移動，從 `Input.dragIntercepted` 取得 drag data，再用 `Input.dispatchDragEvent`（dragEnter／dragOver／drop）送到目標座標；這樣送出的事件 `isTrusted` 為 true，BlockNote 補送的那份則為 false。
+- 驗證整個 App（含 main 端、多視窗、Finder 開檔）：`npx electron-builder --dir --mac --arm64 -c.mac.identity=null` 快速打包，`open -a "dist/mac-arm64/Simple Note.app" <檔案...> --args --remote-debugging-port=9555` 啟動後，用 Node 的 `fetch('http://127.0.0.1:9555/json')` + `WebSocket` 送 `Runtime.evaluate` 檢查 DOM 與操作。不要用 9333，那個 port 是 Simple Gmail 在用。`open -a` 要給 App 的絕對路徑；已有另一個 Simple Note 在執行時加 `-n`，並加上 `--user-data-dir=<暫存資料夾>`，避免測試動到正式的偏好設定與視窗位置。App 在背景時 `focus()` / `blur()` 不會觸發事件（例如分頁重新命名的輸入框按 Enter 不會送出），測之前先用 System Events 把 App 切到前景。macOS 會把「偏好設定…」自動改名成「設定⋯」，用 System Events 點選單時要用改名後的文字。原生對話框（儲存提醒）可用 System Events 的 `sheet 1 of window 1` 讀文字與按按鈕，但存檔面板讀不到。列印對話框是一個名為「列印」的獨立視窗（subrole 為 AXDialog），不是 sheet，按鈕讀不到名稱，把 App 切到前景後送 Esc（`key code 53`）即可關閉。分頁拖放可用 CDP 模擬：`Input.setInterceptDrags` 開啟後以 `Input.dispatchMouseEvent` 按住分頁並移動，從 `Input.dragIntercepted` 取得 drag data，再用 `Input.dispatchDragEvent`（dragEnter／dragOver／drop）送到目標座標；這樣送出的事件 `isTrusted` 為 true，BlockNote 補送的那份則為 false。
 
 **編輯器核心 (`src/renderer/src/editor/`)**
 

@@ -627,7 +627,7 @@ export const SheetView = memo(function SheetView({ tabId, active }: Props): JSX.
   );
 
   const copyToClipboard = useCallback(() => {
-    window.api.clipboard.writeText(copySelection());
+    void window.api.clipboard.writeText(copySelection());
   }, [copySelection]);
 
   const cutToClipboard = useCallback(() => {
@@ -637,8 +637,9 @@ export const SheetView = memo(function SheetView({ tabId, active }: Props): JSX.
 
   const pasteFromClipboard = useCallback(
     (valuesOnly = false) => {
-      const text = window.api.clipboard.readText();
-      if (text) pasteText(text, valuesOnly);
+      void window.api.clipboard.readText().then((text) => {
+        if (text) pasteText(text, valuesOnly);
+      });
     },
     [pasteText]
   );

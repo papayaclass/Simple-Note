@@ -149,7 +149,7 @@ function buildCopyButton(text: string): HTMLButtonElement {
   btn.addEventListener('mousedown', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    window.api.clipboard.writeText(text);
+    void window.api.clipboard.writeText(text);
     btn.classList.add('copied');
     btn.title = '已複製';
     btn.innerHTML = CHECK_ICON;

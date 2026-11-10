@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, screen } from 'electron';
+import { app, BrowserWindow, clipboard, ipcMain, dialog, shell, screen } from 'electron';
 import { dirname, extname, join } from 'node:path';
 import { access, readFile, rename, writeFile } from 'node:fs/promises';
 import Store from 'electron-store';
@@ -80,7 +80,7 @@ interface WindowBounds {
 
 const DEFAULT_BOUNDS: WindowBounds = { width: 1024, height: 768 };
 
-const windowStore = new Store<{ bounds: WindowBounds }>({
+const windowStore = new Store<{ bounds: WindowBounds; lastOpenDir?: string }>({
   name: 'window-state',
   defaults: { bounds: DEFAULT_BOUNDS },
 });
@@ -423,7 +423,10 @@ function printFocused(): void {
 // (Obsidian model). With no window open, fall back to spawning a fresh one.
 async function openViaDialog(): Promise<void> {
   const focused = BrowserWindow.getFocusedWindow();
+  // Since Electron 43 a dialog without defaultPath always starts in Downloads
+  // instead of the folder macOS remembered, so remember it ourselves.
   const options = {
+    defaultPath: windowStore.get('lastOpenDir'),
     properties: ['openFile' as const],
     filters: [
       {
@@ -437,6 +440,7 @@ async function openViaDialog(): Promise<void> {
     : await dialog.showOpenDialog(options);
   if (r.canceled || !r.filePaths[0]) return;
   const path = r.filePaths[0];
+  windowStore.set('lastOpenDir', dirname(path));
   if (focused && !focused.isDestroyed()) {
     const content = await readFile(path, 'utf-8').catch(() => null);
     if (content !== null) {
@@ -491,6 +495,10 @@ app.whenReady().then(() => {
   ipcMain.handle('prefs:get', () => getPreferences());
   ipcMain.handle('prefs:set', (_e, key: string, value: unknown) => setPreference(key, value));
   ipcMain.handle('prefs:setAll', (_e, prefs: Record<string, unknown>) => setAllPreferences(prefs));
+
+  // The clipboard module is main-only since Electron 44 (and Promise-based).
+  ipcMain.handle('clipboard:readText', () => clipboard.readText());
+  ipcMain.handle('clipboard:writeText', (_e, text: string) => clipboard.writeText(String(text)));
 
   ipcMain.handle('file:read', async (_e, path: string) => {
     try {

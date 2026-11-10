@@ -1,4 +1,4 @@
-import { clipboard, contextBridge, ipcRenderer, webUtils } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
 // Both serializations of the current document; main writes whichever matches
 // the target file's extension.
@@ -79,8 +79,8 @@ export interface SimpleNoteAPI {
     readImage: (noteDir: string | null, src: string) => Promise<{ ok: boolean; dataUrl?: string }>;
   };
   clipboard: {
-    readText: () => string;
-    writeText: (text: string) => void;
+    readText: () => Promise<string>;
+    writeText: (text: string) => Promise<void>;
   };
   window: {
     setDirty: (dirty: boolean) => void;
@@ -127,8 +127,10 @@ const api: SimpleNoteAPI = {
     readImage: (noteDir, src) => ipcRenderer.invoke('file:readImage', noteDir, src),
   },
   clipboard: {
-    readText: () => clipboard.readText(),
-    writeText: (text) => clipboard.writeText(text),
+    // Electron 44 removed the clipboard module from renderers / preloads, so
+    // these go through main.
+    readText: () => ipcRenderer.invoke('clipboard:readText'),
+    writeText: (text) => ipcRenderer.invoke('clipboard:writeText', text),
   },
   window: {
     setDirty: (dirty) => ipcRenderer.send('window:setDirty', dirty),

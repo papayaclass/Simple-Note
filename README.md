@@ -26,7 +26,7 @@
 
 ## 系統需求
 
-- macOS 11 (Big Sur) 或以上
+- macOS 13 (Ventura) 或以上
 - 同時支援 Apple Silicon 與 Intel 晶片（Universal Binary）
 
 ## 安裝方式

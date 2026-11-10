@@ -429,7 +429,7 @@ export function Editor({
         focusLastBlock(editor);
       },
       focus: () => editor.focus(),
-      pastePlainText: () => pastePlainText(editor),
+      pastePlainText: () => void pastePlainText(editor),
       removeParagraphBreaks: () => {
         removeParagraphBreaks(editor);
       },
@@ -723,7 +723,7 @@ export function Editor({
       if (e.shiftKey && e.altKey && code === 'KeyV') {
         e.preventDefault();
         e.stopPropagation();
-        pastePlainText(editor);
+        void pastePlainText(editor);
         return;
       }
       // Shift+Cmd+X → inline code
@@ -784,8 +784,8 @@ function transformSelectedBlocks(
   });
 }
 
-function pastePlainText(editor: ReturnType<typeof useCreateBlockNote>): void {
-  const text = window.api.clipboard.readText();
+async function pastePlainText(editor: ReturnType<typeof useCreateBlockNote>): Promise<void> {
+  const text = await window.api.clipboard.readText();
   if (!text) return;
   editor.focus();
   editor.pasteText(text);
