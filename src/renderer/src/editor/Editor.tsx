@@ -5,7 +5,6 @@ import { useCreateBlockNote } from '@blocknote/react';
 import { TextSelection, AllSelection, NodeSelection } from 'prosemirror-state';
 import { schema } from './schema';
 import { createLinkExtension, sanitizeLoadedMarkdown } from './link';
-import { createMathPlugin } from '../math/overlay';
 import { createYouTubeMentionExtension } from './youtubeMention';
 import { createPasteLinkExtension } from './pasteLink';
 import { createCodeHighlightPlugin } from './codeHighlight';
@@ -235,18 +234,13 @@ export function Editor({
   notePath = null,
   blankFirstLineFormat = 'paragraph',
 }: Props): JSX.Element {
-  const mathMode = useStore((s) => s.mathMode);
   const codeWrap = useStore((s) => s.preferences.codeWrap);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const initialContent = useRef(blankContentForFormat(blankFirstLineFormat)).current;
 
-  // Custom ProseMirror extensions (math overlay + two-stage Cmd-A) registered via BlockNote's extension API
+  // Custom ProseMirror extensions (two-stage Cmd-A, etc.) registered via BlockNote's extension API
   const customExtensions = useRef([
     createToggleKeyboardExtension(),
-    createBlockNoteExtension({
-      key: 'simple-note-math',
-      plugins: [createMathPlugin(() => useStore.getState().mathMode)],
-    }),
     createYouTubeMentionExtension(),
     createPasteLinkExtension(),
     createBlockNoteExtension({
@@ -449,13 +443,6 @@ export function Editor({
       unsubscribe?.();
     };
   }, [editor, onChange]);
-
-  // Redraw math overlay when mathMode toggles
-  useEffect(() => {
-    const view = (editor as unknown as { _tiptapEditor: { view: { dispatch: (tr: any) => void; state: any } } })
-      ._tiptapEditor.view;
-    view.dispatch(view.state.tr.setMeta('math-overlay', { redraw: true }));
-  }, [mathMode, editor]);
 
   // Refresh the code-wrap toggles when the global wrap state changes so the
   // button's active styling stays in sync (the wrapping itself is CSS-driven).

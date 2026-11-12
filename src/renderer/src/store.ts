@@ -155,7 +155,6 @@ interface AppState {
   activeTabId: string;
   panes: TabPane[];
   activePaneId: string;
-  mathMode: boolean;
   preferences: Preferences;
   prefsPanelOpen: boolean;
   tweaksPanelOpen: boolean;
@@ -178,7 +177,6 @@ interface AppState {
   setTabDirty: (id: string, dirty: boolean) => void;
 
   // Global view/state
-  toggleMathMode: () => void;
   setPreferences: (p: Partial<Preferences>) => void;
   setPrefsPanelOpen: (open: boolean) => void;
   setTweaksPanelOpen: (open: boolean) => void;
@@ -194,7 +192,6 @@ export const useStore = create<AppState>((set) => ({
   activeTabId: FIRST_TAB.id,
   panes: [FIRST_PANE],
   activePaneId: FIRST_PANE.id,
-  mathMode: false,
   preferences: DEFAULT_PREFS,
   prefsPanelOpen: false,
   tweaksPanelOpen: false,
@@ -391,7 +388,6 @@ export const useStore = create<AppState>((set) => ({
     })),
   setTabDirty: (id, dirty) =>
     set((s) => ({ tabs: s.tabs.map((t) => (t.id === id ? { ...t, dirty } : t)) })),
-  toggleMathMode: () => set((s) => ({ mathMode: !s.mathMode })),
   setPreferences: (p) => set((s) => ({ preferences: { ...s.preferences, ...p } })),
   setPrefsPanelOpen: (open) => set({ prefsPanelOpen: open }),
   setTweaksPanelOpen: (open) => set({ tweaksPanelOpen: open }),

@@ -84,8 +84,6 @@ export function App(): JSX.Element {
   const setActiveTab = useStore((s) => s.setActiveTab);
   const splitTabBesidePane = useStore((s) => s.splitTabBesidePane);
   const swapPaneTabs = useStore((s) => s.swapPaneTabs);
-  const mathMode = useStore((s) => s.mathMode);
-  const toggleMathMode = useStore((s) => s.toggleMathMode);
   const preferences = useStore((s) => s.preferences);
   const setPreferences = useStore((s) => s.setPreferences);
   const setPrefsOpen = useStore((s) => s.setPrefsPanelOpen);
@@ -360,9 +358,6 @@ export function App(): JSX.Element {
           s.setTweaksPanelOpen(!s.tweaksPanelOpen);
           break;
         }
-        case 'toggle-math':
-          toggleMathMode();
-          break;
         case 'find':
           getDocumentView(id)?.openFind(false);
           break;
@@ -390,7 +385,7 @@ export function App(): JSX.Element {
       }
     });
     return off;
-  }, [setPrefsOpen, toggleMathMode]);
+  }, [setPrefsOpen]);
 
   return (
     <div className="window-root">
@@ -465,10 +460,6 @@ export function App(): JSX.Element {
             />
           )}
         </div>
-      </div>
-
-      <div className="status-bar">
-        {mathMode && <div className="math-badge">數學模式</div>}
       </div>
 
       <PreferencesPanel />

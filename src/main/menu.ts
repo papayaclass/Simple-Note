@@ -118,12 +118,6 @@ export function buildMenu(h: MenuHandlers): void {
     {
       label: '檢視',
       submenu: [
-        {
-          label: '切換數學模式',
-          accelerator: 'Shift+CmdOrCtrl+M',
-          click: () => h.onCommand('toggle-math'),
-        },
-        { type: 'separator' },
         { role: 'resetZoom' },
         { role: 'zoomIn' },
         { role: 'zoomOut' },

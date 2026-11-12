@@ -16,9 +16,6 @@
   --panel-border: rgba(0, 0, 0, 0.08);
   --input-bg: #f5f5f5;
   --input-border: rgba(0, 0, 0, 0.1);
-  --math-tag-bg: rgba(0, 0, 0, 0.05);
-  --math-tag-fg: #1a1a1a;
-  --result-fg: #6b7280;
   --column-divider: rgba(0, 0, 0, 0.12);
   --chrome-bg: #f3f3f1;
   --hover-bg: rgba(0, 0, 0, 0.05);
@@ -50,9 +47,6 @@
     --panel-border: rgba(255, 255, 255, 0.1);
     --input-bg: #1a1a1a;
     --input-border: rgba(255, 255, 255, 0.12);
-    --math-tag-bg: rgba(255, 255, 255, 0.08);
-    --math-tag-fg: #e8e8e8;
-    --result-fg: #9ca3af;
     --column-divider: rgba(255, 255, 255, 0.12);
     --chrome-bg: #242424;
     --hover-bg: rgba(255, 255, 255, 0.07);
@@ -216,17 +210,6 @@ body,
   pointer-events: none;
 }
 
-.status-bar {
-  position: fixed;
-  bottom: 12px;
-  right: 16px;
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  -webkit-app-region: no-drag;
-  z-index: 10000;
-}
-
 .file-name {
   color: var(--fg-muted);
   font-size: 12px;
@@ -245,18 +228,6 @@ body,
   border-radius: 50%;
   background: var(--fg-muted);
   vertical-align: middle;
-}
-
-.math-badge {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: var(--math-tag-bg);
-  color: var(--math-tag-fg);
-  user-select: none;
-  pointer-events: none;
 }
 
 /* image preview lightbox (double-click an image block). Sits above the title-bar
@@ -295,9 +266,6 @@ body,
     --selection: transparent;
     --code-bg: #f3f4f6;
     --quote-border: #c7c7c7;
-    --math-tag-bg: #f3f4f6;
-    --math-tag-fg: #000000;
-    --result-fg: #555555;
     --column-divider: #d4d4d4;
     --top-padding: 0px;
     color-scheme: light;
@@ -347,7 +315,6 @@ body,
   .split-divider,
   .split-drop-overlay,
   .editor-pane:not(.active-pane),
-  .status-bar,
   .marquee-box,
   .prefs-overlay,
   .context-menu,

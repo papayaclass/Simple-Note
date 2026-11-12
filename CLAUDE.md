@@ -77,7 +77,6 @@ Renderer 每次存檔都同時算出兩種內容（`{ markdown, snote }`）交�
 
 - Schema（`schema.ts`）：BlockNote 預設 block 加上自訂的 `image`、`toggle`、`divider`，以及自訂 style `redText`（紅字標記）。
 - 透過 BlockNote 的 `createBlockNoteExtension` API 注入 ProseMirror plugin（大多在 `Editor.tsx` 的 extensions 陣列），key 都以 `simple-note-` 開頭，例如：
-  - `simple-note-math`：數學模式 overlay (見下節)。
   - `simple-note-select-all`：兩段式 Cmd+A，第一次選整個 block，第二次才全選整份文件。
   - `simple-note-find`：尋找與取代的高亮 (見下節)。
   - `simple-note-block-delete`、`simple-note-codeblock-select`：整塊選取與刪除。
@@ -95,15 +94,6 @@ Renderer 每次存檔都同時算出兩種內容（`{ markdown, snote }`）交�
 - 框選 Toggle 時，`Decoration.node` 的 `.sn-block-selected` 會掛在外層 `.bn-react-node-view-renderer`，不一定在 `.bn-block-content`。`editor.css` 同時支援兩種位置，使用整行背景反白並移除 BlockNote 預設的藍色外框，避免反白與外框範圍不同。
 - BlockNote 的 `[ ]\s` input rule 在轉成 checkbox 後會多留一個空 paragraph，`Editor.tsx` 內有一段 `onChange` 監聽會偵測此 pattern 並 `removeBlocks` + `setTextCursorPosition` 修正。修改 onChange 邏輯時要小心不要重新引入這個 bug。
 - 文字拖曳反白放開後還會收到 `click`：若放在 `.page` 或 `.document-view` 的留白處，`onPageClick` 原本會把游標移到文件末尾並清掉反白。`selectionClamp.ts` 只在已形成拖曳時，以 capture 階段攔截緊接的那次點擊，再於下一個事件循環清除；單純點擊、雙擊與後續點擊仍照常處理。只在 `mouseup` 呼叫 `preventDefault()` 無法阻止這次點擊。
-
-**數學模式 (`src/renderer/src/math/`)**
-
-開啟後 (Shift+Cmd+M)，每個包含 `=` 的 textblock 會在行尾以 ProseMirror Decoration widget 顯示計算結果。
-
-- `parser.ts` 是手寫 recursive-descent，支援四則運算、括號、Unicode（含 CJK）變數名稱，文法見檔頭註解。
-- `evaluator.ts` 處理變數綁定（`x = 1+2` 形式會把 x 存入跨行 `vars` Map）與純查詢行（純運算式）。
-- `overlay.ts` 是 plugin，把結果以 Decoration widget 畫在行尾。語法錯誤與未定義變數會被靜默（使用者還在輸入中），其他算術錯誤才會顯示。
-- 數學模式只能用 Shift+Cmd+M（或「檢視」選單）切換，沒有任何關鍵字觸發。
 
 **尋找與取代 (`src/renderer/src/find/`)**
 
