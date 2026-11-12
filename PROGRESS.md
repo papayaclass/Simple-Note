@@ -1,3 +1,9 @@
+**2026-11-12：移除數學模式、本機安裝**
+
+- 移除：數學模式整組功能，包含 `src/renderer/src/math/`（parser、evaluator、overlay）、編輯器的 `simple-note-math` plugin、「檢視 → 切換數學模式」選單與 Shift+Cmd+M 快捷鍵、store 的 `mathMode`、只放數學徽章的 `.status-bar`，以及相關 CSS 變數與樣式。文件（CLAUDE.md、AGENTS.md、README）同步刪除相關段落。
+- 驗證：兩組 TypeScript 型別檢查與 production build 通過；安裝版以 System Events 確認「檢視」選單只剩縮放、全螢幕與開發者工具。未手動測試編輯器其他功能。
+- 使用 Developer ID 製作 Universal 本機版本，含 hardened runtime 與時間戳記，略過公證與 DMG。安裝版深度嚴格簽章檢查通過並啟動。CDHash：ac33701604f5249fdf02517cfd940355b78acbd3。程式提交：38ab48d。
+
 **2026-11-10：分頁選單點擊與未儲存筆記 MD 匯出修正、本機安裝**
 
 - 修正：分頁右鍵選單改透過 portal 掛在 document.body，並明確排除 Electron 視窗拖曳區，避免選單按鈕的滑鼠事件遭攔截。未儲存筆記也能直接匯出 MD，保留特殊格式遺失提醒。
