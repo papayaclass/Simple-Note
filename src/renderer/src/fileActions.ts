@@ -173,11 +173,16 @@ export async function finishTabTransfer(
 }
 
 // "開啟在新視窗": hand the tab's current content to a new window and drop it
-// from this one. A window left with nothing else closes.
-export async function moveTabToNewWindow(tabId: string): Promise<void> {
+// from this one. A window left with nothing else closes. `at` is the screen
+// point a tab was dragged out to; a window's only tab moves the window instead.
+export async function moveTabToNewWindow(tabId: string, at?: { x: number; y: number }): Promise<void> {
+  if (at && useStore.getState().tabs.length === 1) {
+    window.api.window.moveToPoint(at.x, at.y);
+    return;
+  }
   const doc = await snapshotTabForTransfer(tabId);
   if (!doc) return;
-  window.api.window.moveTabToNewWindow(doc);
+  window.api.window.moveTabToNewWindow(doc, at);
   const wasOnlyTab = useStore.getState().tabs.length === 1;
   useStore.getState().closeTab(tabId);
   if (wasOnlyTab) window.api.window.close();

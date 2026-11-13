@@ -86,9 +86,10 @@ export interface SimpleNoteAPI {
     setDirty: (dirty: boolean) => void;
     setTitle: (title: string) => void;
     close: () => void;
-    moveTabToNewWindow: (doc: OpenDocumentPayload) => void;
+    moveTabToNewWindow: (doc: OpenDocumentPayload, at?: { x: number; y: number }) => void;
+    moveToPoint: (x: number, y: number) => void;
     beginTabDrag: (token: string, tabId: string) => void;
-    endTabDrag: (token: string) => void;
+    endTabDrag: (token: string) => Promise<{ x: number; y: number } | null>;
     moveTabHere: (token: string, paneId: string, index: number) => Promise<boolean>;
     saveAll: () => Promise<void>;
   };
@@ -136,9 +137,10 @@ const api: SimpleNoteAPI = {
     setDirty: (dirty) => ipcRenderer.send('window:setDirty', dirty),
     setTitle: (title) => ipcRenderer.send('window:setTitle', title),
     close: () => ipcRenderer.send('window:close'),
-    moveTabToNewWindow: (doc) => ipcRenderer.send('window:moveTab', doc),
+    moveTabToNewWindow: (doc, at) => ipcRenderer.send('window:moveTab', doc, at),
+    moveToPoint: (x, y) => ipcRenderer.send('window:moveToPoint', x, y),
     beginTabDrag: (token, tabId) => ipcRenderer.send('window:beginTabDrag', token, tabId),
-    endTabDrag: (token) => ipcRenderer.send('window:endTabDrag', token),
+    endTabDrag: (token) => ipcRenderer.invoke('window:endTabDrag', token),
     moveTabHere: (token, paneId, index) => ipcRenderer.invoke('window:moveTabHere', token, paneId, index),
     saveAll: () => ipcRenderer.invoke('window:saveAll'),
   },

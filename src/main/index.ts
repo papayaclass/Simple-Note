@@ -7,7 +7,7 @@ import { getPreferences, setPreference, setAllPreferences } from './preferences.
 import { getYouTubePreview } from './youtube-preview.js';
 import { runAI } from './openrouter.js';
 import { readImageAsDataUrl } from './images.js';
-import { registerTabTransfers } from './tab-transfer.js';
+import { registerTabTransfers, TEAR_OFF_OFFSET } from './tab-transfer.js';
 
 app.setName('Simple Note');
 
@@ -263,9 +263,14 @@ function persistWindowBounds(win: BrowserWindow): void {
   windowStore.set('bounds', win.getBounds());
 }
 
-function createWindow(openPath?: string): BrowserWindow {
+function createWindow(openPath?: string, at?: { x: number; y: number }): BrowserWindow {
+  const bounds = getNewWindowBounds();
+  if (at) {
+    bounds.x = Math.round(at.x - TEAR_OFF_OFFSET.x);
+    bounds.y = Math.round(at.y - TEAR_OFF_OFFSET.y);
+  }
   const win = new BrowserWindow({
-    ...getNewWindowBounds(),
+    ...bounds,
     titleBarStyle: 'hiddenInset',
     backgroundColor: '#ffffff',
     show: false,
@@ -512,8 +517,10 @@ app.whenReady().then(() => {
   );
   // "開啟在新視窗" from a tab's context menu: the renderer hands over the tab's
   // content and closes its own copy, so the tab moves rather than duplicates.
-  ipcMain.on('window:moveTab', (_e, doc: PendingDocument) => {
-    const win = createWindow();
+  // A tab dragged out of every window also lands here, with the drop point.
+  ipcMain.on('window:moveTab', (_e, doc: PendingDocument, at?: { x: number; y: number }) => {
+    const point = at && Number.isFinite(at.x) && Number.isFinite(at.y) ? at : undefined;
+    const win = createWindow(undefined, point);
     queueDocumentForWindow(win, doc);
   });
 

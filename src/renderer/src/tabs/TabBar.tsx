@@ -255,8 +255,13 @@ export function TabBar({
                 onTabDragStart?.(tab.id);
               }}
               onDragEnd={() => {
-                if (dragToken.current) window.api.window.endTabDrag(dragToken.current);
+                const token = dragToken.current;
                 dragToken.current = null;
+                if (token) {
+                  void window.api.window.endTabDrag(token).then((point) => {
+                    if (point) void moveTabToNewWindow(tab.id, point);
+                  });
+                }
                 setDropGap(null);
                 onTabDragEnd?.();
               }}

@@ -1,5 +1,8 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, screen } from 'electron';
 import type { OpenDocumentPayload } from '../preload';
+
+// Where the cursor lands on a torn-off window: over its first tab.
+export const TEAR_OFF_OFFSET = { x: 140, y: 18 };
 
 // A token identifies one drag, while the source document stays in its renderer
 // until the destination has loaded it. No document content goes on the dragboard.
@@ -27,11 +30,29 @@ export function registerTabTransfers(): void {
     broadcast(true);
   });
 
-  ipcMain.on('window:endTabDrag', (event, token: string) => {
-    if (drag?.token !== token || drag.source.webContents !== event.sender) return;
+  // Returns the screen point when the tab was released outside every window,
+  // so the source renderer can tear it off into a new window there (like
+  // Chrome). The drag is consumed then; otherwise the token stays for a drop
+  // IPC that may still arrive from another renderer.
+  ipcMain.handle('window:endTabDrag', (event, token: string) => {
+    if (drag?.token !== token || drag.source.webContents !== event.sender) return null;
     broadcast(false);
-    // Keep the one token until the next drag or window close: dragend in the
-    // source can arrive before the target's drop IPC in another renderer.
+    const point = screen.getCursorScreenPoint();
+    const overWindow = BrowserWindow.getAllWindows().some((win) => {
+      if (win.isDestroyed() || !win.isVisible() || win.isMinimized()) return false;
+      const b = win.getBounds();
+      return point.x >= b.x && point.x < b.x + b.width && point.y >= b.y && point.y < b.y + b.height;
+    });
+    if (overWindow) return null;
+    drag = null;
+    return point;
+  });
+
+  // Dragging a window's only tab out moves the window itself.
+  ipcMain.on('window:moveToPoint', (event, x: number, y: number) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win || !Number.isFinite(x) || !Number.isFinite(y)) return;
+    win.setPosition(Math.round(x - TEAR_OFF_OFFSET.x), Math.round(y - TEAR_OFF_OFFSET.y));
   });
 
   ipcMain.handle('window:moveTabHere', async (event, token: string, paneId: string, index: number) => {
