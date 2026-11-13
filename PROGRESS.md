@@ -1,3 +1,9 @@
+**2026-11-13：分頁拖出視窗外變新視窗、本機安裝**
+
+- 新增：分頁拖到所有視窗之外放開會開成新視窗，游標落在新視窗第一個分頁上；視窗只有一個分頁時改為移動視窗本身。拖到另一個視窗的分頁列合併沿用原本功能。
+- 驗證：兩組 TypeScript 型別檢查與 production build 通過。未以實體滑鼠測試拖出與合併。
+- 使用 Developer ID 製作 Universal 本機版本，含 hardened runtime 與時間戳記，略過公證與 DMG。安裝版深度嚴格簽章檢查通過並啟動。CDHash：9dd5d6d3f905a92a00ede2b6748a46cd2d5fa6a6。程式提交：62aa7ac。
+
 **2026-11-12：移除數學模式、本機安裝**
 
 - 移除：數學模式整組功能，包含 `src/renderer/src/math/`（parser、evaluator、overlay）、編輯器的 `simple-note-math` plugin、「檢視 → 切換數學模式」選單與 Shift+Cmd+M 快捷鍵、store 的 `mathMode`、只放數學徽章的 `.status-bar`，以及相關 CSS 變數與樣式。文件（CLAUDE.md、AGENTS.md、README）同步刪除相關段落。
